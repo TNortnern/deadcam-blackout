@@ -70,6 +70,7 @@ var _hud_text_accum: float = 0.25
 var _last_ammo_sig: int = -1
 
 signal start_requested
+signal start_daylight_requested
 signal restart_requested
 signal graphics_action(key: String)
 signal settings_closed
@@ -213,21 +214,27 @@ func _build_title_overlay() -> void:
 	vb.add_child(t)
 
 	var sub := Label.new()
-	sub.text = "ASYLUM  •  CATACOMB TUNNELS  •  WINTER COURTYARD\nWASD Move | Mouse Look | LMB Fire (Cancels Shotgun Reload) | RMB Aim | R Reload | F Flashlight | E Interact | 1-3 Weapons | F8 Quality | F3 Stats"
+	sub.text = "ASYLUM  •  CATACOMB TUNNELS  •  WINTER COURTYARD\nWASD Move | LMB Fire | RMB Aim | V Quick Melee | R Reload | F Flashlight | E Interact | 1-4 Weapons | F9 Day/Night | F8 Quality"
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.add_theme_font_size_override("font_size", 14)
 	sub.add_theme_color_override("font_color", Color(0.75, 0.78, 0.76))
 	vb.add_child(sub)
 
 	var btn := Button.new()
-	btn.text = "DEPLOY BODYCAM"
-	btn.custom_minimum_size = Vector2(220, 44)
+	btn.text = "DEPLOY: BLACKOUT NIGHT (ASYLUM)"
+	btn.custom_minimum_size = Vector2(300, 44)
 	btn.pressed.connect(func(): emit_signal("start_requested"))
 	vb.add_child(btn)
 
+	var day_btn := Button.new()
+	day_btn.text = "DEPLOY: WINTER DAYLIGHT (OUTDOOR SHOWCASE)"
+	day_btn.custom_minimum_size = Vector2(300, 42)
+	day_btn.pressed.connect(func(): emit_signal("start_daylight_requested"))
+	vb.add_child(day_btn)
+
 	var cfg_btn := Button.new()
 	cfg_btn.text = "GRAPHICS SETTINGS [ESC]"
-	cfg_btn.custom_minimum_size = Vector2(220, 36)
+	cfg_btn.custom_minimum_size = Vector2(300, 36)
 	cfg_btn.pressed.connect(func():
 		if settings_panel:
 			settings_panel.visible = true
@@ -430,10 +437,12 @@ func update_hud(delta: float, player: PlayerBodycam, wave: int, points: int, zom
 	var fps := Engine.get_frames_per_second()
 	rec_label.text = "REC %s  2026-11-24 23:%02d:%02d  •  %d FPS\nBODYCAM-04 // WAVE %02d" % [blink, (41 + mins) % 60, sec % 60, fps, wave]
 
-	var wname: String = PlayerBodycam.WEAPONS[player.current_weapon]["name"]
+	var wname: String = player.get_current_weapon_name() if player.has_method("get_current_weapon_name") else PlayerBodycam.WEAPONS[player.current_weapon]["name"]
+	var is_melee: bool = bool(PlayerBodycam.WEAPONS[player.current_weapon].get("is_melee", false))
 	var reload_tag := " [RELOADING]" if player.is_reloading else ""
-	stats_label.text = "%s%s  %02d / %03d\nHP %d%%  •  PTS %d  •  HOSTILES %d" % [
-		wname, reload_tag, mag, res, int(player.health), points, zombies_left
+	var ammo_str := "MELEE" if is_melee else ("%02d / %03d" % [mag, res])
+	stats_label.text = "%s%s  %s\nHP %d%%  •  PTS %d  •  HOSTILES %d" % [
+		wname, reload_tag, ammo_str, int(player.health), points, zombies_left
 	]
 
 	var obj := player.get_looked_interactable()

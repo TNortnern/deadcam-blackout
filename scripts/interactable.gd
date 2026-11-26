@@ -1,11 +1,13 @@
 extends StaticBody3D
 class_name InteractableObject
 
-enum Kind { GENERATOR, MYSTERY_BOX, BARRICADE }
+enum Kind { GENERATOR, MYSTERY_BOX, BARRICADE, MELEE_PICKUP }
 
 @export var kind: Kind = Kind.GENERATOR
 @export var prompt_text: String = "Press [E] to Interact"
 @export var cost: int = 0
+@export var melee_id: String = "fire_axe"
+@export var weapon_label: String = "FIRE AXE"
 
 var activated: bool = false
 var plank_count: int = 4
@@ -48,6 +50,10 @@ func get_prompt(player_points: int) -> String:
 			if plank_count >= max_planks:
 				return "BARRICADE INTACT (%d/%d)" % [plank_count, max_planks]
 			return "[E] REBUILD BARRICADE (%d/%d)" % [plank_count, max_planks]
+		Kind.MELEE_PICKUP:
+			if activated:
+				return ""
+			return "[E] PICK UP %s (SLOT 4 / [V] MELEE)" % weapon_label
 	return prompt_text
 
 
@@ -87,6 +93,15 @@ func interact(game_manager: Node, player: Node) -> String:
 				game_manager.add_points(25)
 			emit_signal("barricade_rebuilt", plank_count)
 			return "REBUILT BARRICADE (+25 PTS)"
+		Kind.MELEE_PICKUP:
+			if activated:
+				return ""
+			activated = true
+			visible = false
+			collision_layer = 0
+			if player and player.has_method("acquire_melee_weapon"):
+				player.acquire_melee_weapon(melee_id)
+			return "EQUIPPED MELEE: %s ([4] OR [V])" % weapon_label
 	return ""
 
 

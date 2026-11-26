@@ -73,8 +73,38 @@ const WEAPONS := [
 		"ejection": Vector3(0.024, 0.014, -0.150),
 		"has_holo": false,
 		"holo_pos": Vector3.ZERO,
+	},
+	{
+		"name": "COMBAT KNIFE",
+		"glb": "",
+		"audio": "res://assets/audio/melee_swing.wav",
+		"is_melee": true,
+		"mag_size": 1,
+		"reserve_max": 0,
+		"damage": 55.0,
+		"fire_rate": 0.44,
+		"auto": false,
+		"pellets": 1,
+		"spread": 0.0,
+		"recoil_pitch": 0.02,
+		"recoil_kick": 0.02,
+		"flash_scale": 0.0,
+		"hip_pos": Vector3(0.20, -0.24, -0.36),
+		"hip_rot": Vector3(0.20, -0.78, 0.28),
+		"ads_pos": Vector3(0.14, -0.19, -0.32),
+		"ads_rot": Vector3(0.24, -0.62, 0.34),
+		"muzzle": Vector3(0.0, 0.0, -0.35),
+		"ejection": Vector3.ZERO,
+		"has_holo": false,
+		"holo_pos": Vector3.ZERO,
 	}
 ]
+
+const MELEE_CATALOG := {
+	"knife": {"name": "COMBAT KNIFE", "damage": 55.0, "reach": 2.15, "dur": 0.42},
+	"fire_axe": {"name": "FIRE AXE", "damage": 94.0, "reach": 2.48, "dur": 0.56},
+	"machete": {"name": "TACTICAL MACHETE", "damage": 78.0, "reach": 2.34, "dur": 0.46},
+}
 
 var head: Node3D
 var camera: Camera3D
@@ -147,9 +177,14 @@ var _pre_land_vy: float = 0.0
 var _land_dip: float = 0.0
 
 var current_weapon: int = 0
-var unlocked_weapons: Array[bool] = [true, true, true]
-var ammo_in_mag: Array[int] = [15, 30, 8]
-var ammo_reserve: Array[int] = [90, 180, 48]
+var unlocked_weapons: Array[bool] = [true, true, true, true]
+var ammo_in_mag: Array[int] = [15, 30, 8, 1]
+var ammo_reserve: Array[int] = [90, 180, 48, 0]
+var equipped_melee_id: String = "knife"
+var _melee_timer: float = 0.0
+var _melee_dur: float = 0.42
+var _melee_hit_done: bool = false
+var _melee_nodes: Dictionary = {} # melee_id -> Node3D
 
 var yaw: float = 0.0
 var pitch: float = 0.0
@@ -227,6 +262,8 @@ static var _sfx_shell_clink: Array[AudioStream] = []
 static var _sfx_impact_hard: AudioStream = null
 static var _sfx_player_slash: Array[AudioStream] = []
 static var _sfx_player_hurt: AudioStream = null
+static var _sfx_melee_swing: AudioStream = null
+static var _sfx_melee_cleave: AudioStream = null
 
 signal player_died
 signal weapon_changed(index: int, name: String)
@@ -272,6 +309,10 @@ func _preload_combat_fx() -> void:
 		_sfx_hit_confirm = load("res://assets/audio/hit_confirm.wav")
 	if ResourceLoader.exists("res://assets/audio/impact_hard.wav"):
 		_sfx_impact_hard = load("res://assets/audio/impact_hard.wav")
+	if ResourceLoader.exists("res://assets/audio/melee_swing.wav"):
+		_sfx_melee_swing = load("res://assets/audio/melee_swing.wav")
+	if ResourceLoader.exists("res://assets/audio/melee_cleave.wav"):
+		_sfx_melee_cleave = load("res://assets/audio/melee_cleave.wav")
 
 	if _casing_mesh == null:
 		_casing_mesh = CylinderMesh.new()
@@ -1062,6 +1103,84 @@ func _attach_ar_top_cartridge(inst: Node3D, parts: Dictionary) -> void:
 	_w_rest_rot[iid] = round_rig.rotation
 
 
+func _build_melee_viewmodel_rig(holder: Node3D) -> void:
+	_melee_nodes.clear()
+	var steel := StandardMaterial3D.new()
+	steel.albedo_color = Color(0.24, 0.26, 0.29)
+	steel.metallic = 0.86
+	steel.roughness = 0.30
+	var edge := StandardMaterial3D.new()
+	edge.albedo_color = Color(0.76, 0.78, 0.80)
+	edge.metallic = 0.94
+	edge.roughness = 0.18
+	var grip_mat := StandardMaterial3D.new()
+	grip_mat.albedo_color = Color(0.11, 0.11, 0.12)
+	grip_mat.roughness = 0.84
+	var wood_mat := StandardMaterial3D.new()
+	wood_mat.albedo_color = Color(0.24, 0.13, 0.07)
+	wood_mat.roughness = 0.82
+	var blood_mat := StandardMaterial3D.new()
+	blood_mat.albedo_color = Color(0.34, 0.02, 0.025)
+	blood_mat.roughness = 0.18
+	blood_mat.metallic_specular = 0.75
+
+	var _vm_part := func(parent: Node3D, m: Mesh, pos: Vector3, rot := Vector3.ZERO) -> MeshInstance3D:
+		var mi := MeshInstance3D.new()
+		mi.mesh = m
+		mi.position = pos
+		mi.rotation = rot
+		mi.layers = 2
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		parent.add_child(mi)
+		return mi
+
+	# 1. Combat Knife
+	var knife := Node3D.new()
+	knife.name = "Melee_Knife"
+	var kh := CylinderMesh.new(); kh.top_radius = 0.015; kh.bottom_radius = 0.016; kh.height = 0.13; kh.material = grip_mat
+	_vm_part.call(knife, kh, Vector3(0.0, -0.06, 0.0))
+	var kg := BoxMesh.new(); kg.size = Vector3(0.048, 0.012, 0.024); kg.material = steel
+	_vm_part.call(knife, kg, Vector3(0.0, 0.01, 0.0))
+	var kb := BoxMesh.new(); kb.size = Vector3(0.008, 0.21, 0.032); kb.material = steel
+	_vm_part.call(knife, kb, Vector3(0.0, 0.12, -0.004))
+	var ke := BoxMesh.new(); ke.size = Vector3(0.004, 0.20, 0.008); ke.material = edge
+	_vm_part.call(knife, ke, Vector3(0.0, 0.12, -0.022))
+	holder.add_child(knife)
+	_melee_nodes["knife"] = knife
+
+	# 2. Fire Axe
+	var axe := Node3D.new()
+	axe.name = "Melee_FireAxe"
+	var ah := CylinderMesh.new(); ah.top_radius = 0.017; ah.bottom_radius = 0.020; ah.height = 0.68; ah.material = wood_mat
+	_vm_part.call(axe, ah, Vector3(0.0, 0.08, 0.0))
+	var ag := CylinderMesh.new(); ag.top_radius = 0.021; ag.bottom_radius = 0.022; ag.height = 0.16; ag.material = grip_mat
+	_vm_part.call(axe, ag, Vector3(0.0, -0.14, 0.0))
+	var ahd := BoxMesh.new(); ahd.size = Vector3(0.028, 0.105, 0.18); ahd.material = steel
+	_vm_part.call(axe, ahd, Vector3(0.0, 0.36, -0.06))
+	var abit := BoxMesh.new(); abit.size = Vector3(0.012, 0.125, 0.036); abit.material = edge
+	_vm_part.call(axe, abit, Vector3(0.0, 0.36, -0.155))
+	var abld := BoxMesh.new(); abld.size = Vector3(0.014, 0.09, 0.045); abld.material = blood_mat
+	_vm_part.call(axe, abld, Vector3(0.0, 0.35, -0.135))
+	axe.visible = false
+	holder.add_child(axe)
+	_melee_nodes["fire_axe"] = axe
+
+	# 3. Tactical Machete
+	var mach := Node3D.new()
+	mach.name = "Melee_Machete"
+	var mh := CylinderMesh.new(); mh.top_radius = 0.016; mh.bottom_radius = 0.018; mh.height = 0.15; mh.material = grip_mat
+	_vm_part.call(mach, mh, Vector3(0.0, -0.06, 0.0))
+	var mb := BoxMesh.new(); mb.size = Vector3(0.008, 0.44, 0.056); mb.material = steel
+	_vm_part.call(mach, mb, Vector3(0.0, 0.22, -0.01))
+	var me := BoxMesh.new(); me.size = Vector3(0.004, 0.42, 0.012); me.material = edge
+	_vm_part.call(mach, me, Vector3(0.0, 0.22, -0.040))
+	var mbl := BoxMesh.new(); mbl.size = Vector3(0.010, 0.18, 0.032); mbl.material = blood_mat
+	_vm_part.call(mach, mbl, Vector3(0.0, 0.30, -0.025))
+	mach.visible = false
+	holder.add_child(mach)
+	_melee_nodes["machete"] = mach
+
+
 func _prebuild_weapon_rigs() -> void:
 	_weapon_rigs.clear()
 	_w_parts_by_idx.clear()
@@ -1071,22 +1190,25 @@ func _prebuild_weapon_rigs() -> void:
 	for i in range(WEAPONS.size()):
 		var w: Dictionary = WEAPONS[i]
 		var glb_path: String = w["glb"]
-		if not _glb_cache.has(glb_path):
-			_glb_cache[glb_path] = load(glb_path)
-		var packed: PackedScene = _glb_cache[glb_path]
 		var holder := Node3D.new()
 		holder.name = "WeaponRig_%d" % i
 		holder.visible = false
 		weapon_rig_holder.add_child(holder)
 		var parts := {}
-		if packed:
-			var inst := packed.instantiate()
-			_prep_viewmodel_node(inst)
-			_split_weapon_rig_meshes(inst, i)
-			holder.add_child(inst)
-			_collect_weapon_parts(inst, parts)
-			if i == 1:
-				_attach_ar_top_cartridge(inst, parts)
+		if bool(w.get("is_melee", false)):
+			_build_melee_viewmodel_rig(holder)
+		elif glb_path != "":
+			if not _glb_cache.has(glb_path):
+				_glb_cache[glb_path] = load(glb_path)
+			var packed: PackedScene = _glb_cache[glb_path]
+			if packed:
+				var inst := packed.instantiate()
+				_prep_viewmodel_node(inst)
+				_split_weapon_rig_meshes(inst, i)
+				holder.add_child(inst)
+				_collect_weapon_parts(inst, parts)
+				if i == 1:
+					_attach_ar_top_cartridge(inst, parts)
 		if i == 2:
 			_shotgun_shell_rig = _build_shotgun_shell_rig()
 			holder.add_child(_shotgun_shell_rig)
@@ -1352,6 +1474,24 @@ func v_dot(v: Vector3, fwd: Vector3) -> float:
 	return v.normalized().dot(fwd) if v.length_squared() > 0.001 else 0.0
 
 
+func get_current_weapon_name() -> String:
+	if current_weapon == 3:
+		var m: Dictionary = MELEE_CATALOG.get(equipped_melee_id, MELEE_CATALOG["knife"])
+		return str(m["name"])
+	return str(WEAPONS[current_weapon]["name"])
+
+
+func acquire_melee_weapon(m_id: String) -> void:
+	if not MELEE_CATALOG.has(m_id):
+		return
+	equipped_melee_id = m_id
+	for k in _melee_nodes.keys():
+		if is_instance_valid(_melee_nodes[k]):
+			(_melee_nodes[k] as Node3D).visible = (str(k) == m_id)
+	unlocked_weapons[3] = true
+	_equip_weapon(3)
+
+
 func unlock_and_equip(idx: int) -> void:
 	if idx >= 0 and idx < WEAPONS.size():
 		unlocked_weapons[idx] = true
@@ -1378,6 +1518,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_equip_weapon(1)
 		elif event.physical_keycode == KEY_3:
 			_equip_weapon(2)
+		elif event.physical_keycode == KEY_4:
+			_equip_weapon(3)
 	elif event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_equip_weapon((current_weapon + 1) % WEAPONS.size())
@@ -1558,11 +1700,23 @@ func _physics_process(delta: float) -> void:
 		toggle_flashlight()
 	if Input.is_action_just_pressed("reload"):
 		start_reload()
+	if Input.is_action_just_pressed("melee"):
+		trigger_melee()
+
+	if _melee_timer > 0.0:
+		_melee_timer = maxf(0.0, _melee_timer - delta)
+		var m_elapsed := _melee_dur - _melee_timer
+		if not _melee_hit_done and m_elapsed >= 0.11:
+			_melee_hit_done = true
+			_perform_melee_hit()
 
 	if fire_cd > 0.0:
 		fire_cd -= delta
 	var w: Dictionary = WEAPONS[current_weapon]
 	var wants_fire := Input.is_action_pressed("fire") if w["auto"] else Input.is_action_just_pressed("fire")
+	if bool(w.get("is_melee", false)) and wants_fire:
+		trigger_melee()
+		wants_fire = false
 	if is_reloading and current_weapon == 2 and ammo_in_mag[2] > 0 and wants_fire:
 		reload_cancel_req = true
 		_shotgun_fire_on_cancel = true
@@ -1737,8 +1891,16 @@ func _process(delta: float) -> void:
 		-sway_offset.x * 2.8 * sway_scale,
 		sway_offset.x * 2.2 * sway_scale + (-iv.x * 0.06)
 	)
-	weapon_pivot.position = weapon_pivot.position.lerp(target_pos, 1.0 - exp(-delta * 18.0))
-	weapon_pivot.rotation = weapon_pivot.rotation.lerp(target_rot, 1.0 - exp(-delta * 16.0))
+	var melee_p := Vector3.ZERO
+	var melee_r := Vector3.ZERO
+	if _melee_timer > 0.0:
+		var mu := clampf(1.0 - _melee_timer / maxf(_melee_dur, 0.01), 0.0, 1.0)
+		var wind := sin(smoothstep(0.0, 0.24, mu) * PI * 0.5) * (1.0 - smoothstep(0.24, 0.44, mu))
+		var slash := sin(smoothstep(0.20, 0.65, mu) * PI)
+		melee_p = Vector3(0.09 * wind - 0.26 * slash, 0.07 * wind - 0.05 * slash, 0.06 * wind - 0.18 * slash)
+		melee_r = Vector3(0.32 * wind - 0.65 * slash, -0.45 * wind + 1.15 * slash, -0.35 * wind + 0.72 * slash)
+	weapon_pivot.position = weapon_pivot.position.lerp(target_pos + melee_p, 1.0 - exp(-delta * (28.0 if _melee_timer > 0.0 else 18.0)))
+	weapon_pivot.rotation = weapon_pivot.rotation.lerp(target_rot + melee_r, 1.0 - exp(-delta * (26.0 if _melee_timer > 0.0 else 16.0)))
 
 	var target_fov := lerpf(94.0, 60.5, _ads_blend) + _sprint_blend * 5.5 + recoil_fov
 	camera.fov = lerpf(camera.fov, target_fov, 1.0 - exp(-delta * 14.0))
@@ -1845,6 +2007,8 @@ func _commit_mag_ammo() -> void:
 
 func start_reload() -> bool:
 	var w: Dictionary = WEAPONS[current_weapon]
+	if bool(w.get("is_melee", false)):
+		return false
 	if is_reloading or ammo_in_mag[current_weapon] >= w["mag_size"] or ammo_reserve[current_weapon] <= 0:
 		return false
 	is_reloading = true
@@ -2252,6 +2416,90 @@ func _eject_brass_casing(w: Dictionary, is_hull := false) -> void:
 		"floor_y": floor_y,
 		"is_hull": is_hull,
 	})
+
+
+func trigger_melee() -> bool:
+	if _melee_timer > 0.08 or dead:
+		return false
+	if is_reloading:
+		is_reloading = false
+		reload_cancel_req = false
+		_shotgun_fire_on_cancel = false
+		reload_pos_off = Vector3.ZERO
+		reload_rot_off = Vector3.ZERO
+		_reset_weapon_parts()
+	var m: Dictionary = MELEE_CATALOG.get(equipped_melee_id, MELEE_CATALOG["knife"])
+	_melee_dur = float(m["dur"]) if current_weapon == 3 else minf(0.42, float(m["dur"]))
+	_melee_timer = _melee_dur
+	_melee_hit_done = false
+	fire_cd = maxf(fire_cd, _melee_dur * 0.85)
+	recoil_roll += -0.055
+	trauma = minf(1.0, trauma + 0.08)
+	if sfx_misc and _sfx_melee_swing:
+		sfx_misc.stream = _sfx_melee_swing
+		sfx_misc.pitch_scale = randf_range(0.92, 1.08)
+		sfx_misc.play()
+	return true
+
+
+func _perform_melee_hit() -> void:
+	var space := get_world_3d().direct_space_state
+	if space == null:
+		return
+	var m: Dictionary = MELEE_CATALOG.get(equipped_melee_id, MELEE_CATALOG["knife"])
+	var reach: float = float(m["reach"])
+	var dmg: float = float(m["damage"])
+	var origin := camera.global_position
+	var fwd := -camera.global_transform.basis.z
+	var right := camera.global_transform.basis.x
+	var z_hits := {}
+
+	for ang_deg: float in [0.0, -7.0, 7.0, -14.0, 14.0]:
+		var rad := deg_to_rad(ang_deg)
+		var dir := (fwd * cos(rad) + right * sin(rad)).normalized()
+		var wq := PhysicsRayQueryParameters3D.create(origin, origin + dir * reach, 1)
+		wq.exclude = [get_rid()]
+		var wh := space.intersect_ray(wq)
+		var max_d := origin.distance_to(wh["position"]) if not wh.is_empty() else reach
+		var zh := ZombieAI.raycast_all_zombies(origin, dir, max_d)
+		if not zh.is_empty():
+			var z := zh["zombie"] as ZombieAI
+			if is_instance_valid(z) and not z_hits.has(z):
+				z_hits[z] = [{
+					"zone": str(zh["zone"]),
+					"pos": zh["pos"],
+					"dir": dir,
+					"dmg": dmg,
+					"dist": float(zh["dist"]),
+				}]
+
+	if z_hits.is_empty():
+		return
+
+	var any_live := false
+	var any_live_hs := false
+	for z_key in z_hits.keys():
+		var z := z_key as ZombieAI
+		var res := z.apply_shot(z_hits[z_key], 2)
+		var is_hs := bool(res.get("headshot", false))
+		var killed := bool(res.get("killed", false))
+		if not bool(res.get("corpse_hit", false)):
+			any_live = true
+			any_live_hs = any_live_hs or is_hs
+			emit_signal("hit_confirmed", is_hs, killed)
+			# Extra melee shove so quick-melee reliably creates breathing room!
+			if not z.dead:
+				z.velocity += fwd * 4.2
+
+	trauma = minf(1.0, trauma + 0.14)
+	if sfx_hit and _sfx_melee_cleave:
+		sfx_hit.stream = _sfx_melee_cleave
+		sfx_hit.pitch_scale = randf_range(0.90, 1.08)
+		sfx_hit.play()
+	if any_live and sfx_hit_tick and _sfx_hit_confirm:
+		sfx_hit_tick.stream = _sfx_hit_confirm
+		sfx_hit_tick.pitch_scale = 1.18 if any_live_hs else 0.96
+		sfx_hit_tick.play()
 
 
 func fire_weapon() -> bool:

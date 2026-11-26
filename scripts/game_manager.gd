@@ -87,6 +87,7 @@ func _ready() -> void:
 	add_child(hud)
 	hud.set_world_texture(render_vp.get_texture())
 	hud.start_requested.connect(start_game)
+	hud.start_daylight_requested.connect(start_game_daylight)
 	hud.restart_requested.connect(restart_game)
 	hud.graphics_action.connect(_on_hud_graphics_action)
 	hud.settings_closed.connect(_on_settings_closed)
@@ -318,6 +319,8 @@ func release_attack_token(z: ZombieAI) -> void:
 
 func start_game() -> void:
 	game_active = true
+	if world and world.daylight_mode:
+		world.set_daylight_mode(false)
 	if ambient_audio and not ambient_audio.playing:
 		ambient_audio.play()
 	hud.title_panel.visible = false
@@ -326,6 +329,30 @@ func start_game() -> void:
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	_start_wave(1)
 	hud.show_toast("WAVE 01 — SURVIVE THE BLACKOUT")
+
+
+func start_game_daylight() -> void:
+	game_active = true
+	if world:
+		world.set_daylight_mode(true)
+	if player:
+		player.global_position = Vector3(0.0, 0.05, -36.5)
+		player.yaw = 0.0
+		player.pitch = 0.0
+		player.rotation.y = 0.0
+		player.head.rotation = Vector3.ZERO
+		if player.flashlight_on:
+			player.toggle_flashlight()
+		if world:
+			world.update_zone_culling(player.camera)
+	if ambient_audio and not ambient_audio.playing:
+		ambient_audio.play()
+	hud.title_panel.visible = false
+	hud.defeat_panel.visible = false
+	player.input_enabled = true
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	_start_wave(1)
+	hud.show_toast("WINTER DAYLIGHT — OUTDOOR SHOWCASE [F9 TOGGLE]")
 
 
 func restart_game() -> void:
@@ -362,6 +389,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			_apply_viewport_perf()
 			if hud:
 				hud.show_toast("GRAPHICS PRESET: %s" % QUALITY_NAMES[quality_preset])
+		elif event.physical_keycode == KEY_F9 and world:
+			world.set_daylight_mode(not world.daylight_mode)
+			if hud:
+				hud.show_toast("LIGHTING: %s [F9]" % ("WINTER DAYLIGHT" if world.daylight_mode else "BLACKOUT NIGHT"))
 	if event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE:
 		if settings_open:
 			_on_settings_closed()

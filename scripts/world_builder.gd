@@ -41,6 +41,7 @@ var user_ssao_enabled: bool = true
 var user_vol_fog_enabled: bool = true
 var user_voxel_gi_enabled: bool = true
 var user_pom_level: float = 1.0
+var daylight_mode: bool = false
 var _pom_materials: Array[ShaderMaterial] = []
 
 const TUNNEL_DOOR := AABB(Vector3(-2.45, -0.30, -8.60), Vector3(4.90, 4.05, 0.95))
@@ -775,6 +776,73 @@ func _setup_environment() -> void:
 	lightning_light.visible = false
 	lightning_light.rotation_degrees = Vector3(-42.0, 22.0, 0.0)
 	add_child(lightning_light)
+
+
+func set_daylight_mode(enabled: bool) -> void:
+	daylight_mode = enabled
+	if world_env == null or world_env.environment == null:
+		return
+	var env := world_env.environment
+	var sky_mat := env.sky.sky_material as ProceduralSkyMaterial if (env.sky != null) else null
+	var is_compat := _is_compat_renderer()
+	if daylight_mode:
+		if sky_mat:
+			sky_mat.sky_top_color = Color(0.18, 0.34, 0.58)
+			sky_mat.sky_horizon_color = Color(0.68, 0.76, 0.86)
+			sky_mat.ground_bottom_color = Color(0.28, 0.32, 0.38)
+			sky_mat.ground_horizon_color = Color(0.56, 0.62, 0.70)
+			sky_mat.sky_curve = 0.16
+			sky_mat.energy_multiplier = 1.15
+			sky_mat.sun_angle_max = 18.0
+		env.background_energy_multiplier = 1.05
+		env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+		env.ambient_light_sky_contribution = 0.78
+		env.ambient_light_energy = 0.78
+		env.tonemap_exposure = 0.80 if not is_compat else 0.94
+		if is_compat:
+			env.fog_enabled = true
+			env.fog_light_color = Color(0.68, 0.75, 0.84)
+			env.fog_density = 0.005
+		else:
+			env.volumetric_fog_density = 0.0032
+			env.volumetric_fog_albedo = Color(0.76, 0.82, 0.90)
+			env.volumetric_fog_length = 68.0
+		if moon_light:
+			moon_light.visible = true
+			moon_light.light_color = Color(1.0, 0.94, 0.84)
+			moon_light.light_energy = 2.45
+			moon_light.light_volumetric_fog_energy = 0.35
+			moon_light.shadow_enabled = not is_compat
+			moon_light.shadow_blur = 1.4
+			moon_light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+			moon_light.directional_shadow_max_distance = 75.0
+			moon_light.rotation_degrees = Vector3(-34.0, 128.0, 0.0)
+	else:
+		if sky_mat:
+			sky_mat.sky_top_color = Color(0.002, 0.004, 0.008)
+			sky_mat.sky_horizon_color = Color(0.018, 0.024, 0.036)
+			sky_mat.ground_bottom_color = Color(0.001, 0.001, 0.002)
+			sky_mat.ground_horizon_color = Color(0.004, 0.006, 0.009)
+			sky_mat.sky_curve = 0.22
+			sky_mat.energy_multiplier = 0.28
+			sky_mat.sun_angle_max = 0.0
+		env.background_energy_multiplier = 0.14 if is_compat else 0.10
+		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		env.ambient_light_color = Color(0.018, 0.022, 0.030) if is_compat else Color(0.008, 0.010, 0.014)
+		env.ambient_light_energy = 0.055 if is_compat else 0.002
+		env.ambient_light_sky_contribution = 0.0
+		env.tonemap_exposure = 1.24 if is_compat else 1.06
+		if is_compat:
+			env.fog_enabled = true
+			env.fog_light_color = Color(0.08, 0.10, 0.14)
+			env.fog_density = 0.015
+		else:
+			env.volumetric_fog_density = 0.012
+			env.volumetric_fog_albedo = Color(0.26, 0.28, 0.32)
+			env.volumetric_fog_length = 38.0
+		if moon_light:
+			moon_light.visible = false
+			moon_light.shadow_enabled = false
 
 
 func _ensure_fog_noise() -> NoiseTexture3D:
@@ -2248,6 +2316,75 @@ func _build_interactables() -> void:
 		pl.visible = i < bar.plank_count
 		bar.plank_nodes.append(pl)
 	interactables.append(bar)
+
+	# Journey Melee Weapon Pickups: Fire Axe (Lobby near tunnel pillar) & Tactical Machete (Courtyard Cabin porch)
+	_spawn_melee_pickup("FireAxePickup", "fire_axe", "FIRE AXE", Vector3(-1.95, 0.0, -3.25), Vector3(0.0, 0.55, 0.0), lobby_group)
+	_spawn_melee_pickup("MachetePickup", "machete", "TACTICAL MACHETE", Vector3(-2.45, 0.0, -49.6), Vector3(0.0, -0.40, 0.0), courtyard_group)
+
+
+func _spawn_melee_pickup(node_name: String, m_id: String, label: String, pos: Vector3, rot: Vector3, parent_grp: Node3D) -> void:
+	var pk := InteractableObject.new()
+	pk.name = node_name
+	pk.kind = InteractableObject.Kind.MELEE_PICKUP
+	pk.melee_id = m_id
+	pk.weapon_label = label
+	pk.collision_layer = 16
+	pk.position = pos
+	pk.rotation = rot
+	(parent_grp if parent_grp != null else self).add_child(pk)
+
+	var col := CollisionShape3D.new()
+	var sh := BoxShape3D.new()
+	sh.size = Vector3(0.65, 1.1, 0.65)
+	col.shape = sh
+	col.position = Vector3(0.0, 0.55, 0.0)
+	pk.add_child(col)
+
+	var steel := StandardMaterial3D.new()
+	steel.albedo_color = Color(0.28, 0.30, 0.33)
+	steel.metallic = 0.85
+	steel.roughness = 0.32
+	var edge := StandardMaterial3D.new()
+	edge.albedo_color = Color(0.72, 0.74, 0.76)
+	edge.metallic = 0.92
+	edge.roughness = 0.20
+	var wood := StandardMaterial3D.new()
+	wood.albedo_color = Color(0.36, 0.22, 0.13)
+	wood.roughness = 0.78
+
+	var vis := Node3D.new()
+	vis.position = Vector3(0.0, 0.42, 0.0)
+	vis.rotation = Vector3(0.22, 0.0, 0.18)
+	pk.add_child(vis)
+	if m_id == "fire_axe":
+		var hdl := MeshInstance3D.new()
+		var hm := CylinderMesh.new(); hm.top_radius = 0.018; hm.bottom_radius = 0.022; hm.height = 0.82; hm.material = wood
+		hdl.mesh = hm; vis.add_child(hdl)
+		var head := MeshInstance3D.new()
+		var bm := BoxMesh.new(); bm.size = Vector3(0.18, 0.11, 0.030); bm.material = steel
+		head.mesh = bm; head.position = Vector3(0.06, 0.34, 0.0); vis.add_child(head)
+		var bit := MeshInstance3D.new()
+		var em := BoxMesh.new(); em.size = Vector3(0.04, 0.13, 0.012); em.material = edge
+		bit.mesh = em; bit.position = Vector3(0.16, 0.34, 0.0); vis.add_child(bit)
+	else:
+		var grip := MeshInstance3D.new()
+		var gm := CylinderMesh.new(); gm.top_radius = 0.016; gm.bottom_radius = 0.018; gm.height = 0.16; gm.material = wood
+		grip.mesh = gm; grip.position = Vector3(0.0, -0.18, 0.0); vis.add_child(grip)
+		var blade := MeshInstance3D.new()
+		var bm := BoxMesh.new(); bm.size = Vector3(0.055, 0.48, 0.008); bm.material = steel
+		blade.mesh = bm; blade.position = Vector3(0.0, 0.14, 0.0); vis.add_child(blade)
+		var b_edge := MeshInstance3D.new()
+		var em := BoxMesh.new(); em.size = Vector3(0.014, 0.46, 0.005); em.material = edge
+		b_edge.mesh = em; b_edge.position = Vector3(0.032, 0.14, 0.0); vis.add_child(b_edge)
+
+	var glint := OmniLight3D.new()
+	glint.light_color = Color(0.95, 0.82, 0.58)
+	glint.light_energy = 0.55
+	glint.omni_range = 2.6
+	glint.shadow_enabled = false
+	glint.position = Vector3(0.0, 0.65, 0.15)
+	pk.add_child(glint)
+	interactables.append(pk)
 
 
 func _build_snow_particles() -> void:
