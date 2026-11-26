@@ -56,7 +56,7 @@ jobs:
           set -euo pipefail
           GODOT="/tmp/godot-bin/Godot_v${GODOT_RELEASE}_linux.x86_64"
           "$GODOT" --headless --path . --import --quit || true
-          ls -la .godot/imported | head -n 20
+          echo "Imported files: $(ls -1 .godot/imported | wc -l)"
 
       - name: Generate export_presets.cfg
         run: |
