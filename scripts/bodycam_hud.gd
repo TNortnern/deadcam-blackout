@@ -55,6 +55,7 @@ var prompt_label: Label
 var toast_label: Label
 var perf_label: Label
 var loading_overlay: ColorRect
+var _loading_label: Label
 var hit_marker: TacticalHitmarker
 var title_panel: Control
 var defeat_panel: Control
@@ -182,15 +183,21 @@ func _ready() -> void:
 	var lmsg := Label.new()
 	lmsg.text = "BODYCAM-04 // INITIALIZING OPTICS & LIGHTING..."
 	lmsg.set_anchors_preset(Control.PRESET_CENTER)
-	lmsg.offset_left = -260
+	lmsg.offset_left = -300
 	lmsg.offset_top = -18
-	lmsg.offset_right = 260
+	lmsg.offset_right = 300
 	lmsg.offset_bottom = 18
 	lmsg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lmsg.add_theme_font_size_override("font_size", 16)
 	lmsg.add_theme_color_override("font_color", Color(0.84, 0.88, 0.84, 0.88))
+	_loading_label = lmsg
 	loading_overlay.add_child(lmsg)
 	add_child(loading_overlay)
+
+
+func set_loading_status(msg: String) -> void:
+	if _loading_label:
+		_loading_label.text = msg
 
 
 func _build_title_overlay() -> void:
@@ -214,7 +221,7 @@ func _build_title_overlay() -> void:
 	vb.add_child(t)
 
 	var sub := Label.new()
-	sub.text = "ASYLUM  •  CATACOMB TUNNELS  •  WINTER COURTYARD\nWASD Move | LMB Fire | RMB Aim | V Quick Melee | R Reload | F Flashlight | E Interact | 1-4 Weapons | F9 Day/Night | F8 Quality"
+	sub.text = "ASYLUM  •  CATACOMB TUNNELS  •  WINTER COURTYARD\nWASD Move | LMB Fire / Hold Bow | RMB Aim | V Quick Melee | R Reload | F Flashlight | E Interact | 1-8 Weapons | F9 Day/Night | F8 Quality"
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.add_theme_font_size_override("font_size", 14)
 	sub.add_theme_color_override("font_color", Color(0.75, 0.78, 0.76))

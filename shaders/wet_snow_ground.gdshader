@@ -6,21 +6,21 @@ render_mode blend_mix, depth_draw_opaque, cull_back, specular_schlick_ggx;
 
 uniform sampler2D snow_albedo : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D snow_normal : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
-uniform sampler2D snow_disp : filter_linear_mipmap, repeat_enable;
+uniform sampler2D mud_albedo : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D mud_normal : hint_normal, filter_linear_mipmap, repeat_enable;
+uniform sampler2D mud_rough : filter_linear_mipmap, repeat_enable;
 
+#if CURRENT_RENDERER != RENDERER_COMPATIBILITY
+uniform sampler2D snow_disp : filter_linear_mipmap, repeat_enable;
 uniform sampler2D tracks_albedo : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D tracks_normal : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform sampler2D tracks_height : filter_linear_mipmap, repeat_enable;
-
-uniform sampler2D mud_albedo : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
-uniform sampler2D mud_normal : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform sampler2D mud_disp : filter_linear_mipmap, repeat_enable;
 uniform sampler2D mud_ao : filter_linear_mipmap, repeat_enable;
-uniform sampler2D mud_rough : filter_linear_mipmap, repeat_enable;
-
 uniform sampler2D churned_albedo : source_color, filter_linear_mipmap, repeat_enable;
 uniform sampler2D churned_normal : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform sampler2D churned_height : filter_linear_mipmap, repeat_enable;
+#endif
 
 uniform float tile_scale = 0.30;
 uniform float normal_strength = 1.48;
@@ -114,7 +114,6 @@ void vertex() {
 void fragment() {
 	vec3 cam_pos = INV_VIEW_MATRIX[3].xyz;
 	float cam_dist = length(cam_pos - w_pos);
-	vec3 w_view = normalize(cam_pos - w_pos);
 
 	float far_w = smoothstep(14.0, 22.0, cam_dist);
 	vec2 warp = (far_w < 0.999) ? (vec2(vnoise(w_pos.xz * 0.22 + vec2(1.9, 4.4)), vnoise(w_pos.xz * 0.22 + vec2(7.3, 2.1))) - 0.5) * (1.0 - far_w) : vec2(0.0);
@@ -124,6 +123,8 @@ void fragment() {
 	vec2 mud_uv = ground_warped * 0.48;
 	vec2 churn_uv = ground_warped * 0.52 + vec2(0.21, 0.67);
 
+#if CURRENT_RENDERER != RENDERER_COMPATIBILITY
+	vec3 w_view = normalize(cam_pos - w_pos);
 	// Distance-faded POM (< 9.0m) using real photogrammetry displacement for tactile pebble/slush relief
 	float eff_pom = 0.026 * pom_quality * (1.0 - smoothstep(5.5, 9.0, cam_dist));
 	if (eff_pom > 0.001) {
@@ -147,14 +148,19 @@ void fragment() {
 		mud_uv += off_uv * 0.48;
 		churn_uv += off_uv * 0.52;
 	}
+#endif
 
 	vec3 s_col = texture(snow_albedo, snow_uv).rgb;
 	vec3 s_nrm = texture(snow_normal, snow_uv).rgb;
-	float s_disp = texture(snow_disp, snow_uv).r;
-
 	vec3 m_col = texture(mud_albedo, mud_uv).rgb;
 	vec3 m_nrm = texture(mud_normal, mud_uv).rgb;
+#if CURRENT_RENDERER != RENDERER_COMPATIBILITY
+	float s_disp = texture(snow_disp, snow_uv).r;
 	float m_disp = texture(mud_disp, mud_uv).r;
+#else
+	float s_disp = 0.5;
+	float m_disp = 0.5;
+#endif
 
 	vec3 t_col = s_col;
 	vec3 t_nrm = s_nrm;
@@ -165,14 +171,16 @@ void fragment() {
 	vec3 c_nrm = s_nrm;
 	float c_disp = 0.5;
 	if (far_w < 0.999) {
+		m_rough = mix(texture(mud_rough, mud_uv).r, 0.78, far_w);
+#if CURRENT_RENDERER != RENDERER_COMPATIBILITY
 		t_col = mix(texture(tracks_albedo, trk_uv).rgb, s_col, far_w);
 		t_nrm = mix(texture(tracks_normal, trk_uv).rgb, s_nrm, far_w);
 		t_h = mix(texture(tracks_height, trk_uv).r, s_disp, far_w);
 		m_ao = mix(texture(mud_ao, mud_uv).r, 0.85, far_w);
-		m_rough = mix(texture(mud_rough, mud_uv).r, 0.78, far_w);
 		c_col = mix(texture(churned_albedo, churn_uv).rgb, s_col, far_w);
 		c_nrm = mix(texture(churned_normal, churn_uv).rgb, s_nrm, far_w);
 		c_disp = mix(texture(churned_height, churn_uv).r, 0.5, far_w);
+#endif
 	}
 
 	float path_center = w_pos.x + sin(w_pos.z * 0.14) * 1.4;

@@ -78,8 +78,11 @@ func interact(game_manager: Node, player: Node) -> String:
 			if game_manager:
 				game_manager.add_points(-cost)
 			cooldown = 2.6
-			var roll := 1 if (player.current_weapon != 1) else 2
-			var wname := "M16A2 REFLEX" if roll == 1 else "M16A2 BREACHER"
+			var pool := [1, 2, 4, 5, 6, 7]
+			var roll: int = pool[randi() % pool.size()]
+			if roll == player.current_weapon:
+				roll = pool[(pool.find(roll) + 1) % pool.size()]
+			var wname: String = str(PlayerBodycam.WEAPONS[roll]["name"]) if roll < PlayerBodycam.WEAPONS.size() else "M16A2 REFLEX"
 			if player.has_method("unlock_and_equip"):
 				player.unlock_and_equip(roll)
 			emit_signal("mystery_box_rolled", roll, wname)

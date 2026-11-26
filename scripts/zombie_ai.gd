@@ -1951,7 +1951,7 @@ func apply_shot(hits: Array, weapon_idx: int) -> Dictionary:
 		if _ragdoll_active:
 			var pb := _pb_for_zone(primary_z_d)
 			if is_instance_valid(pb):
-				var imp := (24.0 if weapon_idx == 2 else 11.0) * clampf(total_d / 35.0, 0.7, 2.2)
+				var imp := (24.0 if (weapon_idx == 2 or weapon_idx == 6 or weapon_idx == 7) else 11.0) * clampf(total_d / 35.0, 0.7, 2.2)
 				pb.apply_central_impulse(hd_d * imp + Vector3(0.0, 2.2, 0.0))
 				_ragdoll_settle_timer = 0.0
 		elif skeleton:

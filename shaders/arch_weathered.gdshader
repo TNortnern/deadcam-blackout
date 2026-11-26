@@ -73,6 +73,7 @@ void fragment() {
 
 	vec3 cam_pos = INV_VIEW_MATRIX[3].xyz;
 	float cam_dist = length(cam_pos - w_pos);
+#if CURRENT_RENDERER != RENDERER_COMPATIBILITY
 	vec3 v_vs = vec3(0.0);
 	vec3 w_view = vec3(0.0);
 	float raw_ndotv = 0.0;
@@ -121,6 +122,7 @@ void fragment() {
 		float w_lin = (abs(denom) > 1e-4) ? clamp(after_h / denom, 0.0, 1.0) : 0.5;
 		base_uv = mix(cur_uv, prev_uv, w_lin);
 	}
+#endif
 
 	vec3 base_col = texture(albedo_tex, base_uv).rgb;
 	vec3 det_col = texture(albedo_tex, base_uv * (detail_scale / max(uv_scale, 0.05)) + vec2(3.7, 1.9)).rgb;
@@ -150,6 +152,13 @@ void fragment() {
 		col = mix(col, vec3(0.60, 0.58, 0.54), efflorescence * 0.26);
 		// Deeply recessed dark damp lime mortar
 		col *= mix(1.0, 0.44, mortar_mask);
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+		// Uniform-safe close-up fired-clay / mortar micro-normal (outside non-uniform if-branch for WebGL2!)
+		vec3 det_n = texture(normal_tex, base_uv * 4.5 + vec2(0.37, 0.61)).rgb;
+		vec3 nm_u = unpack_nrm(n_map);
+		vec3 dn_u = unpack_nrm(det_n);
+		n_map = normalize(vec3(nm_u.xy + dn_u.xy * (mix(0.24, 0.36, mortar_mask) * det_w), nm_u.z)) * 0.5 + 0.5;
+#else
 		// Ultra-crisp high-frequency fired-clay / coarse sand micro-normal for close-up flashlight detail
 		if (det_w > 0.01) {
 			vec3 det_n = texture(normal_tex, base_uv * 4.5 + vec2(0.37, 0.61)).rgb;
@@ -157,6 +166,7 @@ void fragment() {
 			vec3 dn_u = unpack_nrm(det_n);
 			n_map = normalize(vec3(nm_u.xy + dn_u.xy * (mix(0.24, 0.36, mortar_mask) * det_w), nm_u.z)) * 0.5 + 0.5;
 		}
+#endif
 	}
 
 	float moss_stain = smoothstep(0.48, 0.80, macro_grime * 0.7 + streak * 0.3);

@@ -91,59 +91,63 @@ func _load_resources() -> void:
 	_blood_pool_shader = load("res://shaders/blood_pool.gdshader")
 
 func _allocate_pools() -> void:
-	for i in MAX_BLOOD_DECALS:
-		var d := Decal.new()
-		d.name = "BloodDecal_%d" % i
-		d.texture_albedo = _tex_blood_decal
-		d.texture_normal = _tex_blood_decal_n
-		d.texture_orm = _tex_blood_decal_orm
-		d.cull_mask = 1
-		d.distance_fade_enabled = true
-		d.distance_fade_begin = 22.0
-		d.distance_fade_length = 8.0
-		d.visible = false
-		add_child(d)
-		_blood_decals.append(d)
+	var is_web := OS.has_feature("web")
+	var is_compat := is_web or RenderingServer.get_current_rendering_method() == "gl_compatibility"
+	if not is_compat:
+		for i in MAX_BLOOD_DECALS:
+			var d := Decal.new()
+			d.name = "BloodDecal_%d" % i
+			d.texture_albedo = _tex_blood_decal
+			d.texture_normal = _tex_blood_decal_n
+			d.texture_orm = _tex_blood_decal_orm
+			d.cull_mask = 1
+			d.distance_fade_enabled = true
+			d.distance_fade_begin = 22.0
+			d.distance_fade_length = 8.0
+			d.visible = false
+			add_child(d)
+			_blood_decals.append(d)
 
-	for i in MAX_IMPACT_DECALS:
-		var d := Decal.new()
-		d.name = "ImpactDecal_%d" % i
-		d.texture_albedo = _tex_bullet_hole
-		d.texture_normal = _tex_bullet_hole_n
-		d.texture_orm = _tex_bullet_hole_orm
-		d.cull_mask = 1
-		d.distance_fade_enabled = true
-		d.distance_fade_begin = 18.0
-		d.distance_fade_length = 6.0
-		d.visible = false
-		add_child(d)
-		_impact_decals.append(d)
+		for i in MAX_IMPACT_DECALS:
+			var d := Decal.new()
+			d.name = "ImpactDecal_%d" % i
+			d.texture_albedo = _tex_bullet_hole
+			d.texture_normal = _tex_bullet_hole_n
+			d.texture_orm = _tex_bullet_hole_orm
+			d.cull_mask = 1
+			d.distance_fade_enabled = true
+			d.distance_fade_begin = 18.0
+			d.distance_fade_length = 6.0
+			d.visible = false
+			add_child(d)
+			_impact_decals.append(d)
 
-	# Keep all decal atlas textures registered at startup so the first wood/blood hit never rebuilds the atlas!
-	for keeper_idx in range(3):
-		var kd := Decal.new()
-		kd.name = "DecalAtlasKeeper_%d" % keeper_idx
-		kd.position = Vector3(float(keeper_idx) * 2.0, -48.0, 0.0)
-		kd.size = Vector3(0.05, 0.05, 0.05)
-		kd.cull_mask = 1
-		if keeper_idx == 0:
-			kd.texture_albedo = _tex_blood_decal
-			kd.texture_normal = _tex_blood_decal_n
-			kd.texture_orm = _tex_blood_decal_orm
-		elif keeper_idx == 1:
-			kd.texture_albedo = _tex_bullet_hole
-			kd.texture_normal = _tex_bullet_hole_n
-			kd.texture_orm = _tex_bullet_hole_orm
-		else:
-			kd.texture_albedo = _tex_wood_hole
-			kd.texture_normal = _tex_wood_hole_n
-		kd.visible = true
-		add_child(kd)
+		# Keep all decal atlas textures registered at startup so the first wood/blood hit never rebuilds the atlas!
+		for keeper_idx in range(3):
+			var kd := Decal.new()
+			kd.name = "DecalAtlasKeeper_%d" % keeper_idx
+			kd.position = Vector3(float(keeper_idx) * 2.0, -48.0, 0.0)
+			kd.size = Vector3(0.05, 0.05, 0.05)
+			kd.cull_mask = 1
+			if keeper_idx == 0:
+				kd.texture_albedo = _tex_blood_decal
+				kd.texture_normal = _tex_blood_decal_n
+				kd.texture_orm = _tex_blood_decal_orm
+			elif keeper_idx == 1:
+				kd.texture_albedo = _tex_bullet_hole
+				kd.texture_normal = _tex_bullet_hole_n
+				kd.texture_orm = _tex_bullet_hole_orm
+			else:
+				kd.texture_albedo = _tex_wood_hole
+				kd.texture_normal = _tex_wood_hole_n
+			kd.visible = true
+			add_child(kd)
 
 	var pool_mesh := QuadMesh.new()
 	pool_mesh.size = Vector2(1.0, 1.0)
 	pool_mesh.orientation = PlaneMesh.FACE_Z
-	for i in MAX_BLOOD_POOLS:
+	var n_blood_pools := 10 if is_web else MAX_BLOOD_POOLS
+	for i in n_blood_pools:
 		var mi := MeshInstance3D.new()
 		mi.name = "BloodPool_%d" % i
 		mi.mesh = pool_mesh
@@ -159,13 +163,15 @@ func _allocate_pools() -> void:
 		add_child(mi)
 		_blood_pools.append({"mesh": mi, "mat": sm, "growth": 0.0, "speed": 0.35})
 
-	for i in POOL_BLOOD_MIST:
+	var n_mist := 4 if is_web else POOL_BLOOD_MIST
+	for i in n_mist:
 		_mist_pool.append(_make_soft_lit_emitter(
 			"BloodMist_%d" % i, _tex_blood_mist, Color(0.84, 0.015, 0.018, 0.76),
 			14, 0.28, Vector2(0.22, 0.22), 2.4, 5.4, 20.0, -1.5, 0.20, 0.45, 0.95
 		))
 
-	for i in POOL_BLOOD_STREAKS:
+	var n_streak := 4 if is_web else POOL_BLOOD_STREAKS
+	for i in n_streak:
 		var p := GPUParticles3D.new()
 		p.name = "BloodStreak_%d" % i
 		p.one_shot = true
@@ -201,7 +207,8 @@ func _allocate_pools() -> void:
 		add_child(p)
 		_streak_pool.append(p)
 
-	for i in POOL_TISSUE_CHUNKS:
+	var n_chunk := 3 if is_web else POOL_TISSUE_CHUNKS
+	for i in n_chunk:
 		var p := GPUParticles3D.new()
 		p.name = "TissueChunks_%d" % i
 		p.one_shot = true
@@ -232,7 +239,8 @@ func _allocate_pools() -> void:
 		add_child(p)
 		_chunk_pool.append(p)
 
-	for i in POOL_IMPACT_DUST:
+	var n_dust := 4 if is_web else POOL_IMPACT_DUST
+	for i in n_dust:
 		_dust_pool.append(_make_soft_lit_emitter(
 			"ImpactDust_%d" % i, _tex_smoke_puff, Color(0.74, 0.70, 0.64, 0.58),
 			10, 0.44, Vector2(0.32, 0.32), 1.4, 3.6, 26.0, -1.2, 0.30, 0.72, 1.50
@@ -251,7 +259,8 @@ func _allocate_pools() -> void:
 	_chip_mesh_masonry = _make_chip_mesh.call(Vector3(0.018, 0.020, 0.014), Color(0.52, 0.22, 0.14, 1.0))
 	_chip_mesh_wood = _make_chip_mesh.call(Vector3(0.008, 0.064, 0.007), Color(0.66, 0.48, 0.28, 1.0))
 
-	for i in POOL_IMPACT_CHIPS:
+	var n_chip := 3 if is_web else POOL_IMPACT_CHIPS
+	for i in n_chip:
 		var p := GPUParticles3D.new()
 		p.name = "ImpactChips_%d" % i
 		p.one_shot = true
@@ -276,10 +285,12 @@ func _allocate_pools() -> void:
 		add_child(p)
 		_chip_pool.append(p)
 
-	for i in POOL_METAL_SPARKS:
+	var n_spark := 2 if is_web else POOL_METAL_SPARKS
+	for i in n_spark:
 		_spark_pool.append(_make_spark_emitter("MetalSparks_%d" % i, 18, 0.24, 4.5, 11.5, 34.0))
 
-	for i in POOL_MUZZLE_SPARKS:
+	var n_mspark := 2 if is_web else POOL_MUZZLE_SPARKS
+	for i in n_mspark:
 		_muzzle_spark_pool.append(_make_spark_emitter("MuzzleSparks_%d" % i, 14, 0.12, 6.5, 14.5, 16.0))
 
 	for i in POOL_AUDIO_PLAYERS:

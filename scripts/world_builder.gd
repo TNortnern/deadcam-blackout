@@ -98,6 +98,8 @@ const HERO_LOD_GLBS := {
 
 func build_world() -> void:
 	_is_compat_cached = (RenderingServer.get_current_rendering_method() == "gl_compatibility")
+	if _is_compat_cached:
+		user_pom_level = 0.0
 	_opaque_mat_cache.clear()
 	_opaque_mesh_cache.clear()
 	_load_assets()
@@ -114,6 +116,39 @@ func build_world() -> void:
 	_build_voxel_gi()
 	_optimize_lights_recursive(self)
 	apply_graphics_toggles()
+
+
+func build_world_web_async(hud: BodycamHUD = null) -> void:
+	_is_compat_cached = (RenderingServer.get_current_rendering_method() == "gl_compatibility")
+	if _is_compat_cached:
+		user_pom_level = 0.0
+	_opaque_mat_cache.clear()
+	_opaque_mesh_cache.clear()
+	var tree := get_tree()
+	await _load_assets_web_async(hud)
+	if hud: hud.set_loading_status("BODYCAM-04 // BUILDING ASYLUM LOBBY...")
+	_setup_environment()
+	_build_asylum_lobby()
+	await tree.process_frame
+	if hud: hud.set_loading_status("BODYCAM-04 // BUILDING GRAND STAIRCASE...")
+	_build_grand_staircase()
+	_build_storage_alcove()
+	await tree.process_frame
+	if hud: hud.set_loading_status("BODYCAM-04 // BUILDING CATACOMB TUNNEL...")
+	_build_catacomb_tunnel()
+	await tree.process_frame
+	if hud: hud.set_loading_status("BODYCAM-04 // BUILDING WINTER COURTYARD...")
+	_build_snow_courtyard()
+	await tree.process_frame
+	if hud: hud.set_loading_status("BODYCAM-04 // BUILDING CABIN & INTERACTABLES...")
+	_build_cabin()
+	_build_occluders()
+	_build_interactables()
+	_build_snow_particles()
+	_build_voxel_gi()
+	_optimize_lights_recursive(self)
+	apply_graphics_toggles()
+	await tree.process_frame
 
 
 func _optimize_lights_recursive(n: Node) -> void:
@@ -136,6 +171,9 @@ func _optimize_lights_recursive(n: Node) -> void:
 		if l.shadow_enabled:
 			# Static hero SpotLights only shadow Layer 1 architecture
 			l.shadow_caster_mask = 1
+			if _is_compat_renderer():
+				l.shadow_bias = maxf(l.shadow_bias, 0.05)
+				l.shadow_normal_bias = maxf(l.shadow_normal_bias, 1.25)
 		elif not l.has_meta("keep_vol_fog"):
 			l.light_volumetric_fog_energy = 0.0
 		if l in outdoor_fill_lights or l.has_meta("dynamic_light"):
@@ -410,30 +448,70 @@ func refresh_reflection_probes() -> void:
 			rp.visible = true
 
 
+const WORLD_GLB_LIST := [
+	"grand_staircase_aaa", "reception_desk_aaa", "oak_dado", "fallen_stone_bank", "hewn_archway", "quarry_fall", "vault_brickfall", "splinter_heap", "admissions_gallery", "ward_door", "stripped_plaster", "cabin_facade", "arched_window",
+	"folding_wooden_stool", "drawer_cabinet", "gothic_cabinet", "vintage_cabinet",
+	"wooden_chair", "wooden_table", "wooden_bookshelf", "wheelchair",
+	"hanging_industrial_lamp", "chandelier", "caged_sconce",
+	"wooden_lantern", "lantern", "wine_barrel", "wooden_crate", "military_crate",
+	"cardboard_box", "ammo_box", "medical_box", "books_set", "binder_notebook",
+	"clipboard", "picture_frame", "trash_can", "trashbag", "vintage_crutches",
+	"ornate_door", "rubble_boulder", "bark_debris",
+	"tunnel_rubble_hero", "young_fir", "registration_machine", "winter_infected", "herringbone_blocks",
+	"fir_tree", "dead_winter_tree", "fallen_spruce", "dry_windfall", "undergrowth_fern", "upper_spindle", "spruce_snag", "winter_pine", "fractured_bricks", "plaster_fall", "split_siding", "threshold_lining", "landing_portal", "porch_steps", "broken_spandrel", "broken_lime_plaster", "worn_oak_flight",
+	"fallen_log", "dead_quiver_branch_01", "winter_grass",
+	"zombie_tactical", "zombie_runner"
+]
+
+
 func _load_assets() -> void:
 	for m in ["tunnel_vault_bay", "rubble_mound", "lamp_base", "lamp_shade", "pine_trunk", "pine_foliage"]:
 		var p := "res://assets/meshes/%s.obj" % m
 		if ResourceLoader.exists(p):
 			meshes[m] = load(p)
 
-	var glb_list := [
-		"grand_staircase_aaa", "reception_desk_aaa", "oak_dado", "fallen_stone_bank", "hewn_archway", "quarry_fall", "vault_brickfall", "splinter_heap", "admissions_gallery", "ward_door", "stripped_plaster", "cabin_facade", "arched_window",
-		"folding_wooden_stool", "drawer_cabinet", "gothic_cabinet", "vintage_cabinet",
-		"wooden_chair", "wooden_table", "wooden_bookshelf", "wheelchair",
-		"hanging_industrial_lamp", "chandelier", "caged_sconce",
-		"wooden_lantern", "lantern", "wine_barrel", "wooden_crate", "military_crate",
-		"cardboard_box", "ammo_box", "medical_box", "books_set", "binder_notebook",
-		"clipboard", "picture_frame", "trash_can", "trashbag", "vintage_crutches",
-		"ornate_door", "rubble_boulder", "bark_debris",
-		"tunnel_rubble_hero", "young_fir", "registration_machine", "winter_infected", "herringbone_blocks",
-		"fir_tree", "dead_winter_tree", "fallen_spruce", "dry_windfall", "undergrowth_fern", "upper_spindle", "spruce_snag", "winter_pine", "fractured_bricks", "plaster_fall", "split_siding", "threshold_lining", "landing_portal", "porch_steps", "broken_spandrel", "broken_lime_plaster", "worn_oak_flight",
-		"fallen_log", "dead_quiver_branch_01", "winter_grass",
-		"zombie_tactical", "zombie_runner"
-	]
-	for gname in glb_list:
+	var is_web := OS.has_feature("web")
+	for gname in WORLD_GLB_LIST:
+		if is_web and (gname == "zombie_tactical" or gname == "zombie_runner") and ResourceLoader.exists("res://assets/baked/%s.scn" % gname):
+			continue
 		var gp := "res://assets/models/%s.glb" % gname
 		if ResourceLoader.exists(gp):
 			glbs[gname] = load(gp)
+
+	_build_materials()
+
+
+func _load_assets_web_async(hud: BodycamHUD = null) -> void:
+	var tree := get_tree()
+	for m in ["tunnel_vault_bay", "rubble_mound", "lamp_base", "lamp_shade", "pine_trunk", "pine_foliage"]:
+		var p := "res://assets/meshes/%s.obj" % m
+		if ResourceLoader.exists(p):
+			meshes[m] = load(p)
+	await tree.process_frame
+
+	var total := WORLD_GLB_LIST.size()
+	var t0 := Time.get_ticks_msec()
+	for i in range(total):
+		var gname: String = WORLD_GLB_LIST[i]
+		if (gname == "zombie_tactical" or gname == "zombie_runner") and ResourceLoader.exists("res://assets/baked/%s.scn" % gname):
+			continue
+		var gp := "res://assets/models/%s.glb" % gname
+		if ResourceLoader.exists(gp):
+			glbs[gname] = load(gp)
+		if Time.get_ticks_msec() - t0 >= 20:
+			if hud:
+				hud.set_loading_status("BODYCAM-04 // LOADING WORLD ASSETS (%d/%d)..." % [i + 1, total])
+			await tree.process_frame
+			t0 = Time.get_ticks_msec()
+
+	if hud:
+		hud.set_loading_status("BODYCAM-04 // LOADING MATERIALS & TEXTURES...")
+	await tree.process_frame
+	_build_materials()
+	await tree.process_frame
+
+
+func _build_materials() -> void:
 
 	# PALE weathered plaster for Panel 6 stairwell so dark carved balusters & bold graffiti POP!
 	mats["plaster"] = _make_weathered("plaster_peeling", Color(0.98, 0.96, 0.90), 0.30, 0.78, 2.05, 0.88, 0.36, 1.35, 0.30)
@@ -1493,11 +1571,13 @@ func _sample_disp_height(img: Image, u: float, v: float) -> float:
 
 
 func _build_tunnel_vault_mesh(z_start := -7.7, z_end := -28.3, radius := 2.28, spring_y := 1.15, a_segs := 36, z_segs := 56) -> ArrayMesh:
-	var disp_tex := load("res://assets/textures/brick_vault_disp.jpg") as Texture2D
-	var d_img: Image = disp_tex.get_image() if disp_tex else null
-	if d_img and d_img.is_compressed():
-		if d_img.decompress() != OK:
-			d_img = null
+	var d_img: Image = null
+	if not OS.has_feature("web"):
+		var disp_tex := load("res://assets/textures/brick_vault_disp.jpg") as Texture2D
+		d_img = disp_tex.get_image() if disp_tex else null
+		if d_img and d_img.is_compressed():
+			if d_img.decompress() != OK:
+				d_img = null
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var a_min := -0.10
@@ -1818,8 +1898,9 @@ func _build_snow_courtyard() -> void:
 
 	var terrain_mesh := PlaneMesh.new()
 	terrain_mesh.size = Vector2(84, 66)
-	terrain_mesh.subdivide_width = 224
-	terrain_mesh.subdivide_depth = 192
+	var low_geo := OS.has_feature("web") or _is_compat_renderer()
+	terrain_mesh.subdivide_width = 112 if low_geo else 224
+	terrain_mesh.subdivide_depth = 96 if low_geo else 192
 	var snowfield := MeshInstance3D.new()
 	snowfield.mesh = terrain_mesh
 	snowfield.material_override = mats["snow_ground"]
@@ -2001,6 +2082,8 @@ func _build_snow_courtyard() -> void:
 		["winter_infected", Vector3(-13.45, 0.02, -39.55), 0.32, 0.65],
 		["zombie_runner", Vector3(-10.65, 0.02, -39.15), -0.18, 1.15],
 	]
+	if OS.has_feature("web"):
+		bg_horde = bg_horde.slice(0, 4)
 	for idx in bg_horde.size():
 		var bh: Array = bg_horde[idx]
 		var zb: Node3D = null
@@ -2390,9 +2473,10 @@ func _spawn_melee_pickup(node_name: String, m_id: String, label: String, pos: Ve
 func _build_snow_particles() -> void:
 	snow_particles = GPUParticles3D.new()
 	snow_particles.name = "NightSnowfall"
-	snow_particles.amount = 450
+	var is_web := OS.has_feature("web")
+	snow_particles.amount = 180 if is_web else 450
 	snow_particles.lifetime = 6.5
-	snow_particles.preprocess = 3.0
+	snow_particles.preprocess = 0.0 if is_web else 3.0
 	snow_particles.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	snow_particles.visibility_aabb = AABB(Vector3(-32, -2, -32), Vector3(64, 18, 64))
 	snow_particles.position = Vector3(0.0, 8.5, -48.0)

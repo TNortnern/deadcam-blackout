@@ -77,6 +77,47 @@ void fragment() {
 		vec3 s2 = texture(TEXTURE, clamp(duv + rdir, vec2(0.001), vec2(0.999))).rgb;
 		col = mix(col, (col + s1 + s2) / 3.0, sm);
 	} else {
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+		// Fast directional luma-edge FXAA + clamped symmetric CAS for crisp, stair-step-free WebGL2 optics
+		vec2 px = TEXTURE_PIXEL_SIZE;
+		vec3 nw = texture(TEXTURE, clamp(duv + vec2(-px.x, -px.y), vec2(0.001), vec2(0.999))).rgb;
+		vec3 ne = texture(TEXTURE, clamp(duv + vec2( px.x, -px.y), vec2(0.001), vec2(0.999))).rgb;
+		vec3 sw = texture(TEXTURE, clamp(duv + vec2(-px.x,  px.y), vec2(0.001), vec2(0.999))).rgb;
+		vec3 se = texture(TEXTURE, clamp(duv + vec2( px.x,  px.y), vec2(0.001), vec2(0.999))).rgb;
+		vec3 l_w = vec3(0.299, 0.587, 0.114);
+		float l_m  = dot(col, l_w);
+		float l_nw = dot(nw, l_w);
+		float l_ne = dot(ne, l_w);
+		float l_sw = dot(sw, l_w);
+		float l_se = dot(se, l_w);
+		float l_min = min(l_m, min(min(l_nw, l_ne), min(l_sw, l_se)));
+		float l_max = max(l_m, max(max(l_nw, l_ne), max(l_sw, l_se)));
+		float l_range = l_max - l_min;
+		if (l_range > max(0.0312, l_max * 0.125)) {
+			vec2 dir = vec2(-((l_nw + l_ne) - (l_sw + l_se)), ((l_nw + l_sw) - (l_ne + l_se)));
+			float dir_reduce = max((l_nw + l_ne + l_sw + l_se) * 0.03125, 0.0078125);
+			float rcp_min = 1.0 / (min(abs(dir.x), abs(dir.y)) + dir_reduce);
+			dir = clamp(dir * rcp_min, vec2(-4.0), vec2(4.0)) * px;
+			vec3 rgb_a = 0.5 * (
+				texture(TEXTURE, clamp(duv + dir * (1.0 / 3.0 - 0.5), vec2(0.001), vec2(0.999))).rgb +
+				texture(TEXTURE, clamp(duv + dir * (2.0 / 3.0 - 0.5), vec2(0.001), vec2(0.999))).rgb
+			);
+			vec3 rgb_b = rgb_a * 0.5 + 0.25 * (
+				texture(TEXTURE, clamp(duv + dir * -0.5, vec2(0.001), vec2(0.999))).rgb +
+				texture(TEXTURE, clamp(duv + dir *  0.5, vec2(0.001), vec2(0.999))).rgb
+			);
+			float l_b = dot(rgb_b, l_w);
+			col = (l_b < l_min || l_b > l_max) ? rgb_a : rgb_b;
+		} else {
+			float center_sharp = sharpen_strength * 0.55 * (1.0 - clamp(r * 1.35, 0.0, 0.90));
+			if (center_sharp > 0.015) {
+				vec3 avg_n = (nw + ne + sw + se) * 0.25;
+				vec3 mn_c = min(col, min(min(nw, ne), min(sw, se)));
+				vec3 mx_c = max(col, max(max(nw, ne), max(sw, se)));
+				col = clamp(col + (col - avg_n) * center_sharp, mn_c, mx_c);
+			}
+		}
+#else
 		float center_sharp = sharpen_strength * (1.0 - clamp(r * 1.35, 0.0, 0.90));
 		if (center_sharp > 0.015) {
 			vec2 px = TEXTURE_PIXEL_SIZE;
@@ -86,12 +127,17 @@ void fragment() {
 			) * 0.5;
 			col += (col - blur_small) * center_sharp;
 		}
+#endif
 	}
 
 	// Lightweight sensor grain (highlight/shadow scaled) + optical vignette
 	// Tonemapping, AgX curve & shadow split-tone are handled natively in HDR linear space before post!
 	float luma = dot(col, vec3(0.299, 0.587, 0.114));
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	vec2 grain_coord = floor(FRAGCOORD.xy);
+#else
 	vec2 grain_coord = floor(uv * vec2(1600.0, 900.0));
+#endif
 	float g_n = hash12(grain_coord + vec2(fract(t * 17.3) * 512.0, fract(t * 29.1) * 512.0)) - 0.5;
 	float shadow_boost = mix(1.55, 0.22, clamp(luma * 2.4, 0.0, 1.0));
 	col += vec3(g_n) * grain_strength * shadow_boost;

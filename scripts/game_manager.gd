@@ -49,6 +49,9 @@ func _ready() -> void:
 	render_vp.handle_input_locally = false
 	render_vp.audio_listener_enable_3d = true
 	var is_web_or_compat := OS.has_feature("web") or RenderingServer.get_current_rendering_method() == "gl_compatibility"
+	if is_web_or_compat:
+		# WebGL2/GLES3 uses non-reverse-Z depth; 16-bit shadow atlas causes diagonal self-shadow striping past 4.5m!
+		render_vp.positional_shadow_atlas_16_bits = false
 	render_vp.positional_shadow_atlas_size = 2048 if (is_web_or_compat or quality_preset < 2) else 4096
 	render_vp.set_positional_shadow_atlas_quadrant_subdiv(0, Viewport.SHADOW_ATLAS_QUADRANT_SUBDIV_1)
 	render_vp.set_positional_shadow_atlas_quadrant_subdiv(1, Viewport.SHADOW_ATLAS_QUADRANT_SUBDIV_4)
@@ -58,6 +61,23 @@ func _ready() -> void:
 	render_vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
 	render_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(render_vp)
+
+	if OS.has_feature("web") and not deterministic_mode and not OS.get_cmdline_user_args().has("--bench"):
+		render_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		hud = BodycamHUD.new()
+		hud.name = "HUD"
+		add_child(hud)
+		hud.set_world_texture(render_vp.get_texture())
+		hud.start_requested.connect(start_game)
+		hud.start_daylight_requested.connect(start_game_daylight)
+		hud.restart_requested.connect(restart_game)
+		hud.graphics_action.connect(_on_hud_graphics_action)
+		hud.settings_closed.connect(_on_settings_closed)
+		if hud.loading_overlay:
+			hud.loading_overlay.visible = true
+			hud.set_loading_status("BODYCAM-04 // INITIALIZING WEBGL2 OPTICS...")
+		call_deferred("_run_web_async_boot")
+		return
 
 	world = WorldBuilder.new()
 	world.name = "World"
@@ -144,7 +164,11 @@ func _sync_hud_graphics_state() -> void:
 	var iw := int(round(render_vp.size.x * render_vp.scaling_3d_scale))
 	var ih := int(round(render_vp.size.y * render_vp.scaling_3d_scale))
 	var up_lbl: String = UPSCALER_NAMES[upscaler_mode_idx]
-	if OS.get_name() != "macOS":
+	var is_web_or_compat := OS.has_feature("web") or RenderingServer.get_current_rendering_method() == "gl_compatibility"
+	if is_web_or_compat:
+		var web_aa := ["AUTO (MSAA)", "MSAA 4X + FXAA", "MSAA 2X + FXAA", "FXAA ONLY"]
+		up_lbl = web_aa[upscaler_mode_idx]
+	elif OS.get_name() != "macOS":
 		var win_upscalers := ["AUTO", "FSR 2.2", "FSR 1.0", "NATIVE 100%"]
 		up_lbl = win_upscalers[upscaler_mode_idx]
 	hud.update_settings_labels({
@@ -232,13 +256,20 @@ func _apply_viewport_perf() -> void:
 
 	render_vp.positional_shadow_atlas_size = 2048 if (is_web_or_compat or quality_preset < 2) else 4096
 	if is_web_or_compat:
-		var web_cap := 720.0 if quality_preset == 0 else (900.0 if quality_preset == 1 else 1080.0)
-		var web_ratio := clampf(web_cap / maxf(win_size.y, 1.0), 0.1, 1.0)
+		var base_cap := 900.0 if quality_preset == 0 else (1200.0 if quality_preset == 1 else 1440.0)
+		var manual_sc: float = 1.0 if RES_SCALE_VALS[res_scale_idx] < 0.0 else float(RES_SCALE_VALS[res_scale_idx])
+		var web_ratio := clampf((base_cap * manual_sc) / maxf(win_size.y, 1.0), 0.1, 1.0)
 		render_vp.size = Vector2i(maxi(320, int(round(win_size.x * web_ratio))), maxi(180, int(round(win_size.y * web_ratio))))
 		render_vp.use_taa = false
+		render_vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
 		render_vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
-		var web_sc := 0.78 if quality_preset == 0 else (0.88 if quality_preset == 1 else 1.0)
-		render_vp.scaling_3d_scale = web_sc if RES_SCALE_VALS[res_scale_idx] < 0.0 else RES_SCALE_VALS[res_scale_idx]
+		render_vp.scaling_3d_scale = 1.0 # Single-pass sampling via post_rect; avoids double-bilinear blur!
+		if upscaler_mode_idx == 1 or (upscaler_mode_idx == 0 and quality_preset >= 2):
+			render_vp.msaa_3d = Viewport.MSAA_4X
+		elif upscaler_mode_idx == 2 or (upscaler_mode_idx == 0 and quality_preset == 1):
+			render_vp.msaa_3d = Viewport.MSAA_2X
+		else:
+			render_vp.msaa_3d = Viewport.MSAA_DISABLED
 		if world:
 			world.set_quality_preset(quality_preset)
 		_sync_hud_graphics_state()
@@ -541,6 +572,8 @@ func _on_player_died() -> void:
 
 
 func _process(delta: float) -> void:
+	if world == null or player == null or hud == null:
+		return
 	if world and player and player.camera:
 		world.update_zone_culling(player.camera)
 	hud.update_hud(delta, player, wave, points, get_living_zombies() + zombies_to_spawn)
@@ -609,6 +642,170 @@ func _process(delta: float) -> void:
 			wave_pause_timer = 0.0
 			_start_wave(wave + 1)
 			hud.show_toast("WAVE %02d INCOMING" % wave)
+
+
+func _run_web_async_boot() -> void:
+	var tree := get_tree()
+	await tree.process_frame
+
+	world = WorldBuilder.new()
+	world.name = "World"
+	render_vp.add_child(world)
+	await world.build_world_web_async(hud)
+
+	hud.set_loading_status("BODYCAM-04 // ALLOCATING VFX POOLS...")
+	vfx = VFXManager.new()
+	vfx.name = "VFXManager"
+	render_vp.add_child(vfx)
+	vfx.prewarm()
+	await tree.process_frame
+
+	zombies_root = Node3D.new()
+	zombies_root.name = "Zombies"
+	render_vp.add_child(zombies_root)
+	ZombieAI._ensure_audio_loaded()
+	var z_idx := 0
+	for v in ZombieAI.BAKED_PATHS.keys():
+		z_idx += 1
+		hud.set_loading_status("BODYCAM-04 // LOADING INFECTED MODELS (%d/%d)..." % [z_idx, ZombieAI.BAKED_PATHS.size()])
+		var bp: String = ZombieAI.BAKED_PATHS[v]
+		if not ZombieAI._baked_scene_cache.has(v) and ResourceLoader.exists(bp):
+			ZombieAI._baked_scene_cache[v] = load(bp)
+		await tree.process_frame
+
+	player = PlayerBodycam.new()
+	player.name = "Player"
+	player.game_manager = self
+	player.skip_initial_weapon_prebuild = true
+	render_vp.add_child(player)
+	await player.prebuild_weapon_rigs_web_async(hud)
+	player.global_position = Vector3(-1.2, 0.05, 3.6)
+	player.yaw = -0.35
+	player.input_enabled = false
+
+	player.player_died.connect(_on_player_died)
+	player.hit_confirmed.connect(_on_hit_confirmed)
+	player.status_message.connect(func(msg): hud.show_toast(msg))
+
+	for p in ["res://assets/audio/zombie_growl_a.wav", "res://assets/audio/zombie_growl_b.wav"]:
+		if ResourceLoader.exists(p):
+			_spawn_cue_streams.append(load(p))
+
+	ambient_audio = AudioStreamPlayer.new()
+	var amb := load("res://assets/audio/ambient_horror.wav")
+	if amb:
+		if amb is AudioStreamWAV:
+			amb.loop_mode = AudioStreamWAV.LOOP_FORWARD
+			amb.loop_end = int(44100 * 4.0)
+		ambient_audio.stream = amb
+		ambient_audio.volume_db = -14.0
+		add_child(ambient_audio)
+		ambient_audio.play()
+
+	_apply_viewport_perf()
+	get_viewport().size_changed.connect(_apply_viewport_perf)
+	world.update_zone_culling(player.camera)
+	await _run_web_shader_warmup()
+
+
+func _run_web_shader_warmup() -> void:
+	if _warmup_done:
+		return
+	_warmup_done = true
+	var tree := get_tree()
+	var saved_lock := world.debug_lock_env
+	world.debug_lock_env = true
+
+	var step := 0
+	var total_steps := 10
+	var _render_step := func(label: String) -> void:
+		step += 1
+		if hud:
+			hud.set_loading_status("BODYCAM-04 // COMPILING SHADERS (%d/%d): %s" % [step, total_steps, label])
+		render_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+
+	# Steps 1-3: Each zombie variant directly in front of camera under flashlight + lobby omni
+	var warm_z: Array[ZombieAI] = []
+	for i in range(3):
+		var v := i as ZombieAI.Variant
+		var z := spawn_zombie_at(Vector3(-1.2 + (i - 1) * 0.85, 0.05, 0.8), v, PI, false)
+		z.move_speed = 0.0
+		warm_z.append(z)
+		_render_step.call("INFECTED %d/3" % (i + 1))
+		await tree.process_frame
+
+	# Steps 4-6: Weapons 0/1/2 with muzzle lights + muzzle flash rig visible (compiles dynamic-light + flash shaders!)
+	player.muzzle_light.visible = true
+	player.muzzle_light.light_energy = 1.5
+	player.muzzle_vm_light.visible = true
+	player.muzzle_vm_light.light_energy = 0.8
+	player.muzzle_flash_rig.visible = true
+	for w_idx in [1, 2, 0]:
+		player._equip_weapon(w_idx)
+		_render_step.call("WEAPON %d/3" % (w_idx + 1))
+		await tree.process_frame
+	player.muzzle_light.visible = false
+	player.muzzle_light.light_energy = 0.0
+	player.muzzle_vm_light.visible = false
+	player.muzzle_vm_light.light_energy = 0.0
+	player.muzzle_flash_rig.visible = false
+
+	# Step 7: In-frustum VFX + head dismemberment/ragdoll stump warmup
+	if vfx:
+		vfx.run_pipeline_warmup(player.camera.global_position, -player.camera.global_transform.basis.z)
+	if not warm_z.is_empty() and is_instance_valid(warm_z[2]):
+		warm_z[2].apply_shot([{"zone": "HEAD", "pos": warm_z[2].face_focus_position(), "dir": Vector3.FORWARD, "dmg": 400.0, "dist": 3.0}], 2)
+	_render_step.call("COMBAT VFX")
+	await tree.process_frame
+
+	# Step 8: Catacomb Tunnel
+	player.global_position = Vector3(0.0, 0.05, -16.0)
+	player.yaw = 0.0
+	world.update_zone_culling(player.camera)
+	_render_step.call("CATACOMB TUNNEL")
+	await tree.process_frame
+
+	# Step 9: Courtyard with BOTH moon_light and lightning_light active (prevents t=18s thunder hitch!)
+	player.global_position = Vector3(0.0, 0.05, -40.0)
+	world.update_zone_culling(player.camera)
+	if world.moon_light:
+		world.moon_light.visible = true
+		world.moon_light.light_energy = MOON_BASE
+	if world.lightning_light:
+		world.lightning_light.visible = true
+		world.lightning_light.light_energy = 0.05
+	_render_step.call("WINTER COURTYARD")
+	await tree.process_frame
+
+	# Step 10: Cabin exterior
+	player.global_position = Vector3(0.0, 0.05, -54.0)
+	world.update_zone_culling(player.camera)
+	_render_step.call("CABIN")
+	await tree.process_frame
+
+	# Restore clean initial lobby state
+	clear_zombies()
+	if vfx:
+		vfx.clear_warmup_effects()
+	if world.moon_light:
+		world.moon_light.visible = false
+		world.moon_light.light_energy = 0.0
+	if world.lightning_light:
+		world.lightning_light.visible = false
+		world.lightning_light.light_energy = 0.0
+	points = 600
+	kills = 0
+	headshots = 0
+	player.global_position = Vector3(-1.2, 0.05, 3.6)
+	player.yaw = -0.35
+	player.pitch = 0.0
+	player._equip_weapon(0)
+	world.debug_lock_env = saved_lock
+	world.update_zone_culling(player.camera)
+	render_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	await tree.process_frame
+	if hud and hud.loading_overlay:
+		hud.loading_overlay.visible = false
 
 
 func _run_startup_warmup() -> void:
