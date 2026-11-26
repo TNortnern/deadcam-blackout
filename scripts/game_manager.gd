@@ -392,7 +392,7 @@ func restart_game() -> void:
 	_active_attackers.clear()
 	_recent_spawns.clear()
 	wave_pause_timer = 0.0
-	player.heal_full()
+	player.heal_full(true)
 	player.global_position = Vector3(-1.2, 0.05, 3.6)
 	player.yaw = -0.35
 	player.pitch = 0.0
@@ -401,6 +401,13 @@ func restart_game() -> void:
 	headshots = 0
 	power_restored = false
 	world.set_asylum_power(false)
+	if world.sawmill_gate_open:
+		world.sawmill_gate_open = false
+		for sp: Vector3 in world.sawmill_spawn_points:
+			world.spawn_points.erase(sp)
+	for inter: InteractableObject in world.interactables:
+		if is_instance_valid(inter) and inter.has_method("reset_state"):
+			inter.reset_state()
 	start_game()
 
 
@@ -549,6 +556,15 @@ func on_generator_activated() -> void:
 	power_restored = true
 	world.set_asylum_power(true)
 	add_points(200)
+
+
+func on_sawmill_gate_opened() -> void:
+	if world == null or world.sawmill_gate_open:
+		return
+	world.sawmill_gate_open = true
+	for sp: Vector3 in world.sawmill_spawn_points:
+		if not (sp in world.spawn_points):
+			world.spawn_points.append(sp)
 
 
 func _on_hit_confirmed(is_headshot: bool, killed: bool) -> void:
@@ -740,9 +756,9 @@ func _run_web_shader_warmup() -> void:
 	player.muzzle_vm_light.visible = true
 	player.muzzle_vm_light.light_energy = 0.8
 	player.muzzle_flash_rig.visible = true
-	for w_idx in [1, 2, 0]:
-		player._equip_weapon(w_idx)
-		_render_step.call("WEAPON %d/3" % (w_idx + 1))
+	for w_idx in [1, 2, 4, 5, 6, 7, 8, 9, 10, 0]:
+		player._equip_weapon(w_idx, true)
+		_render_step.call("WEAPON %d/10" % (w_idx + 1))
 		await tree.process_frame
 	player.muzzle_light.visible = false
 	player.muzzle_light.light_energy = 0.0
@@ -857,7 +873,7 @@ func _run_startup_warmup() -> void:
 		z.move_speed = 0.0
 		warm_z.append(z)
 	for w_idx in [1, 2, 0]:
-		player._equip_weapon(w_idx)
+		player._equip_weapon(w_idx, true)
 		await tree.process_frame
 
 	if vfx:

@@ -20,6 +20,9 @@ var alcove_group: Node3D
 var tunnel_group: Node3D
 var courtyard_group: Node3D
 var cabin_group: Node3D
+var sawmill_group: Node3D
+var sawmill_gate_open: bool = false
+var sawmill_spawn_points: Array[Vector3] = []
 var reflection_probes: Array[ReflectionProbe] = []
 var outdoor_fill_lights: Array[Light3D] = []
 var bg_horde_group: Node3D
@@ -68,7 +71,7 @@ const NO_SHADOW_GLBS := {
 	"vintage_crutches": 0.95, "modular_pipes": 0.95,
 	"fallen_log": 0.88, "dead_quiver_branch_01": 0.85, "winter_grass": 0.85,
 	"undergrowth_fern": 0.85, "threshold_lining": 0.95, "landing_portal": 0.95,
-	"porch_steps": 0.95,
+	"porch_steps": 0.95, "sawmill_log_stack": 0.95, "diesel_generator_aaa": 0.98,
 }
 
 # Small interior floor/desk clutter smoothly dither-fades past 28m (never hero rooms/furniture!)
@@ -110,6 +113,7 @@ func build_world() -> void:
 	_build_catacomb_tunnel()
 	_build_snow_courtyard()
 	_build_cabin()
+	_build_sawmill_perimeter()
 	_build_occluders()
 	_build_interactables()
 	_build_snow_particles()
@@ -140,8 +144,10 @@ func build_world_web_async(hud: BodycamHUD = null) -> void:
 	if hud: hud.set_loading_status("BODYCAM-04 // BUILDING WINTER COURTYARD...")
 	_build_snow_courtyard()
 	await tree.process_frame
-	if hud: hud.set_loading_status("BODYCAM-04 // BUILDING CABIN & INTERACTABLES...")
+	if hud: hud.set_loading_status("BODYCAM-04 // BUILDING CABIN & FROZEN SAWMILL...")
 	_build_cabin()
+	_build_sawmill_perimeter()
+	await tree.process_frame
 	_build_occluders()
 	_build_interactables()
 	_build_snow_particles()
@@ -411,8 +417,16 @@ func update_zone_culling(cam_or_pos) -> void:
 		var b_out := show_outdoor == 1
 		if courtyard_group: courtyard_group.visible = b_out
 		if cabin_group: cabin_group.visible = b_out
+		if sawmill_group: sawmill_group.visible = b_out
 		if snow_particles: snow_particles.visible = b_out
-		if bg_horde_group: bg_horde_group.visible = b_out
+		if bg_horde_group: bg_horde_group.visible = b_out and z > -61.0
+	if show_outdoor == 1:
+		if bg_horde_group:
+			var want_horde := z > -61.0
+			if bg_horde_group.visible != want_horde:
+				bg_horde_group.visible = want_horde
+		if snow_particles:
+			snow_particles.position.z = clampf(cam_pos.z - 4.0, -78.0, -44.0)
 	if show_side_trees != _last_side_trees:
 		_last_side_trees = show_side_trees
 		var b_side := show_side_trees == 1
@@ -460,7 +474,8 @@ const WORLD_GLB_LIST := [
 	"tunnel_rubble_hero", "young_fir", "registration_machine", "winter_infected", "herringbone_blocks",
 	"fir_tree", "dead_winter_tree", "fallen_spruce", "dry_windfall", "undergrowth_fern", "upper_spindle", "spruce_snag", "winter_pine", "fractured_bricks", "plaster_fall", "split_siding", "threshold_lining", "landing_portal", "porch_steps", "broken_spandrel", "broken_lime_plaster", "worn_oak_flight",
 	"fallen_log", "dead_quiver_branch_01", "winter_grass",
-	"zombie_tactical", "zombie_runner"
+	"zombie_tactical", "zombie_runner",
+	"watchtower_aaa", "sawmill_log_stack", "diesel_generator_aaa", "sawmill_shed_aaa"
 ]
 
 
@@ -2200,9 +2215,9 @@ func _build_snow_courtyard() -> void:
 	g.add_child(moon_break)
 	moon_break.look_at_from_position(Vector3(-13.39, 2.54, -34.82), Vector3(-12.21, 1.74, -37.15))
 
-	_add_box(g, Vector3(-28, 3, -55), Vector3(1, 6, 56), mats["timber"]).visible = false
-	_add_box(g, Vector3(28, 3, -55), Vector3(1, 6, 56), mats["timber"]).visible = false
-	_add_box(g, Vector3(0, 3, -82), Vector3(58, 6, 1), mats["timber"]).visible = false
+	_add_box(g, Vector3(-28, 3, -60), Vector3(1, 6, 68), mats["timber"]).visible = false
+	_add_box(g, Vector3(28, 3, -60), Vector3(1, 6, 68), mats["timber"]).visible = false
+	_add_box(g, Vector3(0, 3, -92), Vector3(58, 6, 1), mats["timber"]).visible = false
 
 	spawn_points.append(Vector3(-5.0, 0.1, -34.0))
 	spawn_points.append(Vector3(5.5, 0.1, -36.5))
@@ -2298,6 +2313,130 @@ func _build_cabin() -> void:
 	cabin_bounce.shadow_enabled = false
 	cabin_bounce.position = Vector3(0.0, 2.4, 0.5)
 	g.add_child(cabin_bounce)
+
+
+func _build_sawmill_perimeter() -> void:
+	var g := Node3D.new()
+	g.name = "FrozenSawmill"
+	sawmill_group = g
+	add_child(g)
+
+	# 1. Perimeter fence at z = -66.0 with Chain-Link Breach Gate opening at x = 5.5..10.5 (750 PTS)
+	_add_box(g, Vector3(-11.25, 1.35, -66.0), Vector3(33.5, 2.7, 0.28), mats["timber"])
+	_add_box(g, Vector3(19.25, 1.35, -66.0), Vector3(17.5, 2.7, 0.28), mats["timber"])
+	for px: float in [-22.0, -14.0, -6.0, 2.0, 5.4, 10.6, 16.0, 22.0]:
+		_add_box(g, Vector3(px, 1.55, -66.0), Vector3(0.28, 3.1, 0.28), mats["timber"], Vector3.ZERO, false)
+
+	var gate := InteractableObject.new()
+	gate.name = "SawmillBreachGate"
+	gate.kind = InteractableObject.Kind.BREACH_GATE
+	gate.cost = 750
+	gate.collision_layer = 1 | 16
+	gate.position = Vector3(8.0, 0.0, -66.0)
+	g.add_child(gate)
+	var gcol := CollisionShape3D.new()
+	var gsh := BoxShape3D.new(); gsh.size = Vector3(5.0, 2.8, 0.45)
+	gcol.shape = gsh; gcol.position = Vector3(0.0, 1.4, 0.0)
+	gate.add_child(gcol)
+	var gvis := Node3D.new(); gvis.position = Vector3(-2.5, 0.0, 0.0)
+	gate.add_child(gvis)
+	gate.gate_visual = gvis
+	_add_box(gvis, Vector3(2.5, 1.35, 0.0), Vector3(4.9, 2.5, 0.08), mats["metal"], Vector3.ZERO, false)
+	interactables.append(gate)
+
+	# 2. Stacked Pine Logs (merged GLBs, 1 draw call each!)
+	var h_log1 := _snow_height_at(-4.0, -73.5)
+	_add_glb(g, "sawmill_log_stack", Vector3(-4.0, h_log1, -73.5), Vector3(0, 0.12, 0), Vector3.ONE)
+	_add_box(g, Vector3(-4.0, h_log1 + 0.9, -73.5), Vector3(6.8, 1.8, 2.6), mats["timber"]).visible = false
+	var h_log2 := _snow_height_at(-6.0, -84.0)
+	_add_glb(g, "sawmill_log_stack", Vector3(-6.0, h_log2, -84.0), Vector3(0, -0.18, 0), Vector3.ONE)
+	_add_box(g, Vector3(-6.0, h_log2 + 0.9, -84.0), Vector3(6.8, 1.8, 2.6), mats["timber"]).visible = false
+
+	# 3. Climbable Wooden Watchtower at (-13.0, 0.0, -84.0) + Amber Searchlight + Volumetric Beam
+	_add_glb(g, "watchtower_aaa", Vector3(-13.0, 0.0, -84.0), Vector3.ZERO, Vector3.ONE)
+	_add_box(g, Vector3(-13.0, 6.86, -84.0), Vector3(6.2, 0.30, 6.2), mats["timber"]).visible = false
+	# Two-flight climbable ramp stairs up to Watchtower deck (Y=7.0) with timber landing posts!
+	_add_box(g, Vector3(-18.2, 1.85, -77.5), Vector3(2.0, 0.22, 9.6), mats["timber"], Vector3(-0.39, 0.0, 0.0))
+	_add_box(g, Vector3(-17.0, 3.65, -72.5), Vector3(4.6, 0.24, 2.4), mats["timber"])
+	_add_box(g, Vector3(-19.0, 1.80, -72.5), Vector3(0.26, 3.65, 0.26), mats["timber"])
+	_add_box(g, Vector3(-15.0, 1.80, -72.5), Vector3(0.26, 3.65, 0.26), mats["timber"])
+	_add_box(g, Vector3(-16.2, 5.30, -77.2), Vector3(2.0, 0.22, 9.2), mats["timber"], Vector3(0.37, 0.0, 0.0))
+
+	var t_bulb := _add_box(g, Vector3(-10.4, 9.25, -81.4), Vector3(0.28, 0.24, 0.28), mats["bulb_warm"], Vector3.ZERO, false)
+	if t_bulb: t_bulb.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var t_spot := SpotLight3D.new()
+	t_spot.name = "WatchtowerSearchlight"
+	t_spot.light_color = Color(1.0, 0.72, 0.32)
+	t_spot.light_energy = 26.0
+	t_spot.light_volumetric_fog_energy = 1.6
+	t_spot.set_meta("keep_vol_fog", true)
+	t_spot.spot_range = 32.0
+	t_spot.spot_angle = 36.0
+	t_spot.shadow_enabled = not _is_compat_renderer()
+	t_spot.light_bake_mode = Light3D.BAKE_STATIC
+	g.add_child(t_spot)
+	t_spot.look_at_from_position(Vector3(-10.4, 9.1, -81.4), Vector3(4.5, 0.5, -74.0))
+
+	# 4. Iced Diesel Generator & Sunken Bunker Hatch Collar
+	var h_gen := _snow_height_at(8.5, -74.5)
+	_add_glb(g, "diesel_generator_aaa", Vector3(8.5, h_gen, -74.5), Vector3(0, 0.25, 0), Vector3.ONE)
+	_add_box(g, Vector3(8.5, h_gen + 0.85, -74.5), Vector3(1.7, 1.6, 2.8), mats["metal"]).visible = false
+	var h_hat := _snow_height_at(10.5, -70.5)
+	_add_box(g, Vector3(10.5, h_hat + 0.14, -70.5), Vector3(2.2, 0.28, 2.6), mats["concrete"])
+	_add_box(g, Vector3(12.2, h_hat + 0.12, -70.5), Vector3(1.8, 0.12, 2.2), mats["metal"], Vector3(0.0, 0.0, 0.12))
+
+	# 5. Corrugated Sawmill Shed at (17.5, 0.0, -82.0) + Second Mystery Box Inside!
+	_add_glb(g, "sawmill_shed_aaa", Vector3(17.5, 0.0, -82.0), Vector3.ZERO, Vector3.ONE)
+	_add_box(g, Vector3(17.5, 2.6, -88.0), Vector3(11.2, 5.2, 0.3), mats["metal"]).visible = false
+	_add_box(g, Vector3(23.0, 2.6, -82.0), Vector3(0.3, 5.2, 12.2), mats["metal"]).visible = false
+	_add_box(g, Vector3(13.25, 2.6, -76.0), Vector3(2.7, 5.2, 0.3), mats["metal"]).visible = false
+	_add_box(g, Vector3(20.25, 2.6, -76.0), Vector3(5.7, 5.2, 0.3), mats["metal"]).visible = false
+	_add_box(g, Vector3(12.0, 2.6, -85.75), Vector3(0.3, 5.2, 4.5), mats["metal"]).visible = false
+	_add_box(g, Vector3(12.0, 2.6, -78.25), Vector3(0.3, 5.2, 4.5), mats["metal"]).visible = false
+
+	var shed_l := OmniLight3D.new()
+	shed_l.light_color = Color(1.0, 0.72, 0.36)
+	shed_l.light_energy = 4.2
+	shed_l.omni_range = 10.5
+	shed_l.shadow_enabled = false
+	shed_l.position = Vector3(17.5, 3.8, -82.0)
+	g.add_child(shed_l)
+
+	# Second Mystery Box inside Sawmill Shed
+	var mbox2 := InteractableObject.new()
+	mbox2.name = "MysteryBoxSawmill"
+	mbox2.kind = InteractableObject.Kind.MYSTERY_BOX
+	mbox2.cost = 500
+	mbox2.collision_layer = 16 | 1
+	mbox2.position = Vector3(19.8, 0.12, -82.0)
+	mbox2.rotation.y = -PI * 0.5
+	g.add_child(mbox2)
+	var mcol2 := CollisionShape3D.new()
+	var msh2 := BoxShape3D.new(); msh2.size = Vector3(1.5, 0.72, 0.72)
+	mcol2.shape = msh2; mcol2.position = Vector3(0, 0.36, 0)
+	mbox2.add_child(mcol2)
+	_add_box(mbox2, Vector3(0, 0.30, 0), Vector3(1.48, 0.60, 0.68), mats["wood_carved"], Vector3.ZERO, false)
+	var lid2 := Node3D.new(); lid2.position = Vector3(0, 0.60, -0.34)
+	mbox2.add_child(lid2)
+	_add_box(lid2, Vector3(0, 0.06, 0.34), Vector3(1.52, 0.12, 0.72), mats["timber"], Vector3.ZERO, false)
+	mbox2.lid_node = lid2
+	var ml2 := OmniLight3D.new()
+	ml2.light_color = Color(1.0, 0.75, 0.28)
+	ml2.light_energy = 1.4
+	ml2.omni_range = 6.0
+	ml2.shadow_enabled = false
+	ml2.position = Vector3(0, 0.75, 0)
+	mbox2.add_child(ml2)
+	mbox2.glow_light = ml2
+	interactables.append(mbox2)
+
+	sawmill_spawn_points = [
+		Vector3(-21.0, _snow_height_at(-21.0, -70.0) + 0.1, -70.0),
+		Vector3(-21.0, _snow_height_at(-21.0, -86.0) + 0.1, -86.0),
+		Vector3(3.0, _snow_height_at(3.0, -89.5) + 0.1, -89.5),
+		Vector3(22.0, _snow_height_at(22.0, -89.0) + 0.1, -89.0),
+		Vector3(22.0, _snow_height_at(22.0, -72.0) + 0.1, -72.0),
+	]
 	var porch_pool := SpotLight3D.new()
 	porch_pool.light_color = Color(1.0, 0.76, 0.48)
 	porch_pool.light_energy = 11.6

@@ -4,6 +4,7 @@ class_name PlayerBodycam
 const WEAPONS := [
 	{
 		"name": "G17 TACTICAL",
+		"key": "1",
 		"glb": "res://assets/models/weapon_pistol.glb",
 		"audio": "res://assets/audio/gun_pistol.wav",
 		"audio_b": "res://assets/audio/gun_pistol_b.wav",
@@ -28,6 +29,7 @@ const WEAPONS := [
 	},
 	{
 		"name": "M16A2 REFLEX",
+		"key": "2",
 		"glb": "res://assets/models/weapon_rifle.glb",
 		"audio": "res://assets/audio/gun_rifle.wav",
 		"audio_b": "res://assets/audio/gun_rifle_b.wav",
@@ -52,6 +54,7 @@ const WEAPONS := [
 	},
 	{
 		"name": "M870 BREACHER",
+		"key": "3",
 		"glb": "res://assets/models/weapon_shotgun.glb",
 		"audio": "res://assets/audio/gun_shotgun.wav",
 		"audio_b": "res://assets/audio/gun_shotgun_b.wav",
@@ -76,6 +79,7 @@ const WEAPONS := [
 	},
 	{
 		"name": "COMBAT KNIFE",
+		"key": "V",
 		"glb": "",
 		"audio": "res://assets/audio/melee_swing.wav",
 		"is_melee": true,
@@ -100,33 +104,36 @@ const WEAPONS := [
 	},
 	{
 		"name": "COMPOUND BOW",
-		"glb": "",
-		"custom_rig": "bow",
+		"key": "5",
+		"glb": "res://assets/models/weapon_bow.glb",
+		"arm_src": 1,
 		"audio": "res://assets/audio/bow_release.wav",
 		"is_bow": true,
 		"mag_size": 1,
-		"reserve_max": 18,
-		"damage": 160.0,
-		"fire_rate": 0.42,
+		"reserve_max": 24,
+		"damage": 165.0,
+		"fire_rate": 0.38,
 		"auto": false,
 		"pellets": 1,
 		"spread": 0.002,
-		"recoil_pitch": 0.025,
+		"recoil_pitch": 0.024,
 		"recoil_kick": 0.020,
 		"flash_scale": 0.0,
-		"hip_pos": Vector3(0.24, -0.22, -0.44),
-		"hip_rot": Vector3(0.04, 0.08, -0.36),
-		"ads_pos": Vector3(0.135, -0.145, -0.42),
-		"ads_rot": Vector3(0.0, 0.04, -0.16),
-		"muzzle": Vector3(0.0, 0.02, -0.42),
+		"ads_fov": 72.0,
+		"hip_pos": Vector3(0.32, -0.145, -0.52),
+		"hip_rot": Vector3(0.02, 0.06, 0.52),
+		"ads_pos": Vector3(0.062, -0.056, -0.45),
+		"ads_rot": Vector3(0.0, 0.02, 0.22),
+		"muzzle": Vector3(0.0, 0.03, -0.45),
 		"ejection": Vector3.ZERO,
 		"has_holo": false,
 		"holo_pos": Vector3.ZERO,
 	},
 	{
 		"name": "MP5A3 SUPPRESSED",
-		"glb": "",
-		"custom_rig": "mp5",
+		"key": "6",
+		"glb": "res://assets/models/weapon_mp5.glb",
+		"arm_src": 1,
 		"audio": "res://assets/audio/gun_mp5_sd.wav",
 		"audio_b": "res://assets/audio/gun_mp5_sd_b.wav",
 		"mag_size": 30,
@@ -146,12 +153,13 @@ const WEAPONS := [
 		"muzzle": Vector3(0.0, 0.025, -0.58),
 		"ejection": Vector3(0.036, 0.032, -0.09),
 		"has_holo": true,
-		"holo_pos": Vector3(0.0, 0.078, -0.085),
+		"holo_pos": Vector3(0.0, 0.078, -0.088),
 	},
 	{
 		"name": ".44 MAGNUM",
-		"glb": "",
-		"custom_rig": "magnum",
+		"key": "7",
+		"glb": "res://assets/models/weapon_magnum.glb",
+		"arm_src": 0,
 		"audio": "res://assets/audio/gun_magnum.wav",
 		"audio_b": "res://assets/audio/gun_magnum_b.wav",
 		"mag_size": 6,
@@ -174,14 +182,15 @@ const WEAPONS := [
 		"holo_pos": Vector3.ZERO,
 	},
 	{
-		"name": "M700 .308 HUNTING",
-		"glb": "",
-		"custom_rig": "hunting",
+		"name": "SPRINGFIELD M1903",
+		"key": "4",
+		"glb": "res://assets/models/weapon_springfield.glb",
+		"arm_src": 1,
 		"audio": "res://assets/audio/gun_hunting.wav",
 		"audio_b": "res://assets/audio/gun_hunting_b.wav",
 		"mag_size": 5,
 		"reserve_max": 35,
-		"damage": 165.0,
+		"damage": 175.0,
 		"fire_rate": 1.05,
 		"auto": false,
 		"pellets": 1,
@@ -189,13 +198,91 @@ const WEAPONS := [
 		"recoil_pitch": 0.120,
 		"recoil_kick": 0.080,
 		"flash_scale": 1.30,
-		"ads_fov": 34.0,
+		"ads_fov": 26.0,
 		"hip_pos": Vector3(0.132, -0.185, -0.32),
 		"hip_rot": Vector3(0.02, 0.08, -0.04),
-		"ads_pos": Vector3(0.0, -0.088, -0.23),
-		"ads_rot": Vector3(0.0, 0.0, 0.0),
+		"ads_pos": Vector3(0.0, -0.088, -0.032),
+		"ads_rot": Vector3(0.0, 0.0, 0.042),
 		"muzzle": Vector3(0.0, 0.030, -0.82),
 		"ejection": Vector3(0.040, 0.036, -0.10),
+		"has_holo": false,
+		"holo_pos": Vector3.ZERO,
+	},
+	{
+		"name": "AK-74M",
+		"key": "8",
+		"glb": "res://assets/models/weapon_ak74.glb",
+		"arm_src": 1,
+		"audio": "res://assets/audio/gun_ak74.wav",
+		"audio_b": "res://assets/audio/gun_ak74_b.wav",
+		"mag_size": 30,
+		"reserve_max": 180,
+		"damage": 38.0,
+		"fire_rate": 0.102,
+		"auto": true,
+		"pellets": 1,
+		"spread": 0.013,
+		"recoil_pitch": 0.044,
+		"recoil_kick": 0.036,
+		"flash_scale": 1.08,
+		"hip_pos": Vector3(0.122, -0.188, -0.29),
+		"hip_rot": Vector3(0.02, 0.10, -0.05),
+		"ads_pos": Vector3(0.0, -0.068, -0.26),
+		"ads_rot": Vector3(0.0, 0.0, 0.0),
+		"muzzle": Vector3(0.0, 0.024, -0.74),
+		"ejection": Vector3(0.042, 0.034, -0.14),
+		"has_holo": false,
+		"holo_pos": Vector3.ZERO,
+	},
+	{
+		"name": "BENELLI M4",
+		"key": "9",
+		"glb": "res://assets/models/weapon_benelli.glb",
+		"arm_src": 1,
+		"audio": "res://assets/audio/gun_benelli.wav",
+		"audio_b": "res://assets/audio/gun_benelli_b.wav",
+		"mag_size": 7,
+		"reserve_max": 42,
+		"damage": 22.0,
+		"fire_rate": 0.28,
+		"auto": false,
+		"pellets": 7,
+		"spread": 0.052,
+		"recoil_pitch": 0.095,
+		"recoil_kick": 0.072,
+		"flash_scale": 1.25,
+		"hip_pos": Vector3(0.120, -0.185, -0.29),
+		"hip_rot": Vector3(0.02, 0.09, -0.05),
+		"ads_pos": Vector3(0.0, -0.064, -0.25),
+		"ads_rot": Vector3(0.0, 0.0, 0.0),
+		"muzzle": Vector3(0.0, 0.032, -0.72),
+		"ejection": Vector3(0.040, 0.028, -0.14),
+		"has_holo": false,
+		"holo_pos": Vector3.ZERO,
+	},
+	{
+		"name": "M249 SAW",
+		"key": "0",
+		"glb": "res://assets/models/weapon_m249.glb",
+		"arm_src": 1,
+		"audio": "res://assets/audio/gun_m249.wav",
+		"audio_b": "res://assets/audio/gun_m249_b.wav",
+		"mag_size": 100,
+		"reserve_max": 300,
+		"damage": 30.0,
+		"fire_rate": 0.082,
+		"auto": true,
+		"pellets": 1,
+		"spread": 0.018,
+		"recoil_pitch": 0.036,
+		"recoil_kick": 0.030,
+		"flash_scale": 1.15,
+		"hip_pos": Vector3(0.135, -0.205, -0.32),
+		"hip_rot": Vector3(0.02, 0.08, -0.04),
+		"ads_pos": Vector3(0.0, -0.086, -0.26),
+		"ads_rot": Vector3(0.0, 0.0, 0.0),
+		"muzzle": Vector3(0.0, 0.034, -0.78),
+		"ejection": Vector3(0.048, 0.026, -0.16),
 		"has_holo": false,
 		"holo_pos": Vector3.ZERO,
 	}
@@ -278,26 +365,32 @@ var _pre_land_vy: float = 0.0
 var _land_dip: float = 0.0
 
 var current_weapon: int = 0
-var unlocked_weapons: Array[bool] = [true, true, true, true, true, true, true, true]
-var ammo_in_mag: Array[int] = [15, 30, 8, 1, 1, 30, 6, 5]
-var ammo_reserve: Array[int] = [90, 180, 48, 0, 18, 180, 42, 35]
+# Player starts with G17 (0) + Quick Melee Knife (3); all 9 other ranged weapons unlock via Mystery Box!
+var unlocked_weapons: Array[bool] = [true, false, false, true, false, false, false, false, false, false, false]
+var ammo_in_mag: Array[int] = [15, 30, 8, 1, 1, 30, 6, 5, 30, 7, 100]
+var ammo_reserve: Array[int] = [90, 180, 48, 0, 24, 180, 42, 35, 180, 42, 300]
 var equipped_melee_id: String = "knife"
 var _melee_timer: float = 0.0
 var _melee_dur: float = 0.42
 var _melee_hit_done: bool = false
 var _melee_nodes: Dictionary = {} # melee_id -> Node3D
 
-# Bow, Revolver & Bolt-Action Hunting Rifle state
+# Bow, Revolver & CoD-Style Sniper Scope Transition state
 var _bow_drawing: bool = false
 var _bow_draw: float = 0.0
 var _bow_hold_time: float = 0.0
 var _bow_nock_timer: float = 0.0
+var _bow_release_timer: float = 0.0
 var _bow_parts: Dictionary = {}
+var _bow_charge_mats: Array[StandardMaterial3D] = []
 var _arrows: Array[Dictionary] = []
 var _revolver_cyl_angle: float = 0.0
 var _revolver_hammer: float = 0.0
 var _hunting_bolt_timer: float = 0.0
 var _hunting_bolt_did_sfx: bool = false
+var _sniper_ads_raw: float = 0.0
+var sniper_scope_alpha: float = 0.0
+var sniper_iris_scale: float = 1.0
 
 var yaw: float = 0.0
 var pitch: float = 0.0
@@ -829,6 +922,9 @@ func _prep_viewmodel_node(n: Node) -> void:
 			if source == null:
 				continue
 			var mname := str(source.resource_name).to_lower()
+			if mname.begins_with("aaa_"):
+				# Preserve Blender 5.3 authored PBR materials intact!
+				continue
 			if mname.begins_with("arms"):
 				var cloth := source.duplicate() as StandardMaterial3D
 				cloth.albedo_texture = preload("res://assets/textures/field_glove_albedo.jpg")
@@ -1134,6 +1230,40 @@ func _collect_weapon_parts(n: Node, target_parts: Dictionary = _w_parts) -> void
 			grp = "arm_right"
 		elif nl == "shotgunlifter":
 			grp = "lifter"
+		elif nl == "mag":
+			grp = "mag"
+		elif nl == "magbullet":
+			grp = "mag_bullet"
+		elif nl == "charge":
+			grp = "charge"
+		elif nl == "bolt":
+			grp = "bolt"
+		elif nl == "crane":
+			grp = "crane"
+		elif nl == "cylinder":
+			grp = "cylinder"
+		elif nl == "hammer":
+			grp = "hammer"
+		elif nl == "topcover":
+			grp = "top_cover"
+		elif nl == "ammobelt":
+			grp = "ammo_belt"
+		elif nl == "limbtop":
+			grp = "limb_top"
+		elif nl == "limbbot":
+			grp = "limb_bot"
+		elif nl == "camtop":
+			grp = "cam_top"
+		elif nl == "cambot":
+			grp = "cam_bot"
+		elif nl == "stringtop":
+			grp = "str_top"
+		elif nl == "stringbot":
+			grp = "str_bot"
+		elif nl == "arrow":
+			grp = "bow_arrow"
+		elif nl.begins_with("chargebar_"):
+			grp = "charge_bars"
 		if grp != "":
 			if not target_parts.has(grp):
 				target_parts[grp] = []
@@ -1397,6 +1527,31 @@ func _clone_tactical_arms(src_idx: int, holder: Node3D, parts: Dictionary,
 		_w_rest_rot[piv.get_instance_id()] = piv.rotation
 
 
+func _setup_bow_rig_refs(parts: Dictionary) -> void:
+	_bow_parts.clear()
+	_bow_charge_mats.clear()
+	for k in ["limb_top", "limb_bot", "cam_top", "cam_bot", "str_top", "str_bot"]:
+		if parts.has(k) and not (parts[k] as Array).is_empty():
+			_bow_parts[k] = parts[k][0]
+	if parts.has("bow_arrow") and not (parts["bow_arrow"] as Array).is_empty():
+		_bow_parts["arrow"] = parts["bow_arrow"][0]
+	if parts.has("arm_right") and not (parts["arm_right"] as Array).is_empty():
+		_bow_parts["arm_draw"] = parts["arm_right"][0]
+	if parts.has("charge_bars"):
+		var bars: Array = parts["charge_bars"]
+		bars.sort_custom(func(a: Node, b: Node): return a.name < b.name)
+		for b_node in bars:
+			var mi := b_node as MeshInstance3D
+			if mi and mi.mesh and mi.mesh.get_surface_count() > 0:
+				var src_m := mi.get_active_material(0) as StandardMaterial3D
+				if src_m:
+					var dup_m := src_m.duplicate() as StandardMaterial3D
+					dup_m.emission_energy_multiplier = 0.0
+					mi.set_surface_override_material(0, dup_m)
+					_bow_charge_mats.append(dup_m)
+	_pose_bow_rig()
+
+
 func _build_bow_viewmodel_rig(holder: Node3D, parts: Dictionary) -> void:
 	_bow_parts.clear()
 	var riser_mat := _make_vm_mat(Color(0.18, 0.20, 0.19), 0.42, 0.72, 0.56, Color.BLACK, "metal_tactical")
@@ -1644,18 +1799,9 @@ func _build_single_weapon_rig(i: int) -> void:
 	holder.visible = false
 	weapon_rig_holder.add_child(holder)
 	var parts := {}
-	var custom_rig := str(w.get("custom_rig", ""))
 	if bool(w.get("is_melee", false)):
 		_build_melee_viewmodel_rig(holder)
 		_clone_tactical_arms(0, holder, parts, Vector3.ZERO, Vector3.ZERO, Vector3(-0.02, -0.04, 0.14), Vector3(0.18, 0.45, -0.15), false, true)
-	elif custom_rig == "bow":
-		_build_bow_viewmodel_rig(holder, parts)
-	elif custom_rig == "mp5":
-		_build_mp5_viewmodel_rig(holder, parts)
-	elif custom_rig == "magnum":
-		_build_magnum_viewmodel_rig(holder, parts)
-	elif custom_rig == "hunting":
-		_build_hunting_rifle_viewmodel_rig(holder, parts)
 	elif glb_path != "":
 		if not _glb_cache.has(glb_path):
 			_glb_cache[glb_path] = load(glb_path)
@@ -1663,11 +1809,25 @@ func _build_single_weapon_rig(i: int) -> void:
 		if packed:
 			var inst := packed.instantiate()
 			_prep_viewmodel_node(inst)
-			_split_weapon_rig_meshes(inst, i)
+			if i <= 2:
+				_split_weapon_rig_meshes(inst, i)
 			holder.add_child(inst)
 			_collect_weapon_parts(inst, parts)
 			if i == 1:
 				_attach_ar_top_cartridge(inst, parts)
+			var arm_src := int(w.get("arm_src", -1))
+			if arm_src >= 0:
+				if i == 4:
+					# Compound Bow: Left hand grips riser throat (0,0,0), Right hand pinches nock & pulls string!
+					_clone_tactical_arms(1, holder, parts,
+						Vector3(0.015, 0.02, 0.25), Vector3(0.05, -0.08, 0.12),
+						Vector3(0.055, -0.01, 0.18), Vector3(0.06, 0.16, -0.12),
+						true, true)
+					_setup_bow_rig_refs(parts)
+				elif i == 6:
+					_clone_tactical_arms(0, holder, parts, Vector3(0.0, -0.02, 0.08), Vector3.ZERO, Vector3(0.0, -0.02, 0.08), Vector3.ZERO)
+				else:
+					_clone_tactical_arms(1, holder, parts, Vector3(0.0, 0.02, 0.02), Vector3.ZERO, Vector3(0.0, 0.02, 0.02), Vector3.ZERO)
 	if i == 2:
 		_shotgun_shell_rig = _build_shotgun_shell_rig()
 		holder.add_child(_shotgun_shell_rig)
@@ -1753,8 +1913,10 @@ func _reset_weapon_parts() -> void:
 	_apply_idle_bolt_and_cover()
 
 
-func _equip_weapon(idx: int) -> void:
-	if idx < 0 or idx >= WEAPONS.size() or not unlocked_weapons[idx]:
+func _equip_weapon(idx: int, force_preview: bool = false) -> void:
+	if idx < 0 or idx >= WEAPONS.size():
+		return
+	if not force_preview and not unlocked_weapons[idx]:
 		return
 	current_weapon = idx
 	is_reloading = false
@@ -1767,9 +1929,18 @@ func _equip_weapon(idx: int) -> void:
 	_bow_drawing = false
 	_bow_draw = 0.0
 	_bow_hold_time = 0.0
-	_bow_nock_timer = 0.0
+	_bow_release_timer = 0.0
+	if idx == 4 and ammo_in_mag[4] <= 0 and ammo_reserve[4] > 0:
+		_bow_nock_timer = 0.35
+	else:
+		_bow_nock_timer = 0.0
 	_hunting_bolt_timer = 0.0
 	_hunting_bolt_did_sfx = false
+	_sniper_ads_raw = 0.0
+	sniper_scope_alpha = 0.0
+	sniper_iris_scale = 1.0
+	if weapon_rig_holder:
+		weapon_rig_holder.visible = true
 
 	var w: Dictionary = WEAPONS[idx]
 	for i in range(_weapon_rigs.size()):
@@ -1979,7 +2150,6 @@ func acquire_melee_weapon(m_id: String) -> void:
 		if is_instance_valid(_melee_nodes[k]):
 			(_melee_nodes[k] as Node3D).visible = (str(k) == m_id)
 	unlocked_weapons[3] = true
-	_equip_weapon(3)
 
 
 func unlock_and_equip(idx: int) -> void:
@@ -1990,11 +2160,26 @@ func unlock_and_equip(idx: int) -> void:
 		_equip_weapon(idx)
 
 
+func _cycle_owned_weapon(dir: int) -> void:
+	var order := [0, 1, 2, 7, 4, 5, 6, 8, 9, 10]
+	var owned: Array[int] = []
+	for idx: int in order:
+		if idx < unlocked_weapons.size() and unlocked_weapons[idx]:
+			owned.append(idx)
+	if owned.size() <= 1:
+		return
+	var pos := owned.find(current_weapon)
+	if pos < 0:
+		_equip_weapon(owned[0])
+		return
+	_equip_weapon(owned[(pos + dir + owned.size()) % owned.size()])
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not input_enabled or dead or deterministic_camera:
 		return
 	if event is InputEventMouseMotion and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
-		var sens := mouse_sens * (0.62 if is_ads else 1.0)
+		var sens := mouse_sens * (0.35 if (current_weapon == 7 and sniper_scope_alpha > 0.5) else (0.62 if is_ads else 1.0))
 		var dx: float = -event.relative.x * sens
 		var dy: float = -event.relative.y * sens
 		yaw += dx
@@ -2002,27 +2187,22 @@ func _unhandled_input(event: InputEvent) -> void:
 		sway_offset.x = clamp(sway_offset.x + dx * 2.5, -0.065, 0.065)
 		sway_offset.y = clamp(sway_offset.y + dy * 2.5, -0.055, 0.055)
 	elif event is InputEventKey and event.pressed and not event.echo:
-		if event.physical_keycode == KEY_1:
-			_equip_weapon(0)
-		elif event.physical_keycode == KEY_2:
-			_equip_weapon(1)
-		elif event.physical_keycode == KEY_3:
-			_equip_weapon(2)
-		elif event.physical_keycode == KEY_4:
-			_equip_weapon(3)
-		elif event.physical_keycode == KEY_5:
-			_equip_weapon(4)
-		elif event.physical_keycode == KEY_6:
-			_equip_weapon(5)
-		elif event.physical_keycode == KEY_7:
-			_equip_weapon(6)
-		elif event.physical_keycode == KEY_8:
-			_equip_weapon(7)
+		match event.physical_keycode:
+			KEY_1: _equip_weapon(0)
+			KEY_2: _equip_weapon(1)
+			KEY_3: _equip_weapon(2)
+			KEY_4: _equip_weapon(7) # Springfield M1903
+			KEY_5: _equip_weapon(4) # Compound Bow
+			KEY_6: _equip_weapon(5) # MP5A3 Suppressed
+			KEY_7: _equip_weapon(6) # .44 Magnum
+			KEY_8: _equip_weapon(8) # AK-74M
+			KEY_9: _equip_weapon(9) # Benelli M4
+			KEY_0: _equip_weapon(10) # M249 SAW
 	elif event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			_equip_weapon((current_weapon + 1) % WEAPONS.size())
+			_cycle_owned_weapon(1)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			_equip_weapon((current_weapon + WEAPONS.size() - 1) % WEAPONS.size())
+			_cycle_owned_weapon(-1)
 
 
 func _should_show_flashlight_cone() -> bool:
@@ -2084,11 +2264,14 @@ func set_deterministic_view(pos: Vector3, look_yaw: float, look_pitch: float, we
 	pitch = look_pitch
 	rotation.y = yaw
 	head.rotation = Vector3(pitch, 0.0, 0.0)
-	_equip_weapon(weapon_idx)
+	_equip_weapon(weapon_idx, true)
 	is_ads = ads_state
 	_ads_blend = 1.0 if ads_state else 0.0
+	_sniper_ads_raw = 1.0 if (ads_state and current_weapon == 7) else 0.0
+	sniper_scope_alpha = 1.0 if (ads_state and current_weapon == 7) else 0.0
+	sniper_iris_scale = 1.0
 	if weapon_rig_holder:
-		weapon_rig_holder.visible = not (current_weapon == 7 and _ads_blend > 0.72)
+		weapon_rig_holder.visible = not (current_weapon == 7 and sniper_scope_alpha >= 0.92)
 	flashlight_on = light_state
 	flashlight.visible = flashlight_on
 	flashlight_spill.visible = false
@@ -2099,7 +2282,7 @@ func set_deterministic_view(pos: Vector3, look_yaw: float, look_pitch: float, we
 	var w: Dictionary = WEAPONS[current_weapon]
 	weapon_pivot.position = w["ads_pos"] if is_ads else w["hip_pos"]
 	weapon_pivot.rotation = w["ads_rot"] if is_ads else w["hip_rot"]
-	camera.fov = 60.5 if is_ads else 94.0
+	camera.fov = float(w.get("ads_fov", 60.5)) if is_ads else 94.0
 	muzzle_light.light_energy = flash_energy
 	muzzle_light.visible = flash_energy > 0.05
 	muzzle_vm_light.light_energy = minf(flash_energy * 0.45, 1.4)
@@ -2408,11 +2591,29 @@ func _process(delta: float) -> void:
 	weapon_pivot.rotation = weapon_pivot.rotation.lerp(target_rot + melee_r, 1.0 - exp(-delta * (26.0 if _melee_timer > 0.0 else 16.0)))
 
 	var ads_fov_val := float(w.get("ads_fov", 60.5))
-	var bow_fov_off := -7.5 * _bow_draw if bool(w.get("is_bow", false)) else 0.0
-	var target_fov := lerpf(94.0, ads_fov_val, _ads_blend) + _sprint_blend * 5.5 + recoil_fov + bow_fov_off
-	camera.fov = lerpf(camera.fov, target_fov, 1.0 - exp(-delta * 14.0))
-	if weapon_rig_holder:
-		weapon_rig_holder.visible = not (current_weapon == 7 and _ads_blend > 0.72 and not is_reloading and not dead)
+	if current_weapon == 7:
+		# CoD-style reversible sniper scope-in transition (0.34s in / 0.24s out, drops out during bolt throw!)
+		var want_scope := is_ads and not is_reloading and not dead and _hunting_bolt_timer <= 0.15
+		var spd_s := (1.0 / 0.34) if want_scope else (1.0 / 0.24)
+		_sniper_ads_raw = move_toward(_sniper_ads_raw, 1.0 if want_scope else 0.0, delta * spd_s)
+		var s := _sniper_ads_raw * _sniper_ads_raw * (3.0 - 2.0 * _sniper_ads_raw)
+		var fov_s := pow(s, 1.55)
+		camera.fov = lerpf(94.0, ads_fov_val, fov_s) + _sprint_blend * 5.5 + recoil_fov
+		# Snap weapon_pivot cleanly along exact eye-relief path into ocular center
+		weapon_pivot.position = (w["hip_pos"] as Vector3).lerp(w["ads_pos"] as Vector3, s) + reload_pos_off + melee_p + Vector3(0.0, 0.0, recoil_z)
+		weapon_pivot.rotation = (w["hip_rot"] as Vector3).lerp(w["ads_rot"] as Vector3, s) + reload_rot_off + melee_r + Vector3(recoil_vel.y * 1.4, 0.0, 0.0)
+		sniper_scope_alpha = smoothstep(0.74, 0.88, s)
+		sniper_iris_scale = lerpf(0.76, 1.0, smoothstep(0.72, 0.94, s))
+		if weapon_rig_holder:
+			weapon_rig_holder.visible = sniper_scope_alpha < 0.92
+	else:
+		_sniper_ads_raw = 0.0
+		sniper_scope_alpha = 0.0
+		sniper_iris_scale = 1.0
+		var target_fov := lerpf(94.0, ads_fov_val, _ads_blend) + _sprint_blend * 5.5 + recoil_fov
+		camera.fov = lerpf(camera.fov, target_fov, 1.0 - exp(-delta * 14.0))
+		if weapon_rig_holder and not weapon_rig_holder.visible:
+			weapon_rig_holder.visible = true
 
 	_update_flashlight_and_iris(delta)
 
@@ -2524,6 +2725,11 @@ func _update_weapon_mechanics(delta: float) -> void:
 			_pose_part("bolt", Vector3(0.0, 0.0, pull * 0.082), Vector3(0.0, 0.0, lift * 1.05))
 		else:
 			_pose_part("bolt", Vector3.ZERO)
+	elif current_weapon == 8 or current_weapon == 9:
+		_pose_part("bolt", Vector3(0.0, 0.0, bolt_blowback * 0.055))
+	elif current_weapon == 10:
+		_pose_part("charge", Vector3(0.0, 0.0, bolt_blowback * 0.048))
+		_pose_part("top_cover", Vector3.ZERO)
 
 
 func _play_reload_sfx(stream: AudioStream, pitch_sc := 1.0) -> void:
@@ -2563,11 +2769,17 @@ func start_reload() -> bool:
 	elif current_weapon == 1:
 		reload_dur = 2.42 if reload_was_empty else 1.96
 	elif current_weapon == 5:
-		reload_dur = 2.05 if reload_was_empty else 1.55
+		reload_dur = 2.05 if reload_was_empty else 1.58
 	elif current_weapon == 6:
 		reload_dur = 2.15
 	elif current_weapon == 7:
 		reload_dur = 2.35
+	elif current_weapon == 8:
+		reload_dur = 2.25 if reload_was_empty else 1.75
+	elif current_weapon == 9:
+		reload_dur = 1.75
+	elif current_weapon == 10:
+		reload_dur = 3.20
 	else:
 		reload_dur = 1.2 # Managed by shell loop phases
 	return true
@@ -2585,59 +2797,232 @@ func _update_reload(delta: float) -> void:
 		_update_reload_magnum()
 	elif current_weapon == 7:
 		_update_reload_hunting()
+	elif current_weapon == 8:
+		_update_reload_ak74()
+	elif current_weapon == 9:
+		_update_reload_benelli()
+	elif current_weapon == 10:
+		_update_reload_m249()
 	else:
 		_update_reload_shotgun(delta)
 
 
 func _update_reload_mp5() -> void:
 	var t := reload_elapsed
-	var cant_p := Vector3(-0.04, 0.09, -0.05)
-	var cant_r := Vector3(0.24, 0.34, -0.45)
+	var cant_p := Vector3(-0.052, 0.148, -0.062)
+	var cant_r := Vector3(0.28, 0.44, -0.52)
+	var eject_dir := Vector3(-0.05, -0.94, -0.33).normalized()
+	var hand_mag_p := Vector3(0.014, -0.150, 0.148)
+	var hand_mag_r := Vector3(-0.48, 0.28, 0.36)
+	var hand_pouch_p := hand_mag_p + eject_dir * 0.25 + Vector3(-0.04, -0.06, 0.03)
+	var hand_slap_hi := Vector3(-0.085, 0.115, 0.12)
+	var hand_slap_hit := Vector3(-0.045, 0.025, 0.10)
+
 	if t < 0.22:
 		var u := smoothstep(0.0, 0.22, t)
 		reload_pos_off = cant_p * u
 		reload_rot_off = cant_r * u
 		_pose_part("mag", Vector3.ZERO)
-		_pose_part("charge", Vector3(0.0, 0.0, 0.065 * u) if reload_was_empty else Vector3.ZERO)
-	elif t < 0.62:
+		_pose_part("charge", Vector3(0.0, 0.0, 0.068 * u) if reload_was_empty else Vector3.ZERO, Vector3(0.0, 0.0, 0.52 * u) if reload_was_empty else Vector3.ZERO)
+		_pose_part("arm_left", hand_mag_p * u, hand_mag_r * u)
+	elif t < 0.64:
 		if not (reload_flags & 1):
 			reload_flags |= 1
 			_play_reload_sfx(_sfx_mag_out, 1.12)
 		var u := smoothstep(0.22, 0.58, t)
-		reload_pos_off = cant_p + Vector3(0, -0.015 * sin(u * PI), 0)
+		if t >= 0.56 and not (reload_flags & 32):
+			reload_flags |= 32
+			_spawn_dropped_mag(1)
+		reload_pos_off = cant_p + Vector3(0, -0.018 * sin(u * PI), 0)
+		reload_rot_off = cant_r + Vector3(0.05 * sin(u * PI), 0, -0.06 * sin(u * PI))
+		var mp := eject_dir * (0.24 * u)
+		_pose_part("mag", mp, Vector3(0.26 * u, 0.0, -0.10 * u), Vector3.ZERO, u < 0.94)
+		_pose_part("arm_left", hand_mag_p + mp, hand_mag_r + Vector3(-0.14 * u, 0.08 * u, 0.0))
+	elif t < 0.90:
+		var u := smoothstep(0.64, 0.90, t)
+		var dip := sin(u * PI)
+		reload_pos_off = cant_p + Vector3(-0.008 * dip, -0.024 * dip, 0.01)
 		reload_rot_off = cant_r
-		_pose_part("mag", Vector3(0.0, -0.22 * u, 0.03 * u), Vector3(-0.25 * u, 0, 0), Vector3.ZERO, u < 0.92)
-	elif t < 1.22:
-		var u := smoothstep(0.75, 1.15, t)
-		var slap := sin(smoothstep(1.10, 1.22, t) * PI)
-		reload_pos_off = cant_p + Vector3(0, 0.022 * slap, 0)
-		reload_rot_off = cant_r + Vector3(0.06 * slap, 0, 0)
-		_pose_part("mag", Vector3(0.0, lerpf(-0.22, 0.0, u), 0.0), Vector3(lerpf(-0.25, 0.0, u), 0, 0), Vector3.ZERO, t >= 0.72)
-		if t >= 1.02 and not (reload_flags & 2):
+		_pose_part("mag", eject_dir * 0.24, Vector3.ZERO, Vector3.ZERO, false)
+		_pose_part("arm_left", hand_pouch_p.lerp(hand_mag_p + eject_dir * 0.22, smoothstep(0.50, 1.0, u)), hand_mag_r)
+	elif t < 1.26:
+		var u := smoothstep(0.90, 1.16, t)
+		var slap := sin(smoothstep(1.14, 1.26, t) * PI)
+		reload_pos_off = cant_p + Vector3(0, 0.024 * slap, -0.01 * slap)
+		reload_rot_off = cant_r + Vector3(0.07 * slap, 0, 0.05 * slap)
+		var mp := eject_dir * lerpf(0.22, 0.0, u)
+		_pose_part("mag", mp, Vector3(lerpf(0.22, 0.0, u), 0.0, 0.0), Vector3.ZERO, true)
+		_pose_part("arm_left", hand_mag_p + mp + Vector3(0.0, 0.018 * slap, 0.0), hand_mag_r)
+		if t >= 1.06 and not (reload_flags & 2):
 			reload_flags |= 2
 			_play_reload_sfx(_sfx_mag_in, 1.14)
-		if t >= 1.12 and not (reload_flags & 4):
+		if t >= 1.14 and not (reload_flags & 4):
 			reload_flags |= 4
 			_commit_mag_ammo()
 			trauma = minf(1.0, trauma + 0.08)
-	elif reload_was_empty and t < 1.72:
-		# Iconic HK slap!
-		var u := smoothstep(1.22, 1.62, t)
-		var slap_hit := sin(smoothstep(1.42, 1.62, t) * PI)
+	elif reload_was_empty and t < 1.74:
+		# Iconic visible left-hand HK slap!
+		var u := smoothstep(1.26, 1.74, t)
+		var wind := smoothstep(1.26, 1.44, t)
+		var strike := smoothstep(1.44, 1.54, t)
+		var slap_hit := sin(smoothstep(1.44, 1.62, t) * PI)
 		reload_pos_off = cant_p.lerp(Vector3.ZERO, u) + Vector3(0.018 * slap_hit, -0.024 * slap_hit, 0.0)
 		reload_rot_off = cant_r.lerp(Vector3.ZERO, u) + Vector3(0.0, 0.0, -0.18 * slap_hit)
-		_pose_part("charge", Vector3(0.0, 0.0, 0.065 * (1.0 - smoothstep(1.44, 1.54, t))))
-		if t >= 1.44 and not (reload_flags & 8):
+		var ch_u := 1.0 - smoothstep(1.46, 1.52, t)
+		_pose_part("charge", Vector3(0.0, 0.0, 0.068 * ch_u), Vector3(0.0, 0.0, 0.52 * ch_u))
+		var arm_p := hand_mag_p.lerp(hand_slap_hi, wind) if t < 1.44 else hand_slap_hi.lerp(hand_slap_hit, strike)
+		_pose_part("arm_left", arm_p, hand_mag_r.lerp(Vector3(0.18, 0.12, -0.25), wind))
+		if t >= 1.46 and not (reload_flags & 8):
 			reload_flags |= 8
 			_play_reload_sfx(_sfx_bolt, 1.18)
 			trauma = minf(1.0, trauma + 0.11)
 	else:
-		var s0 := 1.72 if reload_was_empty else 1.22
+		var s0 := 1.74 if reload_was_empty else 1.26
 		var u := smoothstep(s0, reload_dur, t)
 		reload_pos_off = (Vector3.ZERO if reload_was_empty else cant_p).lerp(Vector3.ZERO, u)
 		reload_rot_off = (Vector3.ZERO if reload_was_empty else cant_r).lerp(Vector3.ZERO, u)
 		_pose_part("mag", Vector3.ZERO)
 		_pose_part("charge", Vector3.ZERO)
+		var prev_arm := hand_slap_hit if reload_was_empty else hand_mag_p
+		_pose_part("arm_left", prev_arm.lerp(Vector3.ZERO, u), hand_mag_r.lerp(Vector3.ZERO, u))
+	if t >= reload_dur:
+		is_reloading = false
+		_reset_weapon_parts()
+
+
+func _update_reload_ak74() -> void:
+	var t := reload_elapsed
+	var cant_p := Vector3(-0.055, 0.145, -0.065)
+	var cant_r := Vector3(0.28, 0.44, -0.48)
+	var hand_mag_p := Vector3(0.015, -0.155, 0.155)
+	var hand_mag_r := Vector3(-0.52, 0.28, 0.38)
+	if t < 0.24:
+		var u := smoothstep(0.0, 0.24, t)
+		reload_pos_off = cant_p * u
+		reload_rot_off = cant_r * u
+		_pose_part("arm_left", hand_mag_p * u, hand_mag_r * u)
+	elif t < 0.68:
+		if not (reload_flags & 1):
+			reload_flags |= 1
+			_play_reload_sfx(_sfx_mag_out, 0.94)
+		var u := smoothstep(0.24, 0.62, t)
+		if t >= 0.58 and not (reload_flags & 32):
+			reload_flags |= 32
+			_spawn_dropped_mag(1)
+		var mp := Vector3(0.0, -0.24 * u, -0.08 * u)
+		_pose_part("mag", mp, Vector3(0.42 * u, 0, 0), Vector3.ZERO, u < 0.94)
+		_pose_part("arm_left", hand_mag_p + mp, hand_mag_r)
+	elif t < 1.32:
+		var u := smoothstep(0.88, 1.22, t)
+		var rock := sin(smoothstep(1.18, 1.32, t) * PI)
+		reload_pos_off = cant_p + Vector3(0, 0.025 * rock, 0)
+		reload_rot_off = cant_r + Vector3(0.08 * rock, 0, 0)
+		var mp := Vector3(0.0, lerpf(-0.24, 0.0, u), lerpf(-0.08, 0.0, u))
+		_pose_part("mag", mp, Vector3(lerpf(0.42, 0.0, u), 0, 0), Vector3.ZERO, t >= 0.82)
+		_pose_part("arm_left", hand_mag_p + mp, hand_mag_r)
+		if t >= 1.12 and not (reload_flags & 2):
+			reload_flags |= 2
+			_play_reload_sfx(_sfx_mag_in, 0.92)
+		if t >= 1.22 and not (reload_flags & 4):
+			reload_flags |= 4
+			_commit_mag_ammo()
+			trauma = minf(1.0, trauma + 0.10)
+	elif reload_was_empty and t < 1.88:
+		var u := smoothstep(1.32, 1.88, t)
+		var pull := sin(smoothstep(1.42, 1.78, t) * PI)
+		reload_pos_off = cant_p.lerp(Vector3.ZERO, u)
+		reload_rot_off = cant_r.lerp(Vector3(0.10, -0.25, 0.35), sin(u * PI))
+		_pose_part("bolt", Vector3(0.0, 0.0, 0.075 * pull))
+		if t >= 1.48 and not (reload_flags & 8):
+			reload_flags |= 8
+			_play_reload_sfx(_sfx_bolt, 0.92)
+			trauma = minf(1.0, trauma + 0.11)
+	else:
+		var s0 := 1.88 if reload_was_empty else 1.32
+		var u := smoothstep(s0, reload_dur, t)
+		reload_pos_off = (Vector3.ZERO if reload_was_empty else cant_p).lerp(Vector3.ZERO, u)
+		reload_rot_off = (Vector3.ZERO if reload_was_empty else cant_r).lerp(Vector3.ZERO, u)
+		_pose_part("mag", Vector3.ZERO)
+		_pose_part("bolt", Vector3.ZERO)
+		_pose_part("arm_left", hand_mag_p.lerp(Vector3.ZERO, u), hand_mag_r.lerp(Vector3.ZERO, u))
+	if t >= reload_dur:
+		is_reloading = false
+		_reset_weapon_parts()
+
+
+func _update_reload_benelli() -> void:
+	var t := reload_elapsed
+	var cant_p := Vector3(-0.03, 0.095, -0.05)
+	var cant_r := Vector3(0.28, 0.22, -1.05)
+	var hand_p := Vector3(0.025, -0.08, 0.14)
+	if t < 0.28:
+		var u := smoothstep(0.0, 0.28, t)
+		reload_pos_off = cant_p * u
+		reload_rot_off = cant_r * u
+		_pose_part("arm_left", hand_p * u)
+	elif t < 1.38:
+		var u := smoothstep(0.28, 1.38, t)
+		var push := absf(sin(u * PI * 3.0))
+		reload_pos_off = cant_p + Vector3(0.0, 0.016 * push, 0.0)
+		reload_rot_off = cant_r
+		_pose_part("arm_left", hand_p + Vector3(0.0, 0.045 * push, -0.03 * push))
+		if t >= 0.52 and not (reload_flags & 1):
+			reload_flags |= 1; _play_reload_sfx(_sfx_shell_in, 1.02)
+		if t >= 0.88 and not (reload_flags & 2):
+			reload_flags |= 2; _play_reload_sfx(_sfx_shell_in, 1.06)
+		if t >= 1.22 and not (reload_flags & 4):
+			reload_flags |= 4; _play_reload_sfx(_sfx_shell_in, 1.10); _commit_mag_ammo()
+	else:
+		var u := smoothstep(1.38, reload_dur, t)
+		reload_pos_off = cant_p.lerp(Vector3.ZERO, u)
+		reload_rot_off = cant_r.lerp(Vector3.ZERO, u)
+		_pose_part("arm_left", hand_p.lerp(Vector3.ZERO, u))
+	if t >= reload_dur:
+		is_reloading = false
+		_reset_weapon_parts()
+
+
+func _update_reload_m249() -> void:
+	var t := reload_elapsed
+	var cant_p := Vector3(-0.04, 0.09, -0.04)
+	var cant_r := Vector3(0.20, 0.26, -0.28)
+	var hand_p := Vector3(0.02, -0.14, 0.14)
+	if t < 0.45:
+		var u := smoothstep(0.0, 0.45, t)
+		reload_pos_off = cant_p * u
+		reload_rot_off = cant_r * u
+		_pose_part("top_cover", Vector3.ZERO, Vector3(1.15 * smoothstep(0.15, 0.45, t), 0.0, 0.0))
+		if t >= 0.22 and not (reload_flags & 1):
+			reload_flags |= 1; _play_reload_sfx(_sfx_bolt, 0.72)
+	elif t < 1.15:
+		var u := smoothstep(0.45, 1.05, t)
+		_pose_part("top_cover", Vector3.ZERO, Vector3(1.15, 0.0, 0.0))
+		var mp := Vector3(-0.04 * u, -0.24 * u, 0.0)
+		_pose_part("mag", mp, Vector3.ZERO, Vector3.ZERO, u < 0.92)
+		_pose_part("arm_left", hand_p + mp)
+		if t >= 0.55 and not (reload_flags & 2):
+			reload_flags |= 2; _play_reload_sfx(_sfx_mag_out, 0.78)
+	elif t < 2.25:
+		var u := smoothstep(1.35, 2.05, t)
+		_pose_part("top_cover", Vector3.ZERO, Vector3(1.15, 0.0, 0.0))
+		var mp := Vector3(lerpf(-0.04, 0.0, u), lerpf(-0.24, 0.0, u), 0.0)
+		_pose_part("mag", mp, Vector3.ZERO, Vector3.ZERO, t >= 1.30)
+		_pose_part("arm_left", hand_p + mp)
+		if t >= 1.92 and not (reload_flags & 4):
+			reload_flags |= 4; _play_reload_sfx(_sfx_mag_in, 0.76); _commit_mag_ammo(); trauma = minf(1.0, trauma + 0.12)
+	elif t < 2.85:
+		var u := smoothstep(2.25, 2.75, t)
+		_pose_part("top_cover", Vector3.ZERO, Vector3(1.15 * (1.0 - smoothstep(2.25, 2.52, t)), 0.0, 0.0))
+		_pose_part("arm_left", hand_p.lerp(Vector3.ZERO, u))
+		if t >= 2.50 and not (reload_flags & 8):
+			reload_flags |= 8; _play_reload_sfx(_sfx_bolt, 0.80); trauma = minf(1.0, trauma + 0.14)
+	else:
+		var u := smoothstep(2.85, reload_dur, t)
+		reload_pos_off = cant_p.lerp(Vector3.ZERO, u)
+		reload_rot_off = cant_r.lerp(Vector3.ZERO, u)
+		_pose_part("top_cover", Vector3.ZERO)
+		_pose_part("mag", Vector3.ZERO)
+		_pose_part("arm_left", Vector3.ZERO)
 	if t >= reload_dur:
 		is_reloading = false
 		_reset_weapon_parts()
@@ -3085,37 +3470,89 @@ func _align_bow_string_segment(seg: Node3D, p0: Vector3, p1: Vector3) -> void:
 func _pose_bow_rig() -> void:
 	if _bow_parts.is_empty():
 		return
-	var d := _bow_draw
+	var d_vis := 1.0 - pow(1.0 - _bow_draw, 1.65)
+	var vib := 0.0
+	if _bow_release_timer > 0.0:
+		var rt := 0.14 - _bow_release_timer
+		d_vis = maxf(d_vis, (1.0 - smoothstep(0.0, 0.04, rt)) * 0.65)
+		vib = sin(rt * 95.0) * 0.004 * exp(-rt * 28.0)
+
 	var limb_top: Node3D = _bow_parts.get("limb_top")
 	var limb_bot: Node3D = _bow_parts.get("limb_bot")
+	var cam_top: Node3D = _bow_parts.get("cam_top")
+	var cam_bot: Node3D = _bow_parts.get("cam_bot")
 	var str_top: Node3D = _bow_parts.get("str_top")
 	var str_bot: Node3D = _bow_parts.get("str_bot")
 	var arrow: Node3D = _bow_parts.get("arrow")
+	var arm_draw: Node3D = _bow_parts.get("arm_draw")
+
 	if is_instance_valid(limb_top):
-		limb_top.rotation.x = 0.18 * d
+		limb_top.rotation.x = 0.15 * d_vis
 	if is_instance_valid(limb_bot):
-		limb_bot.rotation.x = -0.18 * d
-	var nock_pos := Vector3(-0.014, 0.032, -0.105 + 0.165 * d)
-	var top_cam_p := limb_top.transform * Vector3(0.0, 0.155, 0.058) if is_instance_valid(limb_top) else Vector3(-0.022, 0.27, -0.107)
-	var bot_cam_p := limb_bot.transform * Vector3(0.0, -0.155, 0.058) if is_instance_valid(limb_bot) else Vector3(-0.022, -0.25, -0.107)
+		limb_bot.rotation.x = -0.15 * d_vis
+	if is_instance_valid(cam_top):
+		cam_top.rotation.x = 0.66 * d_vis
+	if is_instance_valid(cam_bot):
+		cam_bot.rotation.x = -0.66 * d_vis
+
+	# Sequential glowing charge bars (Bocek-style sight feedback!)
+	var thresholds: Array[float] = [0.22, 0.48, 0.74, 0.96]
+	for bi in range(_bow_charge_mats.size()):
+		var lit: bool = _bow_draw >= thresholds[mini(bi, 3)]
+		_bow_charge_mats[bi].emission_energy_multiplier = (4.2 if _bow_draw >= 0.96 else 2.8) if lit else 0.15
+
+	var nock_rest := Vector3(0.012, 0.036, 0.068)
+	var nock_full := Vector3(0.032, 0.024, 0.215)
+	var nock_pos := nock_rest.lerp(nock_full, d_vis) + Vector3(vib, 0.0, 0.0)
+	var top_cam_p := limb_top.transform * Vector3(0.0, 0.150, 0.080) if is_instance_valid(limb_top) else Vector3(0.0, 0.315, 0.068)
+	var bot_cam_p := limb_bot.transform * Vector3(0.0, -0.150, 0.080) if is_instance_valid(limb_bot) else Vector3(0.0, -0.305, 0.068)
 	_align_bow_string_segment(str_top, top_cam_p, nock_pos)
 	_align_bow_string_segment(str_bot, bot_cam_p, nock_pos)
-	if is_instance_valid(arrow):
-		var has_arrow := (ammo_in_mag[4] > 0) and (_bow_nock_timer <= 0.0)
-		arrow.visible = has_arrow
-		arrow.position = Vector3(-0.008, 0.032, -0.21 + 0.165 * d)
-	var arm_draw: Node3D = _bow_parts.get("arm_draw")
-	if is_instance_valid(arm_draw):
-		var rest_p: Vector3 = _w_rest_pos.get(arm_draw.get_instance_id(), Vector3.ZERO)
-		arm_draw.position = rest_p + Vector3(0.0, 0.015 * d, 0.14 * d)
+
+	var arrow_rest := Vector3(-0.030, 0.036, -0.055)
+	if _bow_nock_timer > 0.0:
+		# Quiver re-nock sweep (0.35s)
+		var nu := clampf(1.0 - _bow_nock_timer / 0.35, 0.0, 1.0)
+		var quiv_p := Vector3(0.095, -0.12, 0.12)
+		if is_instance_valid(arrow):
+			arrow.visible = nu >= 0.30
+			if arrow.visible:
+				var au := smoothstep(0.30, 0.85, nu)
+				arrow.position = quiv_p.lerp(nock_rest, au)
+				if arrow.is_inside_tree():
+					arrow.look_at(arrow.global_position + (arrow.get_parent() as Node3D).global_transform.basis * (arrow_rest - arrow.position).normalized(), Vector3.UP)
+		if is_instance_valid(arm_draw):
+			var rp: Vector3 = _w_rest_pos.get(arm_draw.get_instance_id(), Vector3.ZERO)
+			var reach := sin(nu * PI)
+			arm_draw.position = rp + Vector3(0.07 * reach, -0.14 * reach, 0.08 * reach)
+	else:
+		if is_instance_valid(arrow):
+			var has_arrow := ammo_in_mag[4] > 0
+			arrow.visible = has_arrow
+			arrow.position = nock_pos
+			var dir_l := (arrow_rest - nock_pos).normalized()
+			if dir_l.length_squared() > 0.01:
+				var up_r := Vector3.UP
+				var right_l := dir_l.cross(up_r).normalized()
+				var up_l := right_l.cross(dir_l).normalized()
+				arrow.basis = Basis(right_l, up_l, -dir_l)
+		if is_instance_valid(arm_draw):
+			var rp: Vector3 = _w_rest_pos.get(arm_draw.get_instance_id(), Vector3.ZERO)
+			arm_draw.position = rp + Vector3(0.02 * d_vis, -0.01 * d_vis, 0.14 * d_vis)
 
 
 func _update_bow_input(delta: float) -> void:
+	if _bow_release_timer > 0.0:
+		_bow_release_timer = maxf(0.0, _bow_release_timer - delta)
 	if _bow_nock_timer > 0.0:
 		_bow_nock_timer = maxf(0.0, _bow_nock_timer - delta)
 		if _bow_nock_timer <= 0.0 and ammo_in_mag[4] <= 0 and ammo_reserve[4] > 0:
 			ammo_in_mag[4] = 1
 			ammo_reserve[4] -= 1
+			if sfx_misc and _sfx_shell_in:
+				sfx_misc.stream = _sfx_shell_in
+				sfx_misc.pitch_scale = 1.45
+				sfx_misc.play()
 	var holding := Input.is_action_pressed("fire")
 	if holding and not _bow_drawing and ammo_in_mag[4] > 0 and _bow_nock_timer <= 0.0 and fire_cd <= 0.0:
 		_bow_drawing = true
@@ -3127,17 +3564,18 @@ func _update_bow_input(delta: float) -> void:
 			sfx_reload.play()
 	elif _bow_drawing:
 		if holding:
-			_bow_draw = minf(1.0, _bow_draw + delta / 0.60)
+			_bow_draw = minf(1.0, _bow_draw + delta / 0.58)
 			if _bow_draw >= 0.99:
 				_bow_hold_time += delta
-				sway_offset.x = clampf(sway_offset.x + sin(_bow_hold_time * 3.4) * delta * 0.022, -0.065, 0.065)
-				sway_offset.y = clampf(sway_offset.y + cos(_bow_hold_time * 2.7) * delta * 0.018, -0.055, 0.055)
+				sway_offset.x = clampf(sway_offset.x + sin(_bow_hold_time * 3.4) * delta * 0.020, -0.065, 0.065)
+				sway_offset.y = clampf(sway_offset.y + cos(_bow_hold_time * 2.7) * delta * 0.016, -0.055, 0.055)
 		else:
 			var power := _bow_draw
 			_bow_drawing = false
 			_bow_draw = 0.0
 			_bow_hold_time = 0.0
 			if power >= 0.16:
+				_bow_release_timer = 0.14
 				_fire_bow_arrow(power)
 
 
@@ -3494,7 +3932,7 @@ func fire_weapon() -> bool:
 				muzzle_smoke.emit_particle(smoke_xf, sv, Color.WHITE, Color.WHITE, GPUParticles3D.EMIT_FLAG_POSITION | GPUParticles3D.EMIT_FLAG_VELOCITY)
 
 	if current_weapon != 2 and current_weapon != 6 and current_weapon != 7:
-		_eject_brass_casing(w, false)
+		_eject_brass_casing(w, current_weapon == 9)
 	bolt_blowback = 1.0
 	if current_weapon == 1:
 		_m16_dust_open = true
@@ -3667,7 +4105,7 @@ func take_damage(amount: float, from_pos: Vector3 = Vector3.ZERO) -> void:
 		emit_signal("player_died")
 
 
-func heal_full() -> void:
+func heal_full(reset_unlocks: bool = false) -> void:
 	health = max_health
 	dead = false
 	damage_flash = 0.0
@@ -3675,6 +4113,13 @@ func heal_full() -> void:
 	hit_glitch = 0.0
 	hit_ca_boost = 0.0
 	head.rotation.z = 0.0
+	if reset_unlocks:
+		unlocked_weapons = [true, false, false, true, false, false, false, false, false, false, false]
+		equipped_melee_id = "knife"
+		for k in _melee_nodes.keys():
+			if is_instance_valid(_melee_nodes[k]):
+				(_melee_nodes[k] as Node3D).visible = (str(k) == "knife")
+		_equip_weapon(0)
 	for i in range(WEAPONS.size()):
 		ammo_in_mag[i] = WEAPONS[i]["mag_size"]
 		ammo_reserve[i] = WEAPONS[i]["reserve_max"]

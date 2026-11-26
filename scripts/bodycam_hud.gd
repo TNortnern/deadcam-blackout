@@ -49,9 +49,10 @@ class TacticalHitmarker extends Control:
 
 class SniperScopeOverlay extends Control:
 	var scope_alpha: float = 0.0
+	var iris_scale: float = 1.0
 	var sway_px: Vector2 = Vector2.ZERO
 
-	func update_scope(alpha: float, sway: Vector2) -> void:
+	func update_scope(alpha: float, iris: float, sway: Vector2) -> void:
 		var clamped := clampf(alpha, 0.0, 1.0)
 		var want_vis := clamped > 0.01
 		if visible != want_vis:
@@ -59,6 +60,7 @@ class SniperScopeOverlay extends Control:
 		if not want_vis:
 			return
 		scope_alpha = clamped
+		iris_scale = clampf(iris, 0.65, 1.0)
 		sway_px = sway
 		queue_redraw()
 
@@ -69,7 +71,7 @@ class SniperScopeOverlay extends Control:
 		if sz.x < 10.0 or sz.y < 10.0:
 			return
 		var center := sz * 0.5 + sway_px
-		var radius := minf(sz.x, sz.y) * 0.435
+		var radius := minf(sz.x, sz.y) * 0.435 * iris_scale
 		var a := scope_alpha
 		var black := Color(0.008, 0.010, 0.012, a)
 
@@ -232,7 +234,7 @@ func _ready() -> void:
 	if hit_marker:
 		hit_marker.visible = false
 	if scope_overlay:
-		scope_overlay.update_scope(0.0, Vector2.ZERO)
+		scope_overlay.update_scope(0.0, 1.0, Vector2.ZERO)
 	add_child(hit_marker)
 
 	# Top-left live telemetry (toggle with F3)
@@ -300,7 +302,7 @@ func _build_title_overlay() -> void:
 	vb.add_child(t)
 
 	var sub := Label.new()
-	sub.text = "ASYLUM  •  CATACOMB TUNNELS  •  WINTER COURTYARD\nWASD Move | LMB Fire / Hold Bow | RMB Aim | V Quick Melee | R Reload | F Flashlight | E Interact | 1-8 Weapons | F9 Day/Night | F8 Quality"
+	sub.text = "ASYLUM  •  CATACOMB TUNNELS  •  WINTER COURTYARD  •  FROZEN SAWMILL\nWASD Move | LMB Fire / Hold Bow | RMB Aim | V Quick Melee | R Reload | F Flashlight | E Interact / Mystery Box | 1-0 Weapons | F9 Day/Night"
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.add_theme_font_size_override("font_size", 14)
 	sub.add_theme_color_override("font_color", Color(0.75, 0.78, 0.76))
@@ -480,7 +482,7 @@ func set_capture_mode(clean: bool) -> void:
 	if hit_marker:
 		hit_marker.visible = false
 	if scope_overlay:
-		scope_overlay.update_scope(0.0, Vector2.ZERO)
+		scope_overlay.update_scope(0.0, 1.0, Vector2.ZERO)
 	post_mat.set_shader_parameter("fixed_time", 42.0 if clean else -1.0)
 	post_mat.set_shader_parameter("glitch_amount", 0.0)
 	post_mat.set_shader_parameter("yaw_vel", 0.0)
@@ -509,8 +511,10 @@ func update_hud(delta: float, player: PlayerBodycam, wave: int, points: int, zom
 	post_mat.set_shader_parameter("hit_ca_boost", player.hit_ca_boost)
 	post_mat.set_shader_parameter("hit_dir_screen", player.hit_dir_screen)
 	if scope_overlay:
-		var scope_a := smoothstep(0.45, 0.88, player._ads_blend) if (player.current_weapon == 7 and not player.dead and not player.is_reloading) else 0.0
-		scope_overlay.update_scope(scope_a, Vector2(-player.sway_offset.x * 260.0, player.sway_offset.y * 260.0))
+		var sa: float = player.sniper_scope_alpha if not player.dead else 0.0
+		var ir: float = player.sniper_iris_scale if not player.dead else 1.0
+		scope_overlay.update_scope(sa, ir, Vector2(-player.sway_offset.x * 260.0, player.sway_offset.y * 260.0))
+		post_mat.set_shader_parameter("fisheye_strength", lerpf(0.212, 0.035, sa))
 
 	if not rec_label.visible:
 		return
@@ -530,11 +534,12 @@ func update_hud(delta: float, player: PlayerBodycam, wave: int, points: int, zom
 	rec_label.text = "REC %s  2026-11-24 23:%02d:%02d  •  %d FPS\nBODYCAM-04 // WAVE %02d" % [blink, (41 + mins) % 60, sec % 60, fps, wave]
 
 	var wname: String = player.get_current_weapon_name() if player.has_method("get_current_weapon_name") else PlayerBodycam.WEAPONS[player.current_weapon]["name"]
+	var wkey: String = str(PlayerBodycam.WEAPONS[player.current_weapon].get("key", str(player.current_weapon + 1)))
 	var is_melee: bool = bool(PlayerBodycam.WEAPONS[player.current_weapon].get("is_melee", false))
 	var reload_tag := " [RELOADING]" if player.is_reloading else ""
 	var ammo_str := "MELEE" if is_melee else ("%02d / %03d" % [mag, res])
-	stats_label.text = "%s%s  %s\nHP %d%%  •  PTS %d  •  HOSTILES %d" % [
-		wname, reload_tag, ammo_str, int(player.health), points, zombies_left
+	stats_label.text = "[%s] %s%s  %s\nHP %d%%  •  PTS %d  •  HOSTILES %d" % [
+		wkey, wname, reload_tag, ammo_str, int(player.health), points, zombies_left
 	]
 
 	var obj := player.get_looked_interactable()
