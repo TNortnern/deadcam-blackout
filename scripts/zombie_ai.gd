@@ -1,0 +1,1785 @@
+extends CharacterBody3D
+class_name ZombieAI
+
+enum Variant { TACTICAL_SOLDIER, ASYLUM_PATIENT, RUNNER }
+enum State { SPAWNING, CHASE, WINDUP, STRIKE, RECOVER, STAGGER, TRIPPED, DEAD }
+
+@export var variant: Variant = Variant.TACTICAL_SOLDIER
+@export var max_health: float = 110.0
+@export var move_speed: float = 2.25
+@export var attack_damage: float = 22.0
+
+var health: float = 110.0
+var dead: bool = false
+var state: State = State.CHASE
+var target: Node3D = null
+var anim_phase: float = 0.0
+var attack_cd: float = 0.0
+var state_timer: float = 0.0
+var growl_timer: float = 3.0
+var pain_sfx_cd: float = 0.0
+var deterministic_pose: bool = false
+
+# Poise & locational damage state
+var poise: float = 0.0
+var poise_max: float = 60.0
+var poise_immunity: float = 0.0
+var left_leg_dmg: float = 0.0
+var right_leg_dmg: float = 0.0
+var crippled_side: int = 0 # -1 left, +1 right, 0 none
+var disabled_arm_side: int = 0 # -1 left, +1 right
+var disabled_arm_timer: float = 0.0
+
+# Melee telegraph state
+var attack_side: int = 1 # -1 left arm, +1 right arm
+var strike_hit_done: bool = false
+var strike_dir: Vector3 = Vector3.FORWARD
+var has_attack_token: bool = false
+var _windup_dur: float = 0.48
+var _strike_dur: float = 0.15
+var _recover_dur: float = 0.58
+var _trigger_range: float = 1.90
+var _lunge_speed: float = 4.2
+var _chest_armor_mult: float = 1.0
+var _impulse_scale: float = 1.0
+var _model_scale_val: float = 1.0
+var _is_tactical: bool = false
+
+# Staggered navigation state
+var _nav_ray_tick: int = 0
+var _cached_steer_dir: Vector3 = Vector3.FORWARD
+
+# Ragdoll & corpse settlement state
+var death_floor_y: float = 0.0
+var death_floor_normal: Vector3 = Vector3.UP
+var death_landed: bool = false
+var death_settled: bool = false
+var dead_age: float = 0.0
+var _ragdoll_active: bool = false
+var _ragdoll_age: float = 0.0
+var _ragdoll_settle_timer: float = 0.0
+var _ragdoll_sim: PhysicalBoneSimulator3D = null
+var _pb_entries: Array[Dictionary] = []
+var _pb_hips: PhysicalBone3D = null
+var _pb_spine2: PhysicalBone3D = null
+var _pb_head: PhysicalBone3D = null
+var _pb_l_arm: PhysicalBone3D = null
+var _pb_r_arm: PhysicalBone3D = null
+var _pb_l_leg: PhysicalBone3D = null
+var _pb_r_leg: PhysicalBone3D = null
+var _pending_impulse_frames: int = 0
+var _pending_impulses: Dictionary = {}
+
+var rig_root: Node3D
+var model_inst: Node3D
+var anim_player: AnimationPlayer
+var skeleton: Skeleton3D
+var sk_mod: SkeletonModifier3D
+var _ragdoll_unstuck_done: bool = false
+var _merged_mesh_inst: MeshInstance3D = null
+
+var root_joint_bone := -1
+var hips_bone := -1
+var spine_bone := -1
+var spine1_bone := -1
+var spine2_bone := -1
+var neck_bone := -1
+var head_bone := -1
+var l_shoulder_bone := -1
+var l_arm_bone := -1
+var l_forearm_bone := -1
+var l_hand_bone := -1
+var r_shoulder_bone := -1
+var r_arm_bone := -1
+var r_forearm_bone := -1
+var r_hand_bone := -1
+var l_upleg_bone := -1
+var l_leg_bone := -1
+var l_foot_bone := -1
+var r_upleg_bone := -1
+var r_leg_bone := -1
+var r_foot_bone := -1
+
+var growl_player: AudioStreamPlayer3D
+var impact_audio: AudioStreamPlayer3D
+var _pellet_impulse_accum: float = 0.0
+
+signal died(zombie: ZombieAI, was_headshot: bool)
+
+const MAX_CORPSES := 10
+const MAX_ACTIVE_RAGDOLLS := 4
+const BAKED_PATHS := {
+	Variant.TACTICAL_SOLDIER: "res://assets/baked/zombie_tactical.scn",
+	Variant.ASYLUM_PATIENT: "res://assets/baked/zombie_patient.scn",
+	Variant.RUNNER: "res://assets/baked/zombie_runner.scn",
+}
+
+var _shadow_meshes: Array[GeometryInstance3D] = []
+var _body_meshes: Array[MeshInstance3D] = []
+var _shadow_tick: int = 0
+
+static var _baked_scene_cache: Dictionary = {}
+
+static var _scene_cache: Dictionary = {}
+static var _norm_cache: Dictionary = {} # Variant -> {meshes, skins, bone_rests, anims}
+static var _growl_streams: Array[AudioStream] = []
+static var _snarl_streams: Array[AudioStream] = []
+static var _pain_streams: Array[AudioStream] = []
+static var _death_stream: AudioStream = null
+static var _body_fall_stream: AudioStream = null
+static var _audio_loaded: bool = false
+static var _corpses: Array[ZombieAI] = []
+static var _active_ragdolls: Array[ZombieAI] = []
+
+
+class ZombieSkeletonModifier extends SkeletonModifier3D:
+	var zombie: ZombieAI
+	var _bones_ready: bool = false
+	var _pelvis_spring_y: float = 0.0
+	var _pelvis_vel_y: float = 0.0
+	var _spring_rot: Dictionary = {} # bone_idx -> Vector3
+	var _spring_vel: Dictionary = {} # bone_idx -> Vector3
+
+	func setup(owner_z: ZombieAI) -> void:
+		zombie = owner_z
+		_bones_ready = true
+
+	func add_spring_impulse(bone_idx: int, char_rot_vel: Vector3) -> void:
+		if bone_idx < 0:
+			return
+		var v: Vector3 = _spring_vel.get(bone_idx, Vector3.ZERO)
+		v += char_rot_vel
+		_spring_vel[bone_idx] = v.limit_length(16.0)
+
+	func add_pelvis_drop(vel_y: float) -> void:
+		_pelvis_vel_y = clampf(_pelvis_vel_y + vel_y, -3.5, 1.5)
+
+	func _rotate_bone_char(sk: Skeleton3D, rig_basis: Basis, sk_world_basis: Basis, bone_idx: int, angles: Vector3) -> void:
+		if bone_idx < 0 or angles.length_squared() < 1e-6:
+			return
+		var parent_idx := sk.get_bone_parent(bone_idx)
+		var p_world_basis: Basis
+		if parent_idx >= 0:
+			p_world_basis = (sk_world_basis * sk.get_bone_global_pose(parent_idx).basis).orthonormalized()
+		else:
+			p_world_basis = sk_world_basis
+		var inv_p := p_world_basis.inverse()
+
+		var delta_q := Quaternion.IDENTITY
+		if absf(angles.x) > 0.0005:
+			var ax := (inv_p * (rig_basis * Vector3.RIGHT)).normalized()
+			delta_q = Quaternion(ax, angles.x) * delta_q
+		if absf(angles.y) > 0.0005:
+			var ay := (inv_p * (rig_basis * Vector3.UP)).normalized()
+			delta_q = Quaternion(ay, angles.y) * delta_q
+		if absf(angles.z) > 0.0005:
+			var az := (inv_p * (rig_basis * Vector3.FORWARD)).normalized()
+			delta_q = Quaternion(az, angles.z) * delta_q
+		sk.set_bone_pose_rotation(bone_idx, delta_q * sk.get_bone_pose_rotation(bone_idx))
+
+	func _process_modification_with_delta(delta: float) -> void:
+		if not _bones_ready or zombie == null or zombie.dead or zombie.deterministic_pose:
+			return
+		var sk := get_skeleton()
+		if sk == null:
+			return
+
+		var has_springs := not _spring_vel.is_empty() or not _spring_rot.is_empty() or absf(_pelvis_spring_y) > 0.002 or absf(_pelvis_vel_y) > 0.01
+		var is_attack := zombie.state == State.WINDUP or zombie.state == State.STRIKE or zombie.state == State.RECOVER
+		var has_limp := zombie.crippled_side != 0 or zombie.disabled_arm_timer > 0.0
+		if not has_springs and not is_attack and not has_limp:
+			return
+
+		var d := clampf(delta, 0.0001, 0.05)
+
+		if has_springs:
+			var k_stiff := 320.0
+			var k_damp := 14.5
+			var to_erase: Array[int] = []
+			for b_key in _spring_vel.keys():
+				var b: int = b_key
+				var pos_v: Vector3 = _spring_rot.get(b, Vector3.ZERO)
+				var vel_v: Vector3 = _spring_vel[b]
+				var acc := -k_stiff * pos_v - k_damp * vel_v
+				vel_v += acc * d
+				pos_v += vel_v * d
+				pos_v = Vector3(
+					clampf(pos_v.x, -0.95, 0.95),
+					clampf(pos_v.y, -0.95, 0.95),
+					clampf(pos_v.z, -0.95, 0.95)
+				)
+				if pos_v.length_squared() < 1e-5 and vel_v.length_squared() < 1e-4:
+					to_erase.append(b)
+				else:
+					_spring_rot[b] = pos_v
+					_spring_vel[b] = vel_v
+			for eb in to_erase:
+				_spring_rot.erase(eb)
+				_spring_vel.erase(eb)
+
+			var p_acc := -220.0 * _pelvis_spring_y - 16.0 * _pelvis_vel_y
+			_pelvis_vel_y += p_acc * d
+			_pelvis_spring_y = clampf(_pelvis_spring_y + _pelvis_vel_y * d, -0.28, 0.12)
+
+		if zombie.hips_bone >= 0 and (absf(_pelvis_spring_y) > 0.002 or zombie.crippled_side != 0):
+			var hp := sk.get_bone_pose_position(zombie.hips_bone)
+			var m_drop := _pelvis_spring_y
+			if zombie.crippled_side != 0:
+				m_drop -= (0.065 + 0.055 * maxf(0.0, sin(zombie.anim_phase)))
+			sk.set_bone_pose_position(zombie.hips_bone, Vector3(0.0, hp.y + m_drop, 0.0))
+
+		var atk_spine := Vector3.ZERO
+		var atk_arm_r := Vector3.ZERO
+		var atk_arm_l := Vector3.ZERO
+		var atk_fore_r := Vector3.ZERO
+		var atk_fore_l := Vector3.ZERO
+
+		if zombie.state == State.WINDUP:
+			var wu := clampf(1.0 - zombie.state_timer / maxf(zombie._windup_dur, 0.01), 0.0, 1.0)
+			var e := sin(wu * PI * 0.5)
+			var s := float(zombie.attack_side)
+			atk_spine = Vector3(-0.30 * e, -0.40 * s * e, -0.10 * s * e)
+			if s > 0:
+				atk_arm_r = Vector3(-0.88 * e, -0.25 * e, 0.35 * e)
+				atk_fore_r = Vector3(-0.55 * e, 0.0, 0.0)
+				atk_arm_l = Vector3(-0.20 * e, 0.12 * e, -0.18 * e)
+			else:
+				atk_arm_l = Vector3(-0.88 * e, 0.25 * e, -0.35 * e)
+				atk_fore_l = Vector3(-0.55 * e, 0.0, 0.0)
+				atk_arm_r = Vector3(-0.20 * e, -0.12 * e, 0.18 * e)
+		elif zombie.state == State.STRIKE:
+			var st := clampf(1.0 - zombie.state_timer / maxf(zombie._strike_dur, 0.01), 0.0, 1.0)
+			var s := float(zombie.attack_side)
+			var swing := lerpf(-1.0, 1.15, smoothstep(0.0, 0.72, st))
+			atk_spine = Vector3(0.42 * maxf(0.0, swing), 0.55 * s * swing, 0.18 * s)
+			if s > 0:
+				atk_arm_r = Vector3(-1.15 + swing * 1.95, 0.45 * swing, 0.30 - swing * 0.65)
+				atk_fore_r = Vector3(-0.35, 0.0, 0.0)
+			else:
+				atk_arm_l = Vector3(-1.15 + swing * 1.95, -0.45 * swing, -0.30 + swing * 0.65)
+				atk_fore_l = Vector3(-0.35, 0.0, 0.0)
+		elif zombie.state == State.RECOVER:
+			var rc := clampf(zombie.state_timer / maxf(zombie._recover_dur, 0.01), 0.0, 1.0)
+			var s := float(zombie.attack_side)
+			atk_spine = Vector3(0.32 * rc, 0.35 * s * rc, 0.0)
+			if s > 0:
+				atk_arm_r = Vector3(0.75 * rc, 0.25 * rc, -0.25 * rc)
+			else:
+				atk_arm_l = Vector3(0.75 * rc, -0.25 * rc, 0.25 * rc)
+
+		var leg_l_mod := Vector3.ZERO
+		var leg_r_mod := Vector3.ZERO
+		if zombie.crippled_side < 0:
+			var drag := maxf(0.0, sin(zombie.anim_phase))
+			leg_l_mod = Vector3(0.28 + 0.35 * drag, 0.0, -0.14)
+		elif zombie.crippled_side > 0:
+			var drag := maxf(0.0, sin(zombie.anim_phase))
+			leg_r_mod = Vector3(0.28 + 0.35 * drag, 0.0, 0.14)
+
+		var arm_droop_l := Vector3(0.65, 0.0, 0.45) if (zombie.disabled_arm_timer > 0.0 and zombie.disabled_arm_side < 0) else Vector3.ZERO
+		var arm_droop_r := Vector3(0.65, 0.0, -0.45) if (zombie.disabled_arm_timer > 0.0 and zombie.disabled_arm_side > 0) else Vector3.ZERO
+
+		var rig_basis := zombie.rig_root.global_transform.basis.orthonormalized()
+		var sk_world_basis := sk.global_transform.basis.orthonormalized()
+
+		_rotate_bone_char(sk, rig_basis, sk_world_basis, zombie.spine_bone, _spring_rot.get(zombie.spine_bone, Vector3.ZERO) + atk_spine * 0.35)
+		_rotate_bone_char(sk, rig_basis, sk_world_basis, zombie.spine1_bone, _spring_rot.get(zombie.spine1_bone, Vector3.ZERO) + atk_spine * 0.45)
+		_rotate_bone_char(sk, rig_basis, sk_world_basis, zombie.spine2_bone, _spring_rot.get(zombie.spine2_bone, Vector3.ZERO) + atk_spine * 0.65)
+		_rotate_bone_char(sk, rig_basis, sk_world_basis, zombie.neck_bone, _spring_rot.get(zombie.neck_bone, Vector3.ZERO))
+		_rotate_bone_char(sk, rig_basis, sk_world_basis, zombie.head_bone, _spring_rot.get(zombie.head_bone, Vector3.ZERO))
+
+		_rotate_bone_char(sk, rig_basis, sk_world_basis, zombie.l_shoulder_bone, _spring_rot.get(zombie.l_shoulder_bone, Vector3.ZERO) * 0.45)
+		_rotate_bone_char(sk, rig_basis, sk_world_basis, zombie.l_arm_bone, _spring_rot.get(zombie.l_arm_bone, Vector3.ZERO) + atk_arm_l + arm_droop_l)
+		_rotate_bone_char(sk, rig_basis, sk_world_basis, zombie.l_forearm_bone, _spring_rot.get(zombie.l_forearm_bone, Vector3.ZERO) * 0.5 + atk_fore_l)
+
+		_rotate_bone_char(sk, rig_basis, sk_world_basis, zombie.r_shoulder_bone, _spring_rot.get(zombie.r_shoulder_bone, Vector3.ZERO) * 0.45)
+		_rotate_bone_char(sk, rig_basis, sk_world_basis, zombie.r_arm_bone, _spring_rot.get(zombie.r_arm_bone, Vector3.ZERO) + atk_arm_r + arm_droop_r)
+		_rotate_bone_char(sk, rig_basis, sk_world_basis, zombie.r_forearm_bone, _spring_rot.get(zombie.r_forearm_bone, Vector3.ZERO) * 0.5 + atk_fore_r)
+
+		_rotate_bone_char(sk, rig_basis, sk_world_basis, zombie.l_upleg_bone, _spring_rot.get(zombie.l_upleg_bone, Vector3.ZERO) + leg_l_mod * 0.4)
+		_rotate_bone_char(sk, rig_basis, sk_world_basis, zombie.l_leg_bone, _spring_rot.get(zombie.l_leg_bone, Vector3.ZERO) * 1.15 + leg_l_mod)
+		_rotate_bone_char(sk, rig_basis, sk_world_basis, zombie.r_upleg_bone, _spring_rot.get(zombie.r_upleg_bone, Vector3.ZERO) + leg_r_mod * 0.4)
+		_rotate_bone_char(sk, rig_basis, sk_world_basis, zombie.r_leg_bone, _spring_rot.get(zombie.r_leg_bone, Vector3.ZERO) * 1.15 + leg_r_mod)
+
+
+static func preload_baked_assets() -> void:
+	_ensure_audio_loaded()
+	for v in BAKED_PATHS.keys():
+		var bp: String = BAKED_PATHS[v]
+		if not _baked_scene_cache.has(v) and ResourceLoader.exists(bp):
+			_baked_scene_cache[v] = load(bp)
+
+
+static func _get_scene(path: String) -> PackedScene:
+	if not _scene_cache.has(path):
+		_scene_cache[path] = load(path)
+	return _scene_cache[path]
+
+
+static func _ensure_audio_loaded() -> void:
+	if _audio_loaded:
+		return
+	_audio_loaded = true
+	for p in ["res://assets/audio/zombie_growl_a.wav", "res://assets/audio/zombie_growl_b.wav", "res://assets/audio/zombie_growl.wav"]:
+		if ResourceLoader.exists(p):
+			_growl_streams.append(load(p))
+			if _growl_streams.size() >= 2:
+				break
+	for p in ["res://assets/audio/zombie_attack_snarl_a.wav", "res://assets/audio/zombie_attack_snarl_b.wav"]:
+		if ResourceLoader.exists(p):
+			_snarl_streams.append(load(p))
+	for p in ["res://assets/audio/zombie_pain_a.wav", "res://assets/audio/zombie_pain_b.wav"]:
+		if ResourceLoader.exists(p):
+			_pain_streams.append(load(p))
+	if ResourceLoader.exists("res://assets/audio/zombie_death.wav"):
+		_death_stream = load("res://assets/audio/zombie_death.wav")
+	if ResourceLoader.exists("res://assets/audio/body_fall.wav"):
+		_body_fall_stream = load("res://assets/audio/body_fall.wav")
+
+
+func _ready() -> void:
+	collision_layer = 4
+	collision_mask = 1 | 2 | 4
+	_nav_ray_tick = int(get_instance_id()) & 3
+	match variant:
+		Variant.TACTICAL_SOLDIER:
+			_is_tactical = true
+			max_health = 155.0
+			move_speed = 2.05
+			attack_damage = 22.0
+			poise_max = 90.0
+			_windup_dur = 0.55
+			_strike_dur = 0.16
+			_recover_dur = 0.70
+			_trigger_range = 1.95
+			_lunge_speed = 3.8
+			_chest_armor_mult = 0.75
+			_impulse_scale = 0.62
+			_model_scale_val = 1.14
+		Variant.ASYLUM_PATIENT:
+			_is_tactical = false
+			max_health = 100.0
+			move_speed = 2.35
+			attack_damage = 18.0
+			poise_max = 55.0
+			_windup_dur = 0.45
+			_strike_dur = 0.14
+			_recover_dur = 0.55
+			_trigger_range = 1.85
+			_lunge_speed = 4.3
+			_chest_armor_mult = 1.0
+			_impulse_scale = 1.0
+			_model_scale_val = 1.02
+		Variant.RUNNER:
+			_is_tactical = false
+			max_health = 72.0
+			move_speed = 3.60
+			attack_damage = 14.0
+			poise_max = 35.0
+			_windup_dur = 0.34
+			_strike_dur = 0.12
+			_recover_dur = 0.48
+			_trigger_range = 2.25
+			_lunge_speed = 6.2
+			_chest_armor_mult = 1.0
+			_impulse_scale = 1.35
+			_model_scale_val = 0.99
+	health = max_health
+	anim_phase = randf() * TAU
+	growl_timer = randf_range(1.2, 4.5)
+	_build_body()
+	_setup_audio()
+
+
+func _find_node_of_type(root: Node, type_name: String) -> Node:
+	if root.get_class() == type_name:
+		return root
+	for c in root.get_children():
+		var f := _find_node_of_type(c, type_name)
+		if f:
+			return f
+	return null
+
+
+func _strip_junk_nodes(n: Node) -> void:
+	for c in n.get_children():
+		if c is Camera3D or c is Light3D:
+			c.queue_free()
+		else:
+			_strip_junk_nodes(c)
+
+
+func _accum_local_to(node: Node3D, ancestor: Node3D) -> Transform3D:
+	var xf := Transform3D.IDENTITY
+	var cur: Node = node
+	while cur != null and cur != ancestor:
+		if cur is Node3D:
+			xf = (cur as Node3D).transform * xf
+		cur = cur.get_parent()
+	return xf
+
+
+func _reset_node_transforms_to_sk(cur: Node, sk: Skeleton3D) -> void:
+	if cur is Node3D:
+		(cur as Node3D).transform = Transform3D.IDENTITY
+	if cur == sk:
+		return
+	for c in cur.get_children():
+		_reset_node_transforms_to_sk(c, sk)
+
+
+static func _upgrade_zombie_material(mat: Material, zv: int = Variant.TACTICAL_SOLDIER) -> Material:
+	if mat is ShaderMaterial:
+		return mat
+	if not (mat is StandardMaterial3D):
+		return mat
+	var src := mat as StandardMaterial3D
+	var id := src.resource_name.to_lower()
+	if "necroticdermis" in id or "leozombieflesh" in id:
+		var sm := ShaderMaterial.new()
+		sm.shader = load("res://shaders/zombie_necrotic_skin.gdshader")
+		sm.set_shader_parameter("detail_normal_tex", load("res://assets/textures/zombie_pores_normal.png"))
+		if "necroticdermis" in id:
+			sm.set_shader_parameter("albedo_tex", load("res://assets/textures/tactical_dermis_clean.jpg"))
+			sm.set_shader_parameter("has_albedo_tex", true)
+			sm.set_shader_parameter("is_head", true)
+			sm.set_shader_parameter("albedo_gamma", 0.85)
+			sm.set_shader_parameter("skin_tint", Color(0.96, 0.94, 0.92))
+			sm.set_shader_parameter("blood_wetness", 0.86)
+		else:
+			if src.albedo_texture:
+				sm.set_shader_parameter("albedo_tex", src.albedo_texture)
+				sm.set_shader_parameter("has_albedo_tex", true)
+			else:
+				sm.set_shader_parameter("has_albedo_tex", false)
+			sm.set_shader_parameter("is_head", false)
+			sm.set_shader_parameter("albedo_gamma", 0.84)
+			sm.set_shader_parameter("skin_tint", Color(0.96, 0.94, 0.92))
+			sm.set_shader_parameter("blood_wetness", 0.84 if zv == Variant.ASYLUM_PATIENT else 0.88)
+		if src.normal_texture:
+			sm.set_shader_parameter("normal_tex", src.normal_texture)
+			sm.set_shader_parameter("has_normal_tex", true)
+		else:
+			sm.set_shader_parameter("has_normal_tex", false)
+		sm.set_shader_parameter("detail_uv_scale", 11.0)
+		sm.set_shader_parameter("detail_strength", 0.72)
+		sm.set_shader_parameter("gore_seed", float(zv) * 1.73)
+		return sm
+	elif "oldivory" in id:
+		var jm := ShaderMaterial.new()
+		jm.shader = load("res://shaders/zombie_jaw_gums.gdshader")
+		jm.set_shader_parameter("has_albedo_tex", src.albedo_texture != null)
+		if src.albedo_texture:
+			jm.set_shader_parameter("albedo_tex", src.albedo_texture)
+		jm.set_shader_parameter("has_normal_tex", src.normal_texture != null)
+		if src.normal_texture:
+			jm.set_shader_parameter("normal_tex", src.normal_texture)
+		return jm
+	elif "soddenfieldcoat" in id or "leozombierags" in id or "zombiewinterparka" in id or "oilskinwebbing" in id or "ribbedfieldcollar" in id or "foldedparkahood" in id or "coat" in id or "parka" in id or "rags" in id or "collar" in id or "webbing" in id:
+		var gm := ShaderMaterial.new()
+		gm.shader = load("res://shaders/zombie_tactical_gear.gdshader")
+		gm.set_shader_parameter("weave_normal_tex", load("res://assets/textures/tactical_cloth_normal.jpg"))
+		if "soddenfieldcoat" in id:
+			gm.set_shader_parameter("albedo_tex", load("res://assets/textures/torn_field_canvas.jpg"))
+			gm.set_shader_parameter("normal_tex", load("res://assets/textures/torn_field_canvas_normal.jpg"))
+			gm.set_shader_parameter("has_albedo_tex", true)
+			gm.set_shader_parameter("has_normal_tex", true)
+			gm.set_shader_parameter("uv_scale", Vector2.ONE)
+			gm.set_shader_parameter("uv_offset", Vector2.ZERO)
+			gm.set_shader_parameter("albedo_gamma", 0.88)
+			gm.set_shader_parameter("fabric_tint", Color(0.62, 0.66, 0.58))
+			gm.set_shader_parameter("blood_stain_strength", 0.72)
+		elif "leozombierags" in id:
+			gm.set_shader_parameter("albedo_tex", load("res://assets/textures/zombie_cloth_albedo.jpg"))
+			gm.set_shader_parameter("normal_tex", src.normal_texture if src.normal_texture else load("res://assets/textures/tactical_cloth_normal.jpg"))
+			gm.set_shader_parameter("has_albedo_tex", true)
+			gm.set_shader_parameter("has_normal_tex", true)
+			gm.set_shader_parameter("uv_scale", Vector2(2.2, 2.2))
+			gm.set_shader_parameter("uv_offset", Vector2.ZERO)
+			gm.set_shader_parameter("albedo_gamma", 0.90)
+			if zv == Variant.ASYLUM_PATIENT:
+				gm.set_shader_parameter("fabric_tint", Color(0.58, 0.56, 0.52))
+				gm.set_shader_parameter("blood_stain_strength", 0.88)
+			else:
+				gm.set_shader_parameter("fabric_tint", Color(0.52, 0.50, 0.46))
+				gm.set_shader_parameter("blood_stain_strength", 0.78)
+		else:
+			gm.set_shader_parameter("albedo_tex", src.albedo_texture if src.albedo_texture else load("res://assets/textures/tactical_cloth_normal.jpg"))
+			gm.set_shader_parameter("normal_tex", src.normal_texture if src.normal_texture else load("res://assets/textures/tactical_cloth_normal.jpg"))
+			gm.set_shader_parameter("has_albedo_tex", src.albedo_texture != null)
+			gm.set_shader_parameter("has_normal_tex", true)
+			gm.set_shader_parameter("uv_scale", Vector2(src.uv1_scale.x, src.uv1_scale.y))
+			gm.set_shader_parameter("uv_offset", Vector2(src.uv1_offset.x, src.uv1_offset.y))
+			if "oilskinwebbing" in id:
+				gm.set_shader_parameter("albedo_gamma", 0.82)
+				gm.set_shader_parameter("fabric_tint", Color(0.56, 0.58, 0.52))
+				gm.set_shader_parameter("blood_stain_strength", 0.58)
+			elif "zombiewinterparka" in id or "parka" in id:
+				gm.set_shader_parameter("albedo_gamma", 0.56)
+				gm.set_shader_parameter("fabric_tint", Color(0.86, 0.90, 0.84))
+				gm.set_shader_parameter("blood_stain_strength", 0.64)
+			else:
+				gm.set_shader_parameter("albedo_gamma", 0.80)
+				gm.set_shader_parameter("fabric_tint", Color(0.66, 0.68, 0.62))
+				gm.set_shader_parameter("blood_stain_strength", 0.68)
+		gm.set_shader_parameter("seed_offset", float(zv) * 2.11)
+		return gm
+
+	var m := src.duplicate() as StandardMaterial3D
+	if "foggedeye0" in id:
+		m.albedo_color = Color(0.015, 0.015, 0.020)
+		m.roughness = 0.02
+		m.metallic = 0.0
+		m.metallic_specular = 0.85
+		m.clearcoat_enabled = true
+		m.clearcoat = 1.0
+		m.clearcoat_roughness = 0.02
+	elif "foggedeye1" in id:
+		m.albedo_color = Color(0.28, 0.34, 0.32)
+		m.roughness = 0.025
+		m.metallic = 0.0
+		m.metallic_specular = 0.82
+		m.clearcoat_enabled = true
+		m.clearcoat = 1.0
+		m.clearcoat_roughness = 0.025
+	elif "foggedeye" in id:
+		m.albedo_color = Color(0.66, 0.54, 0.48)
+		m.roughness = 0.035
+		m.metallic = 0.0
+		m.metallic_specular = 0.78
+		m.clearcoat_enabled = true
+		m.clearcoat = 1.0
+		m.clearcoat_roughness = 0.03
+	elif "smokedvisor" in id:
+		m.albedo_color = Color(0.06, 0.07, 0.08)
+		m.roughness = 0.12
+		m.metallic = 0.12
+		m.metallic_specular = 0.70
+		m.clearcoat_enabled = true
+		m.clearcoat = 0.85
+		m.clearcoat_roughness = 0.05
+	elif "frostedpile" in id:
+		m.albedo_color = Color(0.56, 0.58, 0.62)
+		m.roughness = 0.94
+		m.metallic = 0.0
+		m.metallic_specular = 0.08
+		m.rim_enabled = true
+		m.rim = 0.32
+		m.rim_tint = 0.45
+	elif "visor" in id or "goog" in id or "rubber" in id:
+		m.albedo_color = Color(0.24, 0.24, 0.25)
+		m.roughness = 0.74
+		m.metallic = 0.0
+		m.metallic_specular = 0.14
+	return m
+
+
+static func _bake_unit_mesh(src: Mesh, scl: float, zv: int, to_sk: Transform3D) -> ArrayMesh:
+	var im := ImporterMesh.new()
+	for s in src.get_surface_count():
+		var arrays := src.surface_get_arrays(s)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var norms: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL] if arrays[Mesh.ARRAY_NORMAL] != null else PackedVector3Array()
+		var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES] if arrays[Mesh.ARRAY_BONES] != null else PackedInt32Array()
+		var vc := verts.size()
+		var uv2 := PackedVector2Array()
+		uv2.resize(vc)
+		var cols := PackedColorArray()
+		cols.resize(vc)
+		var n_basis := to_sk.basis.orthonormalized()
+		for i in vc:
+			var vs := verts[i] * scl
+			verts[i] = vs
+			var r_p := to_sk * vs
+			var ny := 1.0
+			if norms.size() == vc:
+				ny = (n_basis * norms[i]).normalized().y
+			uv2[i] = Vector2(r_p.x, r_p.y)
+			cols[i] = Color(clampf((r_p.z + 1.5) / 3.0, 0.0, 1.0), clampf(ny * 0.5 + 0.5, 0.0, 1.0), 1.0, 1.0)
+		arrays[Mesh.ARRAY_VERTEX] = verts
+		arrays[Mesh.ARRAY_TEX_UV2] = uv2
+		arrays[Mesh.ARRAY_COLOR] = cols
+		var stride := (bones.size() / vc) if (vc > 0 and not bones.is_empty()) else 0
+		var flags := Mesh.ARRAY_FLAG_USE_8_BONE_WEIGHTS if stride == 8 else 0
+		var mat := _upgrade_zombie_material(src.surface_get_material(s), zv)
+		im.add_surface(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, mat, "", flags)
+	im.generate_lods(45.0, 25.0, [])
+	return im.get_mesh()
+
+
+func _build_body() -> void:
+	var col := CollisionShape3D.new()
+	var cap := CapsuleShape3D.new()
+	cap.radius = 0.40 if _is_tactical else 0.38
+	cap.height = 1.88 if _is_tactical else 1.78
+	col.shape = cap
+	col.position = Vector3(0, cap.height * 0.5, 0)
+	add_child(col)
+
+	rig_root = Node3D.new()
+	add_child(rig_root)
+
+	var is_baking: bool = Engine.get_main_loop() != null and Engine.get_main_loop().has_meta("baking_zombies")
+	var packed: PackedScene = null
+	var used_baked := false
+	if not is_baking:
+		if _baked_scene_cache.has(variant):
+			packed = _baked_scene_cache[variant]
+			used_baked = (packed != null)
+		elif ResourceLoader.exists(BAKED_PATHS[variant]):
+			packed = load(BAKED_PATHS[variant])
+			if packed:
+				_baked_scene_cache[variant] = packed
+				used_baked = true
+	if packed == null:
+		var glb_path := "res://assets/models/zombie_tactical.glb" if _is_tactical else "res://assets/models/zombie_runner.glb"
+		packed = _get_scene(glb_path)
+	if packed:
+		model_inst = packed.instantiate()
+		if not used_baked:
+			_strip_junk_nodes(model_inst)
+		rig_root.add_child(model_inst)
+
+		anim_player = _find_node_of_type(model_inst, "AnimationPlayer") as AnimationPlayer
+		skeleton = _find_node_of_type(model_inst, "Skeleton3D") as Skeleton3D
+		if skeleton:
+			if not used_baked:
+				_apply_unit_meter_rig()
+			_resolve_bones()
+			_collect_shadow_meshes()
+			var mod := ZombieSkeletonModifier.new()
+			mod.name = "LocationalReactionMod"
+			mod.setup(self)
+			skeleton.add_child(mod)
+			sk_mod = mod
+		_play_horror_anim("walk" if _is_tactical else "spot", randf() * 1.4)
+
+
+func _collect_shadow_meshes() -> void:
+	_shadow_meshes.clear()
+	_body_meshes.clear()
+	if model_inst == null:
+		return
+	for mn in model_inst.find_children("*", "GeometryInstance3D", true, false):
+		var gi := mn as GeometryInstance3D
+		if gi is MeshInstance3D:
+			_body_meshes.append(gi as MeshInstance3D)
+		gi.layers = 8
+		gi.lod_bias = 1.0
+		gi.visibility_range_end = 0.0
+		gi.extra_cull_margin = 0.5
+		gi.custom_aabb = AABB(Vector3(-1.4, -0.4, -1.4), Vector3(2.8, 2.8, 2.8))
+		var lname := str(gi.name).to_lower()
+		if lname.begins_with("skigoggle") or "winterhelmet" in lname:
+			gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		else:
+			_shadow_meshes.append(gi)
+
+
+func _set_shadow_casting(enabled: bool) -> void:
+	var mode := GeometryInstance3D.SHADOW_CASTING_SETTING_ON if enabled else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for gi in _shadow_meshes:
+		if is_instance_valid(gi) and gi.cast_shadow != mode:
+			gi.cast_shadow = mode
+
+
+func _exit_tree() -> void:
+	_active_ragdolls.erase(self)
+	_corpses.erase(self)
+
+
+func _apply_unit_meter_rig() -> void:
+	var sk := skeleton
+	var bc := sk.get_bone_count()
+	if not _norm_cache.has(variant):
+		# First spawn of this variant computes and caches normalized meshes, skins, rests, and anims once
+		if _is_tactical and bc > 0 and "_rootjoint" in sk.get_bone_name(0).to_lower():
+			sk.set_bone_rest(0, Transform3D(Basis().scaled(Vector3(0.01, 0.01, 0.01)), Vector3.ZERO))
+			sk.set_bone_pose_scale(0, Vector3(0.01, 0.01, 0.01))
+			sk.set_bone_pose_position(0, Vector3.ZERO)
+
+		var sk_rel := _accum_local_to(sk, rig_root)
+		var sk_with_target := Transform3D(Basis().scaled(Vector3.ONE * _model_scale_val), Vector3.ZERO) * sk_rel
+
+		var orig_in_rig: Array[Transform3D] = []
+		orig_in_rig.resize(bc)
+		var unit_in_rig: Array[Transform3D] = []
+		unit_in_rig.resize(bc)
+		var bone_scales: Array[Vector3] = []
+		bone_scales.resize(bc)
+		for b in bc:
+			var p := sk.get_bone_parent(b)
+			var lr := sk.get_bone_rest(b)
+			var g_rig := (sk_with_target * lr) if p < 0 else (orig_in_rig[p] * lr)
+			orig_in_rig[b] = g_rig
+			bone_scales[b] = Vector3(g_rig.basis.x.length(), g_rig.basis.y.length(), g_rig.basis.z.length())
+			unit_in_rig[b] = Transform3D(g_rig.basis.orthonormalized(), g_rig.origin)
+
+		var rests: Array[Transform3D] = []
+		rests.resize(bc)
+		for b in bc:
+			var p := sk.get_bone_parent(b)
+			var new_rest := unit_in_rig[b] if p < 0 else (unit_in_rig[p].affine_inverse() * unit_in_rig[b])
+			new_rest.basis = new_rest.basis.orthonormalized()
+			rests[b] = new_rest
+
+		var mesh_map := {} # orig Mesh -> normalized ArrayMesh
+		var skin_map := {} # orig Skin -> normalized Skin
+		var mesh_nodes := model_inst.find_children("*", "MeshInstance3D", true, false)
+		for mn in mesh_nodes:
+			var mi := mn as MeshInstance3D
+			if "eyelash" in str(mi.name).to_lower():
+				continue
+			var m := mi.mesh
+			var skin := mi.skin
+			var v_scale := _model_scale_val
+			var bone_s0 := bone_scales[0] if bc > 0 else Vector3.ONE * _model_scale_val
+			var to_sk := Transform3D.IDENTITY
+			if skin and skin.get_bind_count() > 0:
+				var bp0 := skin.get_bind_pose(0)
+				var bp_scl := bp0.basis.x.length()
+				var b0 := skin.get_bind_bone(0)
+				if b0 < 0 and not skin.get_bind_name(0).is_empty():
+					b0 = sk.find_bone(skin.get_bind_name(0))
+				if b0 >= 0 and b0 < bc:
+					bone_s0 = bone_scales[b0]
+					to_sk = unit_in_rig[b0] * Transform3D(bp0.basis.orthonormalized(), bp0.origin * bone_s0.x)
+				v_scale = bone_s0.x * bp_scl
+
+			if m and not mesh_map.has(m):
+				mesh_map[m] = _bake_unit_mesh(m, v_scale, variant, to_sk)
+			if skin and not skin_map.has(skin):
+				var new_skin := Skin.new()
+				for j in skin.get_bind_count():
+					var b_name := skin.get_bind_name(j)
+					var b_idx := skin.get_bind_bone(j)
+					if b_idx < 0 and not b_name.is_empty():
+						b_idx = sk.find_bone(b_name)
+					var bp := skin.get_bind_pose(j)
+					var bs := bone_scales[b_idx] if (b_idx >= 0 and b_idx < bc) else bone_s0
+					var new_bp := Transform3D(bp.basis.orthonormalized(), bp.origin * bs.x)
+					if b_name.is_empty():
+						new_skin.add_bind(b_idx, new_bp)
+					else:
+						new_skin.add_named_bind(b_name, new_bp)
+				skin_map[skin] = new_skin
+
+		var norm_lib := AnimationLibrary.new()
+		if anim_player:
+			var sk_raw_s := sk_rel.basis.x.length() * _model_scale_val
+			var sk_path_str := str(model_inst.get_path_to(sk))
+			for a_name in anim_player.get_animation_list():
+				var src_anim := anim_player.get_animation(a_name)
+				if src_anim == null:
+					continue
+				var anim := src_anim.duplicate() as Animation
+				for t in anim.get_track_count():
+					var tp := str(anim.track_get_path(t))
+					var tt := anim.track_get_type(t)
+					var colon := tp.find(":")
+					if colon < 0:
+						continue
+					var bone_name := tp.substr(colon + 1)
+					var b_idx := sk.find_bone(bone_name)
+					if b_idx < 0:
+						continue
+					anim.track_set_path(t, NodePath(sk_path_str + ":" + bone_name))
+					if tt == Animation.TYPE_SCALE_3D:
+						for k in anim.track_get_key_count(t):
+							anim.track_set_key_value(t, k, Vector3.ONE)
+					elif tt == Animation.TYPE_POSITION_3D:
+						var p := sk.get_bone_parent(b_idx)
+						var ps := sk_raw_s if p < 0 else bone_scales[p].x
+						var is_rj := "_rootjoint" in bone_name.to_lower()
+						var is_hips := "hips" in bone_name.to_lower()
+						for k in anim.track_get_key_count(t):
+							var v: Vector3 = anim.track_get_key_value(t, k)
+							if is_rj:
+								anim.track_set_key_value(t, k, Vector3.ZERO)
+							else:
+								var sv := v * ps
+								if is_hips:
+									sv.x = 0.0; sv.z = 0.0
+								anim.track_set_key_value(t, k, sv)
+				norm_lib.add_animation(a_name, anim)
+
+		_norm_cache[variant] = {
+			"rests": rests,
+			"meshes": mesh_map,
+			"skins": skin_map,
+			"lib": norm_lib,
+		}
+
+	var cache: Dictionary = _norm_cache[variant]
+	var cached_rests: Array = cache["rests"]
+	var cached_meshes: Dictionary = cache["meshes"]
+	var cached_skins: Dictionary = cache["skins"]
+	var cached_lib: AnimationLibrary = cache["lib"]
+
+	var all_meshes := model_inst.find_children("*", "MeshInstance3D", true, false)
+	_reset_node_transforms_to_sk(model_inst, sk)
+	model_inst.transform = Transform3D.IDENTITY
+
+	for b in bc:
+		sk.set_bone_rest(b, cached_rests[b])
+		sk.set_bone_pose(b, cached_rests[b])
+
+	_body_meshes.clear()
+	for mn in all_meshes:
+		var mi := mn as MeshInstance3D
+		if "eyelash" in str(mi.name).to_lower():
+			if mi.get_parent():
+				mi.get_parent().remove_child(mi)
+			mi.free()
+			continue
+		if mi.get_parent() != sk:
+			var kname := mi.name
+			mi.get_parent().remove_child(mi)
+			sk.add_child(mi)
+			mi.name = kname
+		mi.transform = Transform3D.IDENTITY
+		if mi.mesh and cached_meshes.has(mi.mesh):
+			mi.mesh = cached_meshes[mi.mesh]
+		if mi.skin and cached_skins.has(mi.skin):
+			mi.skin = cached_skins[mi.skin]
+		mi.layers = 8
+		mi.lod_bias = 1.0
+		mi.visibility_range_end = 0.0
+		mi.extra_cull_margin = 0.5
+		mi.custom_aabb = AABB(Vector3(-1.4, -0.4, -1.4), Vector3(2.8, 2.8, 2.8))
+		_body_meshes.append(mi)
+		var lname := str(mi.name).to_lower()
+		if lname.begins_with("skigoggle") or "winterhelmet" in lname:
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+	if anim_player:
+		anim_player.root_node = anim_player.get_path_to(model_inst)
+		for lib_name in anim_player.get_animation_library_list():
+			anim_player.remove_animation_library(lib_name)
+		anim_player.add_animation_library("", cached_lib)
+
+
+func _resolve_bones() -> void:
+	for bone in skeleton.get_bone_count():
+		var bn := skeleton.get_bone_name(bone).to_lower()
+		if root_joint_bone < 0 and ("_rootjoint" in bn or bn == "rootjoint"):
+			root_joint_bone = bone
+		elif hips_bone < 0 and "hips" in bn:
+			hips_bone = bone
+		elif spine2_bone < 0 and "spine2" in bn:
+			spine2_bone = bone
+		elif spine1_bone < 0 and "spine1" in bn:
+			spine1_bone = bone
+		elif spine_bone < 0 and "spine" in bn:
+			spine_bone = bone
+		elif neck_bone < 0 and "neck" in bn:
+			neck_bone = bone
+		elif head_bone < 0 and "head" in bn and "end" not in bn and "top" not in bn:
+			head_bone = bone
+		elif l_shoulder_bone < 0 and "leftshoulder" in bn:
+			l_shoulder_bone = bone
+		elif l_arm_bone < 0 and "leftarm" in bn:
+			l_arm_bone = bone
+		elif l_forearm_bone < 0 and "leftforearm" in bn:
+			l_forearm_bone = bone
+		elif l_hand_bone < 0 and "lefthand" in bn and "index" not in bn and "middle" not in bn and "ring" not in bn and "pinky" not in bn and "thumb" not in bn:
+			l_hand_bone = bone
+		elif r_shoulder_bone < 0 and "rightshoulder" in bn:
+			r_shoulder_bone = bone
+		elif r_arm_bone < 0 and "rightarm" in bn:
+			r_arm_bone = bone
+		elif r_forearm_bone < 0 and "rightforearm" in bn:
+			r_forearm_bone = bone
+		elif r_hand_bone < 0 and "righthand" in bn and "index" not in bn and "middle" not in bn and "ring" not in bn and "pinky" not in bn and "thumb" not in bn:
+			r_hand_bone = bone
+		elif l_upleg_bone < 0 and "leftupleg" in bn:
+			l_upleg_bone = bone
+		elif l_leg_bone < 0 and "leftleg" in bn:
+			l_leg_bone = bone
+		elif l_foot_bone < 0 and "leftfoot" in bn:
+			l_foot_bone = bone
+		elif r_upleg_bone < 0 and "rightupleg" in bn:
+			r_upleg_bone = bone
+		elif r_leg_bone < 0 and "rightleg" in bn:
+			r_leg_bone = bone
+		elif r_foot_bone < 0 and "rightfoot" in bn:
+			r_foot_bone = bone
+
+
+func _bone_world_pos(b: int, fallback: Vector3) -> Vector3:
+	if skeleton and b >= 0:
+		return skeleton.to_global(skeleton.get_bone_global_pose(b).origin)
+	return to_global(fallback)
+
+
+static func _ray_to_segment_dist_sq(ro: Vector3, rd: Vector3, a: Vector3, b: Vector3) -> float:
+	var ab := b - a
+	var u := rd
+	var w := ro - a
+	var a_len := u.dot(u) # 1.0 when normalized
+	var b_len := ab.dot(ab)
+	var c := u.dot(w)
+	var f := ab.dot(w)
+	var sc := 0.0
+	var tc := 0.0
+	if b_len <= 1e-6:
+		sc = maxf(0.0, -c / maxf(a_len, 1e-6))
+		return (ro + u * sc - a).length_squared()
+	var e := u.dot(ab)
+	var denom := a_len * b_len - e * e
+	if absf(denom) > 1e-6:
+		sc = maxf(0.0, (e * f - b_len * c) / denom)
+	else:
+		sc = 0.0
+	tc = (e * sc + f) / b_len
+	if tc < 0.0:
+		tc = 0.0
+		sc = maxf(0.0, -c / maxf(a_len, 1e-6))
+	elif tc > 1.0:
+		tc = 1.0
+		sc = maxf(0.0, (e - c) / maxf(a_len, 1e-6))
+	var cp_ray := ro + u * sc
+	var cp_seg := a + ab * tc
+	return (cp_ray - cp_seg).length_squared()
+
+
+func resolve_hit_zone(ray_orig: Vector3, ray_dir: Vector3, hit_pos: Vector3) -> String:
+	var rd := ray_dir.normalized()
+	if skeleton == null:
+		return "HEAD" if (hit_pos.y - global_position.y) > 1.38 else "CHEST"
+
+	var hp := _bone_world_pos(head_bone, Vector3(0, 1.62, 0.04))
+	var np := _bone_world_pos(neck_bone, Vector3(0, 1.44, 0.02))
+	var hr := 0.21 * _model_scale_val
+	if _ray_to_segment_dist_sq(ray_orig, rd, np + Vector3(0, 0.04, 0), hp + Vector3(0, 0.14, 0)) <= hr * hr:
+		return "HEAD"
+	if hit_pos.y >= np.y + 0.07 and Vector2(hit_pos.x - hp.x, hit_pos.z - hp.z).length() <= 0.25 * _model_scale_val:
+		return "HEAD"
+
+	var arm_r := 0.145 * _model_scale_val
+	var la_a := _bone_world_pos(l_arm_bone, Vector3(-0.24, 1.32, 0))
+	var la_b := _bone_world_pos(l_hand_bone if l_hand_bone >= 0 else l_forearm_bone, Vector3(-0.34, 0.96, 0.1))
+	if _ray_to_segment_dist_sq(ray_orig, rd, la_a, la_b) <= arm_r * arm_r:
+		return "ARM_L"
+
+	var ra_a := _bone_world_pos(r_arm_bone, Vector3(0.24, 1.32, 0))
+	var ra_b := _bone_world_pos(r_hand_bone if r_hand_bone >= 0 else r_forearm_bone, Vector3(0.34, 0.96, 0.1))
+	if _ray_to_segment_dist_sq(ray_orig, rd, ra_a, ra_b) <= arm_r * arm_r:
+		return "ARM_R"
+
+	var leg_r := 0.18 * _model_scale_val
+	var ll_a := _bone_world_pos(l_upleg_bone, Vector3(-0.14, 0.92, 0))
+	var ll_b := _bone_world_pos(l_foot_bone if l_foot_bone >= 0 else l_leg_bone, Vector3(-0.14, 0.10, 0))
+	if _ray_to_segment_dist_sq(ray_orig, rd, ll_a, ll_b) <= leg_r * leg_r:
+		return "LEG_L"
+
+	var rl_a := _bone_world_pos(r_upleg_bone, Vector3(0.14, 0.92, 0))
+	var rl_b := _bone_world_pos(r_foot_bone if r_foot_bone >= 0 else r_leg_bone, Vector3(0.14, 0.10, 0))
+	if _ray_to_segment_dist_sq(ray_orig, rd, rl_a, rl_b) <= leg_r * leg_r:
+		return "LEG_R"
+
+	return "CHEST"
+
+
+func face_focus_position() -> Vector3:
+	if skeleton and head_bone >= 0:
+		return skeleton.to_global(skeleton.get_bone_global_pose(head_bone).origin) + Vector3.UP * 0.105
+	return global_position + Vector3(0, 1.56 * _model_scale_val, 0)
+
+
+func _play_horror_anim(kind: String, seek_time: float = -1.0) -> void:
+	if anim_player == null:
+		return
+	var anims := anim_player.get_animation_list()
+	if anims.is_empty():
+		return
+	var chosen := anims[0]
+	for a in anims:
+		var al := a.to_lower()
+		if kind == "walk" and ("walk" in al or "run" in al):
+			chosen = a
+			break
+		elif kind == "spot" and "spot" in al:
+			chosen = a
+			break
+		elif kind == "skill" and "skill" in al:
+			chosen = a
+			break
+		elif kind == "idle" and "idle" in al:
+			chosen = a
+			break
+	if chosen == anims[0] and kind == "walk":
+		for a in anims:
+			if "spot" in a.to_lower():
+				chosen = a
+				break
+	var anim_res := anim_player.get_animation(chosen)
+	if anim_res:
+		anim_res.loop_mode = Animation.LOOP_LINEAR
+	anim_player.play(chosen)
+	if seek_time >= 0.0:
+		var dur := anim_res.length if anim_res and anim_res.length > 0.05 else 1.5
+		anim_player.seek(fmod(seek_time, dur), true)
+		if deterministic_pose:
+			anim_player.pause()
+
+
+func _setup_audio() -> void:
+	_ensure_audio_loaded()
+	growl_player = AudioStreamPlayer3D.new()
+	if not _growl_streams.is_empty():
+		growl_player.stream = _growl_streams[randi() % _growl_streams.size()]
+	growl_player.unit_size = 4.5
+	growl_player.max_distance = 24.0
+	growl_player.volume_db = -4.0
+	add_child(growl_player)
+
+	impact_audio = AudioStreamPlayer3D.new()
+	impact_audio.unit_size = 5.5
+	impact_audio.max_distance = 24.0
+	impact_audio.volume_db = -1.5
+	add_child(impact_audio)
+
+
+func set_cinematic_pose(phase: float, hunch: float = 0.22, head_yaw: float = 0.14) -> void:
+	deterministic_pose = true
+	anim_phase = phase
+	var anim_kind: String = "spot" if hunch < 0.25 else "skill"
+	var t_seek: float = 0.28 + fmod(abs(phase) * 0.35, 1.15)
+	_play_horror_anim(anim_kind, t_seek)
+	if rig_root:
+		rig_root.position = Vector3(0.0, -0.05, 0.72 if hunch >= 0.25 else 0.17)
+		rig_root.rotation = Vector3(hunch * 0.92, head_yaw * 0.52, sin(phase) * 0.085)
+	if skeleton and hunch >= 0.25 and neck_bone >= 0:
+		var neck := skeleton.get_bone_global_pose(neck_bone)
+		neck.basis = Basis(Vector3.RIGHT, -0.28) * neck.basis
+		skeleton.set_bone_global_pose(neck_bone, neck)
+	if skeleton and hunch < 0.20 and neck_bone >= 0:
+		rig_root.position += Vector3(0.015, -0.067, 0.39)
+		rig_root.rotation.y -= 1.15
+		var neck := skeleton.get_bone_global_pose(neck_bone)
+		neck.basis = Basis(Vector3.UP, 0.27) * neck.basis
+		skeleton.set_bone_global_pose(neck_bone, neck)
+
+
+func enter_spawn_cue(duration := 0.95) -> void:
+	state = State.SPAWNING
+	state_timer = duration
+	if growl_player and not _growl_streams.is_empty():
+		growl_player.stream = _growl_streams[randi() % _growl_streams.size()]
+		growl_player.pitch_scale = randf_range(0.84, 1.12)
+		growl_player.volume_db = -5.5
+		growl_player.play()
+
+
+func _sample_walkable_floor(xz_pos: Vector3, start_y: float) -> Dictionary:
+	var space := get_world_3d().direct_space_state
+	if space == null:
+		return {"hit": false, "y": start_y, "normal": Vector3.UP}
+	var origin := Vector3(xz_pos.x, start_y + 1.1, xz_pos.z)
+	for _attempt in range(3):
+		var q := PhysicsRayQueryParameters3D.create(origin, Vector3(xz_pos.x, start_y - 5.5, xz_pos.z), 1)
+		var res := space.intersect_ray(q)
+		if not res:
+			break
+		var n: Vector3 = res["normal"]
+		if n.y >= 0.45:
+			return {"hit": true, "y": res["position"].y, "normal": n}
+		origin.y = res["position"].y - 0.08
+	return {"hit": false, "y": start_y, "normal": Vector3.UP}
+
+
+func get_corpse_ground_report() -> Dictionary:
+	var hips_w := skeleton.to_global(skeleton.get_bone_global_pose(hips_bone).origin) if (skeleton and hips_bone >= 0) else global_position
+	var spine_w := skeleton.to_global(skeleton.get_bone_global_pose(spine2_bone).origin) if (skeleton and spine2_bone >= 0) else global_position
+	var head_w := skeleton.to_global(skeleton.get_bone_global_pose(head_bone).origin) if (skeleton and head_bone >= 0) else global_position
+	var f_hips := _sample_walkable_floor(hips_w, hips_w.y + 0.8)
+	var f_head := _sample_walkable_floor(head_w, head_w.y + 0.8)
+	var fy_h: float = f_hips["y"] if f_hips["hit"] else death_floor_y
+	var fy_hd: float = f_head["y"] if f_head["hit"] else fy_h
+	return {
+		"hips_gap": hips_w.y - fy_h,
+		"spine_gap": spine_w.y - fy_h,
+		"head_gap": head_w.y - fy_hd,
+		"floor_y": fy_h,
+		"settled": death_settled,
+		"sk_mod_freed": (sk_mod == null or not is_instance_valid(sk_mod)),
+		"anim_freed": (anim_player == null or not is_instance_valid(anim_player)),
+	}
+
+
+func _get_game_manager() -> Node:
+	var n: Node = get_parent()
+	while n != null:
+		if n.has_method("request_attack_token"):
+			return n
+		n = n.get_parent()
+	return null
+
+
+func _release_token() -> void:
+	if has_attack_token:
+		has_attack_token = false
+		var gm := _get_game_manager()
+		if gm:
+			gm.release_attack_token(self)
+
+
+func _request_token() -> bool:
+	if has_attack_token:
+		return true
+	var gm := _get_game_manager()
+	if gm:
+		has_attack_token = gm.request_attack_token(self)
+		return has_attack_token
+	return true
+
+
+func _choose_nav_dir(to_target: Vector3) -> Vector3:
+	var tp := target.global_position
+	var gp := global_position
+	var way := tp
+	var p_out := tp.z < -27.5
+	var p_tun := tp.z <= -8.0 and tp.z >= -27.5
+	var p_in := tp.z > -8.0
+	var z_out := gp.z < -27.5
+	var z_tun := gp.z <= -8.0 and gp.z >= -27.5
+	var z_in := gp.z > -8.0
+
+	if z_in and p_out:
+		way = Vector3(0.0, 0.0, -9.5)
+	elif z_in and p_tun:
+		way = Vector3(0.0, 0.0, -8.5)
+	elif z_out and (p_in or p_tun):
+		way = Vector3(0.0, 0.0, -28.0)
+	elif z_tun and p_in:
+		way = Vector3(0.0, 0.0, -7.2)
+	elif z_tun and p_out:
+		way = Vector3(0.0, 0.0, -28.5)
+	elif gp.y > 2.2 and tp.y < 1.8:
+		# Route upstairs zombies cleanly along landing to top of oak flight instead of onto dead-end arch gallery
+		way = Vector3(-7.55, 0.0, -1.60) if (gp.z < -2.0 or gp.x > -4.8) else Vector3(-7.55, 0.0, 3.85)
+
+	var d_vec := way - gp
+	d_vec.y = 0.0
+	if d_vec.length_squared() < 0.04:
+		d_vec = to_target
+	var dir := d_vec.normalized()
+
+	# Stagger whisker raycasts to every 4th physics frame
+	_nav_ray_tick = (_nav_ray_tick + 1) & 3
+	if _nav_ray_tick == 0:
+		var space := get_world_3d().direct_space_state
+		if space:
+			var eye := gp + Vector3(0, 1.05, 0)
+			var q_fwd := PhysicsRayQueryParameters3D.create(eye, eye + dir * 1.45, 1)
+			if space.intersect_ray(q_fwd):
+				var l_dir := dir.rotated(Vector3.UP, 0.72)
+				var r_dir := dir.rotated(Vector3.UP, -0.72)
+				var l_hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(eye, eye + l_dir * 1.7, 1))
+				var r_hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(eye, eye + r_dir * 1.7, 1))
+				if not l_hit and r_hit:
+					dir = l_dir
+				elif not r_hit and l_hit:
+					dir = r_dir
+				else:
+					dir = l_dir if (int(get_instance_id()) % 2 == 0) else r_dir
+		_cached_steer_dir = dir
+	elif _cached_steer_dir.length_squared() > 0.1:
+		dir = _cached_steer_dir
+	return dir
+
+
+func _add_pbone(sim: PhysicalBoneSimulator3D, b_idx: int, end_idx: int, radius: float, min_len: float, is_hips: bool, is_hinge: bool, cone_swing: float, mass: float) -> PhysicalBone3D:
+	if skeleton == null or b_idx < 0:
+		return null
+	var pb := PhysicalBone3D.new()
+	pb.bone_name = skeleton.get_bone_name(b_idx)
+	pb.mass = mass
+	pb.friction = 0.86
+	pb.bounce = 0.04
+	pb.collision_layer = 32
+	pb.collision_mask = 1
+	pb.can_sleep = true
+
+	var b_g := skeleton.get_bone_global_pose(b_idx)
+	var b_pos := b_g.origin
+	var e_pos := skeleton.get_bone_global_pose(end_idx).origin if end_idx >= 0 else (b_pos + Vector3(0, min_len, 0))
+	var diff := e_pos - b_pos
+	var blen := maxf(diff.length(), min_len)
+
+	var cs := CollisionShape3D.new()
+	var cap := CapsuleShape3D.new()
+	cap.radius = radius
+	cap.height = maxf(blen, radius * 2.15)
+	cs.shape = cap
+
+	var mid_skel := (b_pos + e_pos) * 0.5
+	var dir_skel := diff.normalized() if diff.length_squared() > 1e-5 else Vector3.UP
+	var ref_v := Vector3.FORWARD if absf(dir_skel.y) > 0.92 else Vector3.UP
+	var right_v := dir_skel.cross(ref_v).normalized()
+	var fwd_v := right_v.cross(dir_skel).normalized()
+	var cap_in_skel := Transform3D(Basis(right_v, dir_skel, fwd_v), mid_skel)
+
+	pb.body_offset = b_g.affine_inverse() * cap_in_skel
+	pb.joint_offset = pb.body_offset.affine_inverse()
+	pb.transform = cap_in_skel
+	pb.add_child(cs)
+
+	if is_hips:
+		pb.joint_type = PhysicalBone3D.JOINT_TYPE_NONE
+	elif is_hinge:
+		# Permissive cone constraint avoids arbitrary GLB bone-roll axis locking on knees/elbows under Jolt
+		pb.joint_type = PhysicalBone3D.JOINT_TYPE_CONE
+		pb.set("joint_constraints/swing_span", 1.15)
+		pb.set("joint_constraints/twist_span", 0.20)
+		pb.set("joint_constraints/bias", 0.3)
+		pb.set("joint_constraints/relaxation", 1.0)
+	else:
+		pb.joint_type = PhysicalBone3D.JOINT_TYPE_CONE
+		pb.set("joint_constraints/swing_span", cone_swing)
+		pb.set("joint_constraints/twist_span", 0.45)
+		pb.set("joint_constraints/bias", 0.3)
+		pb.set("joint_constraints/relaxation", 1.0)
+
+	sim.add_child(pb)
+	_pb_entries.append({"pb": pb, "bone": b_idx, "inv_bo": pb.body_offset.affine_inverse()})
+	return pb
+
+
+func _sync_bones_from_jolt() -> void:
+	if skeleton == null or _pb_entries.is_empty():
+		return
+	var sk_inv := skeleton.global_transform.affine_inverse()
+	for entry in _pb_entries:
+		var pb := entry["pb"] as PhysicalBone3D
+		if is_instance_valid(pb):
+			var b_idx: int = entry["bone"]
+			var inv_bo: Transform3D = entry["inv_bo"]
+			skeleton.set_bone_global_pose(b_idx, sk_inv * pb.global_transform * inv_bo)
+
+
+func _freeze_ragdoll_to_static() -> void:
+	if not _ragdoll_active:
+		return
+	_ragdoll_active = false
+	_active_ragdolls.erase(self)
+	if skeleton:
+		_sync_bones_from_jolt()
+		# Bake final global poses into local poses cleanly so freeing PhysicalBoneSimulator3D keeps exact corpse pose!
+		var bc := skeleton.get_bone_count()
+		var globals: Array[Transform3D] = []
+		globals.resize(bc)
+		for b in bc:
+			globals[b] = skeleton.get_bone_global_pose(b)
+		if _ragdoll_sim and is_instance_valid(_ragdoll_sim):
+			_ragdoll_sim.physical_bones_stop_simulation()
+			_ragdoll_sim.queue_free()
+		_ragdoll_sim = null
+		for b in bc:
+			var p := skeleton.get_bone_parent(b)
+			var lp := globals[b] if p < 0 else (globals[p].affine_inverse() * globals[b])
+			skeleton.set_bone_pose(b, lp)
+		if hips_bone >= 0 and hips_bone < bc:
+			var hips_l := globals[hips_bone].origin
+			var rag_box := AABB(hips_l - Vector3(1.6, 0.9, 1.6), Vector3(3.2, 2.0, 3.2))
+			for bmi in _body_meshes:
+				if is_instance_valid(bmi):
+					bmi.custom_aabb = rag_box
+	elif _ragdoll_sim and is_instance_valid(_ragdoll_sim):
+		_ragdoll_sim.physical_bones_stop_simulation()
+		_ragdoll_sim.queue_free()
+		_ragdoll_sim = null
+
+	_pb_entries.clear()
+	_pb_hips = null
+	_pb_spine2 = null
+	_pb_head = null
+	_pb_l_arm = null
+	_pb_r_arm = null
+	_pb_l_leg = null
+	_pb_r_leg = null
+	if sk_mod and is_instance_valid(sk_mod):
+		sk_mod.queue_free()
+	sk_mod = null
+	if anim_player and is_instance_valid(anim_player):
+		anim_player.queue_free()
+	anim_player = null
+	_set_shadow_casting(false)
+	death_settled = true
+	set_physics_process(false)
+	set_process(false)
+
+
+func _enter_ragdoll(shot_dir: Vector3, _total_dmg: float, primary_zone: String, hit_dist: float, weapon_idx: int) -> void:
+	if _ragdoll_active or skeleton == null:
+		return
+	_ragdoll_active = true
+	_ragdoll_age = 0.0
+	_ragdoll_settle_timer = 0.0
+	_ragdoll_unstuck_done = false
+	collision_layer = 0
+	collision_mask = 0
+	velocity = Vector3.ZERO
+
+	# Free AnimationPlayer and SkeletonModifier3D so Skeleton3D holds live pose cleanly for ragdoll takeover
+	if sk_mod and is_instance_valid(sk_mod):
+		sk_mod.queue_free()
+	sk_mod = null
+	if anim_player and is_instance_valid(anim_player):
+		anim_player.stop()
+		anim_player.queue_free()
+	anim_player = null
+
+	# Enforce active ragdoll cap (4) -> freeze oldest settled/tumbling corpse cleanly
+	_active_ragdolls.append(self)
+	while _active_ragdolls.size() > MAX_ACTIVE_RAGDOLLS:
+		var oldest := _active_ragdolls.pop_front() as ZombieAI
+		if is_instance_valid(oldest) and oldest != self:
+			oldest._freeze_ragdoll_to_static()
+
+	_pb_entries.clear()
+	var sim := PhysicalBoneSimulator3D.new()
+	sim.name = "RagdollSim"
+	_ragdoll_sim = sim
+
+	_pb_hips = _add_pbone(sim, hips_bone, spine2_bone, 0.16, 0.28, true, false, 0.35, 16.0)
+	_pb_spine2 = _add_pbone(sim, spine2_bone, head_bone, 0.18, 0.34, false, false, 0.55, 18.0)
+	_pb_head = _add_pbone(sim, head_bone, -1, 0.13, 0.24, false, false, 0.65, 5.5)
+	_pb_l_arm = _add_pbone(sim, l_arm_bone, l_forearm_bone, 0.075, 0.26, false, false, 1.35, 3.5)
+	_add_pbone(sim, l_forearm_bone, l_hand_bone, 0.065, 0.24, false, true, 0.25, 2.5)
+	_pb_r_arm = _add_pbone(sim, r_arm_bone, r_forearm_bone, 0.075, 0.26, false, false, 1.35, 3.5)
+	_add_pbone(sim, r_forearm_bone, r_hand_bone, 0.065, 0.24, false, true, 0.25, 2.5)
+	_pb_l_leg = _add_pbone(sim, l_upleg_bone, l_leg_bone, 0.10, 0.40, false, false, 1.05, 8.0)
+	_add_pbone(sim, l_leg_bone, l_foot_bone, 0.085, 0.38, false, true, 0.20, 5.5)
+	_pb_r_leg = _add_pbone(sim, r_upleg_bone, r_leg_bone, 0.10, 0.40, false, false, 1.05, 8.0)
+	_add_pbone(sim, r_leg_bone, r_foot_bone, 0.085, 0.38, false, true, 0.20, 5.5)
+
+	skeleton.add_child(sim)
+	sim.active = true
+	sim.physical_bones_start_simulation()
+
+	# Stage directional ballistic impulse 1 physics tick after bodies enter Jolt world
+	var sd := shot_dir.normalized()
+	if sd.length_squared() < 0.01:
+		sd = -global_transform.basis.z
+	var sd_horiz := Vector3(sd.x, 0.0, sd.z).normalized()
+	_pending_impulses.clear()
+	var is_close_shotgun := (weapon_idx == 2 and hit_dist < 5.8)
+	var dist_att := clampf(1.25 - hit_dist * 0.11, 0.45, 1.25)
+
+	if is_close_shotgun:
+		var blast := 48.0 * dist_att * _chest_armor_mult
+		if _pb_spine2: _pending_impulses[_pb_spine2] = sd_horiz * blast + Vector3(0.0, 2.8 * dist_att, 0.0)
+		if _pb_hips: _pending_impulses[_pb_hips] = sd_horiz * (blast * 0.45) + Vector3(0.0, 1.2, 0.0)
+		if _pb_head: _pending_impulses[_pb_head] = sd * (16.0 * dist_att) + Vector3(0.0, 1.5, 0.0)
+	elif primary_zone == "HEAD":
+		if _pb_head: _pending_impulses[_pb_head] = sd * 18.0 + Vector3(0.0, 3.0, 0.0)
+		if _pb_spine2: _pending_impulses[_pb_spine2] = sd_horiz * 16.0 - Vector3(0.0, 6.0, 0.0)
+		if _pb_hips: _pending_impulses[_pb_hips] = Vector3(0.0, -18.0, 0.0)
+	elif primary_zone == "ARM_L" and _pb_l_arm:
+		_pending_impulses[_pb_l_arm] = sd * 24.0
+		if _pb_spine2: _pending_impulses[_pb_spine2] = sd_horiz * 32.0 * _impulse_scale
+	elif primary_zone == "ARM_R" and _pb_r_arm:
+		_pending_impulses[_pb_r_arm] = sd * 24.0
+		if _pb_spine2: _pending_impulses[_pb_spine2] = sd_horiz * 32.0 * _impulse_scale
+	elif primary_zone == "LEG_L" and _pb_l_leg:
+		_pending_impulses[_pb_l_leg] = sd * 26.0
+		if _pb_hips: _pending_impulses[_pb_hips] = sd_horiz * 24.0 - Vector3(0.0, 10.0, 0.0)
+	elif primary_zone == "LEG_R" and _pb_r_leg:
+		_pending_impulses[_pb_r_leg] = sd * 26.0
+		if _pb_hips: _pending_impulses[_pb_hips] = sd_horiz * 24.0 - Vector3(0.0, 10.0, 0.0)
+	else:
+		if _pb_spine2: _pending_impulses[_pb_spine2] = sd_horiz * (48.0 * _impulse_scale) + Vector3(0.0, 6.0, 0.0)
+		if _pb_hips: _pending_impulses[_pb_hips] = sd_horiz * (24.0 * _impulse_scale)
+	_pending_impulse_frames = 1
+
+
+func _physics_process(delta: float) -> void:
+	if deterministic_pose:
+		return
+
+	_shadow_tick = (_shadow_tick + 1) & 3
+	if _shadow_tick == (_nav_ray_tick & 3) and target and is_instance_valid(target):
+		var vp := get_viewport()
+		var cam := vp.get_camera_3d() if vp else null
+		if cam:
+			var to_z := global_position - cam.global_position
+			var dist_sq := to_z.length_squared()
+			var fwd := -cam.global_transform.basis.z
+			var in_cone := (dist_sq < 484.0) and (dist_sq < 4.0 or to_z.normalized().dot(fwd) > 0.20)
+			_set_shadow_casting(in_cone)
+
+	_pellet_impulse_accum = maxf(0.0, _pellet_impulse_accum - delta * 6.0)
+	if pain_sfx_cd > 0.0:
+		pain_sfx_cd -= delta
+	if poise_immunity > 0.0:
+		poise_immunity -= delta
+	if poise > 0.0:
+		poise = maxf(0.0, poise - delta * 38.0)
+	if disabled_arm_timer > 0.0:
+		disabled_arm_timer -= delta
+		if disabled_arm_timer <= 0.0:
+			disabled_arm_side = 0
+
+	if dead:
+		dead_age += delta
+		if _ragdoll_active:
+			_ragdoll_age += delta
+			if _pending_impulse_frames > 0:
+				_pending_impulse_frames -= 1
+				if _pending_impulse_frames == 0:
+					for pb_key in _pending_impulses.keys():
+						var pb := pb_key as PhysicalBone3D
+						if is_instance_valid(pb):
+							pb.apply_central_impulse(_pending_impulses[pb_key])
+					_pending_impulses.clear()
+			if _ragdoll_age < 0.28:
+				for entry in _pb_entries:
+					var pb_c := entry["pb"] as PhysicalBone3D
+					if is_instance_valid(pb_c) and pb_c.linear_velocity.length_squared() > 23.04:
+						pb_c.linear_velocity = pb_c.linear_velocity.limit_length(4.8)
+
+			_sync_bones_from_jolt()
+			if is_instance_valid(_pb_hips) and skeleton:
+				var hips_loc := skeleton.to_local(_pb_hips.global_position)
+				var rag_box := AABB(hips_loc - Vector3(1.6, 1.1, 1.6), Vector3(3.2, 2.4, 3.2))
+				for bmi in _body_meshes:
+					if is_instance_valid(bmi):
+						bmi.custom_aabb = rag_box
+
+			if not death_landed and _ragdoll_age > 0.14 and is_instance_valid(_pb_hips):
+				var hp := _pb_hips.global_position
+				var fl := _sample_walkable_floor(hp, hp.y + 0.35)
+				if fl["hit"] and (hp.y - float(fl["y"])) <= 0.36:
+					death_landed = true
+					death_floor_y = float(fl["y"])
+					death_floor_normal = fl["normal"]
+					if impact_audio and _body_fall_stream:
+						impact_audio.stream = _body_fall_stream
+						impact_audio.pitch_scale = randf_range(0.88, 1.08)
+						impact_audio.play()
+					if VFXManager.instance:
+						VFXManager.instance.spawn_blood_pool(Vector3(hp.x, death_floor_y, hp.z), death_floor_normal)
+				elif not _ragdoll_unstuck_done and _ragdoll_age > 1.8:
+					_ragdoll_unstuck_done = true
+					_pb_hips.apply_central_impulse(Vector3(0.0, -14.0, 3.5))
+
+			var max_vel := 0.0
+			for check_pb in [_pb_hips, _pb_spine2, _pb_head, _pb_l_leg, _pb_r_leg]:
+				if is_instance_valid(check_pb):
+					max_vel = maxf(max_vel, (check_pb as PhysicalBone3D).linear_velocity.length())
+			if max_vel < 0.22 and death_landed and _ragdoll_age > 1.10:
+				_ragdoll_settle_timer += delta
+			else:
+				_ragdoll_settle_timer = 0.0
+
+			if _ragdoll_settle_timer >= 0.38 or (death_landed and _ragdoll_age >= 2.8) or _ragdoll_age >= 6.5:
+				_freeze_ragdoll_to_static()
+		return
+
+	if not is_on_floor():
+		velocity.y -= 18.0 * delta
+	else:
+		velocity.y = 0.0
+
+	if attack_cd > 0.0:
+		attack_cd -= delta
+
+	if state == State.SPAWNING:
+		state_timer -= delta
+		velocity.x = 0.0
+		velocity.z = 0.0
+		move_and_slide()
+		if state_timer <= 0.0:
+			state = State.CHASE
+		return
+
+	if state == State.STAGGER or state == State.TRIPPED:
+		state_timer -= delta
+		velocity.x = lerp(velocity.x, 0.0, delta * 8.5)
+		velocity.z = lerp(velocity.z, 0.0, delta * 8.5)
+		rig_root.rotation.x = lerp(rig_root.rotation.x, -0.20 if state == State.STAGGER else -0.34, delta * 12.0)
+		move_and_slide()
+		if state_timer <= 0.0:
+			state = State.CHASE
+		return
+
+	growl_timer -= delta
+	if growl_timer <= 0.0 and state == State.CHASE and target and global_position.distance_to(target.global_position) < 18.0:
+		growl_timer = randf_range(4.2, 8.5)
+		if growl_player and not _growl_streams.is_empty():
+			growl_player.stream = _growl_streams[randi() % _growl_streams.size()]
+			growl_player.pitch_scale = randf_range(0.84, 1.16)
+			growl_player.volume_db = -4.0
+			growl_player.play()
+
+	if target and is_instance_valid(target):
+		var raw_to := target.global_position - global_position
+		var dy_player := raw_to.y
+		var to_xz := Vector3(raw_to.x, 0.0, raw_to.z)
+		var dist := to_xz.length()
+		var dir_to_player := (to_xz / dist) if dist > 0.05 else -global_transform.basis.z
+		var desired_yaw := atan2(dir_to_player.x, dir_to_player.z)
+
+		if state == State.WINDUP:
+			state_timer -= delta
+			if state_timer > 0.14:
+				rotation.y = lerp_angle(rotation.y, desired_yaw, delta * 2.4)
+			velocity.x = dir_to_player.x * move_speed * 0.15
+			velocity.z = dir_to_player.z * move_speed * 0.15
+			rig_root.rotation.x = lerp(rig_root.rotation.x, -0.14, delta * 10.0)
+			move_and_slide()
+			if state_timer <= 0.0:
+				state = State.STRIKE
+				state_timer = _strike_dur
+				strike_hit_done = false
+				strike_dir = Vector3(sin(rotation.y), 0.0, cos(rotation.y)).normalized()
+			return
+
+		if state == State.STRIKE:
+			state_timer -= delta
+			var prog := 1.0 - (state_timer / maxf(_strike_dur, 0.01))
+			velocity.x = strike_dir.x * _lunge_speed
+			velocity.z = strike_dir.z * _lunge_speed
+			rig_root.rotation.x = lerp(rig_root.rotation.x, 0.22, delta * 22.0)
+			move_and_slide()
+			if prog >= 0.50 and not strike_hit_done:
+				strike_hit_done = true
+				_attempt_melee_hit(raw_to, dist, dy_player)
+			if state_timer <= 0.0:
+				state = State.RECOVER
+				state_timer = _recover_dur
+				attack_cd = randf_range(0.95, 1.35)
+			return
+
+		if state == State.RECOVER:
+			state_timer -= delta
+			velocity.x = lerp(velocity.x, 0.0, delta * 11.0)
+			velocity.z = lerp(velocity.z, 0.0, delta * 11.0)
+			rig_root.rotation.x = lerp(rig_root.rotation.x, 0.05, delta * 8.0)
+			move_and_slide()
+			if state_timer <= 0.0:
+				_release_token()
+				state = State.CHASE
+			return
+
+		if dist > 0.05:
+			var steer_dir := _choose_nav_dir(to_xz)
+			var steer_yaw := atan2(steer_dir.x, steer_dir.z)
+			rotation.y = lerp_angle(rotation.y, desired_yaw if dist < 4.0 else steer_yaw, delta * 6.5)
+
+			var effective_speed := move_speed * (0.52 if crippled_side != 0 else 1.0)
+			var can_windup := dist <= _trigger_range and absf(dy_player) < 1.35 and attack_cd <= 0.0
+			if can_windup and _has_clear_los_to_player() and _request_token():
+				state = State.WINDUP
+				state_timer = _windup_dur
+				attack_side = -1 if disabled_arm_side == 1 else (1 if disabled_arm_side == -1 else (1 if randf() < 0.5 else -1))
+				if growl_player and not _snarl_streams.is_empty():
+					growl_player.stream = _snarl_streams[randi() % _snarl_streams.size()]
+					growl_player.pitch_scale = randf_range(0.92, 1.12)
+					growl_player.volume_db = 0.0
+					growl_player.play()
+			elif dist < 0.88:
+				velocity.x = -dir_to_player.x * 2.4
+				velocity.z = -dir_to_player.z * 2.4
+			else:
+				velocity.x = steer_dir.x * effective_speed
+				velocity.z = steer_dir.z * effective_speed
+				anim_phase += delta * effective_speed * 3.4
+				var sway_amp := 0.085 if crippled_side != 0 else 0.055
+				rig_root.rotation.z = lerpf(rig_root.rotation.z, sin(anim_phase) * sway_amp, delta * 8.0)
+				rig_root.position.y = lerpf(rig_root.position.y, absf(sin(anim_phase * 2.0)) * 0.032, delta * 8.0)
+
+	move_and_slide()
+	rig_root.rotation.x = lerp(rig_root.rotation.x, 0.09, delta * 6.0)
+
+
+func _has_clear_los_to_player() -> bool:
+	if target == null:
+		return false
+	var space := get_world_3d().direct_space_state
+	if space == null:
+		return true
+	var p0 := global_position + Vector3(0, 1.32, 0)
+	var p1 := target.global_position + Vector3(0, 1.32, 0)
+	var q := PhysicsRayQueryParameters3D.create(p0, p1, 1)
+	return not space.intersect_ray(q)
+
+
+func _attempt_melee_hit(raw_to: Vector3, dist_xz: float, dy_player: float) -> void:
+	if target == null or not is_instance_valid(target):
+		return
+	if absf(dy_player) > 1.25 or dist_xz > 1.72:
+		return
+	var z_fwd := Vector3(sin(rotation.y), 0.0, cos(rotation.y)).normalized()
+	var to_p_xz := Vector3(raw_to.x, 0.0, raw_to.z)
+	if to_p_xz.length_squared() > 0.01 and z_fwd.dot(to_p_xz.normalized()) < 0.42:
+		return
+	if not _has_clear_los_to_player():
+		return
+	if target.has_method("take_damage"):
+		target.take_damage(attack_damage, global_position + Vector3(0, 1.35, 0))
+
+
+func apply_shot(hits: Array, weapon_idx: int) -> Dictionary:
+	if dead or hits.is_empty():
+		return {"headshot": false, "killed": false, "zone": "CHEST"}
+
+	var any_hs := false
+	var total_dmg := 0.0
+	var primary_zone := str(hits[0].get("zone", "CHEST"))
+	var avg_pos := Vector3.ZERO
+	var avg_dir := Vector3.ZERO
+	var min_dist := 99.0
+	var rig_basis := rig_root.global_transform.basis
+	var inv_rig := rig_basis.inverse()
+
+	for h_raw in hits:
+		var h: Dictionary = h_raw
+		var hz := str(h.get("zone", "CHEST"))
+		var amt := float(h.get("dmg", 30.0))
+		var hpos: Vector3 = h.get("pos", face_focus_position())
+		var hdir: Vector3 = h.get("dir", -rig_basis.z)
+		var hdist := float(h.get("dist", 6.0))
+		min_dist = minf(min_dist, hdist)
+		avg_pos += hpos
+		avg_dir += hdir.normalized()
+
+		var zone_mult := 1.0
+		var poise_mult := 1.0
+		match hz:
+			"HEAD":
+				zone_mult = 2.65
+				poise_mult = 2.4
+				any_hs = true
+				primary_zone = "HEAD"
+			"CHEST":
+				zone_mult = 1.0 * _chest_armor_mult
+				poise_mult = 1.0 * _chest_armor_mult
+			"ARM_L", "ARM_R":
+				zone_mult = 0.72
+				poise_mult = 0.75
+			"LEG_L", "LEG_R":
+				zone_mult = 0.68
+				poise_mult = 1.25
+
+		var fd := amt * zone_mult
+		total_dmg += fd
+		health -= fd
+		poise += amt * poise_mult
+
+		if hz == "LEG_L":
+			left_leg_dmg += fd
+			if left_leg_dmg >= max_health * 0.28: crippled_side = -1
+		elif hz == "LEG_R":
+			right_leg_dmg += fd
+			if right_leg_dmg >= max_health * 0.28: crippled_side = 1
+		elif hz == "ARM_L":
+			disabled_arm_side = -1; disabled_arm_timer = 0.65
+		elif hz == "ARM_R":
+			disabled_arm_side = 1; disabled_arm_timer = 0.65
+
+	avg_pos /= float(hits.size())
+	var hd_world := (avg_dir / float(hits.size())).normalized()
+	if hd_world.length_squared() < 0.01:
+		hd_world = -rig_basis.z
+	var hd_char := (inv_rig * hd_world).normalized()
+	var bend_axis := Vector3.UP.cross(hd_char)
+	if bend_axis.length_squared() < 0.002:
+		bend_axis = Vector3.RIGHT
+	bend_axis = bend_axis.normalized()
+
+	var imp_allow := clampf(1.35 - _pellet_impulse_accum, 0.25, 1.0)
+	_pellet_impulse_accum += 0.45
+	var k := _impulse_scale * imp_allow * clampf(1.0 + 0.14 * float(hits.size() - 1), 1.0, 1.65)
+
+	if sk_mod and sk_mod is ZombieSkeletonModifier:
+		var sm := sk_mod as ZombieSkeletonModifier
+		var offset_right := (inv_rig * (avg_pos - face_focus_position())).x
+		match primary_zone:
+			"HEAD":
+				sm.add_spring_impulse(head_bone, bend_axis * (13.5 * k) + Vector3(0.0, -signf(offset_right) * 8.5 * k, 0.0))
+				sm.add_spring_impulse(neck_bone, bend_axis * (7.5 * k))
+				sm.add_spring_impulse(spine2_bone, bend_axis * (4.2 * k))
+			"ARM_L":
+				sm.add_spring_impulse(l_arm_bone, Vector3(-11.0 * k, 9.5 * k, -6.5 * k))
+				sm.add_spring_impulse(l_forearm_bone, Vector3(-7.0 * k, 0.0, 0.0))
+				sm.add_spring_impulse(spine2_bone, Vector3(-2.5 * k, -9.5 * k, 3.0 * k))
+				sm.add_spring_impulse(spine1_bone, Vector3(-1.5 * k, -4.5 * k, 0.0))
+			"ARM_R":
+				sm.add_spring_impulse(r_arm_bone, Vector3(-11.0 * k, -9.5 * k, 6.5 * k))
+				sm.add_spring_impulse(r_forearm_bone, Vector3(-7.0 * k, 0.0, 0.0))
+				sm.add_spring_impulse(spine2_bone, Vector3(-2.5 * k, 9.5 * k, -3.0 * k))
+				sm.add_spring_impulse(spine1_bone, Vector3(-1.5 * k, 4.5 * k, 0.0))
+			"LEG_L":
+				sm.add_spring_impulse(l_upleg_bone, bend_axis * (6.5 * k) + Vector3(-5.0 * k, 0.0, 0.0))
+				sm.add_spring_impulse(l_leg_bone, Vector3(13.0 * k, 0.0, 0.0))
+				sm.add_spring_impulse(spine_bone, Vector3(4.5 * k, -3.0 * k, -4.5 * k))
+				sm.add_pelvis_drop(-2.2 * k)
+			"LEG_R":
+				sm.add_spring_impulse(r_upleg_bone, bend_axis * (6.5 * k) + Vector3(-5.0 * k, 0.0, 0.0))
+				sm.add_spring_impulse(r_leg_bone, Vector3(13.0 * k, 0.0, 0.0))
+				sm.add_spring_impulse(spine_bone, Vector3(4.5 * k, 3.0 * k, 4.5 * k))
+				sm.add_pelvis_drop(-2.2 * k)
+			_:
+				sm.add_spring_impulse(spine2_bone, bend_axis * (10.5 * k))
+				sm.add_spring_impulse(spine1_bone, bend_axis * (6.2 * k))
+				sm.add_spring_impulse(head_bone, -bend_axis * (5.5 * k))
+				sm.add_pelvis_drop(-0.8 * k)
+
+	# ONE aggregated pooled blood spray burst per hit zombie per blast!
+	if VFXManager.instance:
+		var b_int := clampf(0.85 + 0.16 * float(hits.size()), 0.85, 1.55)
+		VFXManager.instance.spawn_blood_impact(avg_pos, hd_world, b_int, any_hs, min_dist < 5.5)
+
+	if health <= 0.0:
+		dead = true
+		state = State.DEAD
+		_release_token()
+		if growl_player and _death_stream:
+			growl_player.stream = _death_stream
+			growl_player.pitch_scale = randf_range(0.90, 1.08)
+			growl_player.volume_db = -1.5
+			growl_player.play()
+		_enter_ragdoll(hd_world, total_dmg, primary_zone, min_dist, weapon_idx)
+		_register_corpse(self)
+		emit_signal("died", self, any_hs)
+		return {"headshot": any_hs, "killed": true, "zone": primary_zone}
+
+	var runner_tripped: bool = (variant == Variant.RUNNER and primary_zone.begins_with("LEG") and state == State.CHASE and poise > 18.0)
+	if (any_hs or poise >= poise_max or runner_tripped) and poise_immunity <= 0.0:
+		poise = 0.0
+		poise_immunity = 0.60
+		_release_token()
+		state = State.TRIPPED if runner_tripped else State.STAGGER
+		state_timer = 0.65 if runner_tripped else (0.34 if any_hs else 0.24)
+
+	velocity += hd_world * ((3.0 if any_hs else 1.5) * _impulse_scale)
+	if pain_sfx_cd <= 0.0 and growl_player and not _pain_streams.is_empty():
+		pain_sfx_cd = 0.38
+		growl_player.stream = _pain_streams[randi() % _pain_streams.size()]
+		growl_player.pitch_scale = randf_range(0.90, 1.14)
+		growl_player.volume_db = -2.5
+		growl_player.play()
+	return {"headshot": any_hs, "killed": false, "zone": primary_zone}
+
+
+func take_damage(amount: float, hit_pos: Vector3, hit_dir: Vector3, hit_info = "CHEST") -> bool:
+	var hit_zone := "CHEST"
+	if hit_info is bool:
+		hit_zone = "HEAD" if hit_info else "CHEST"
+	else:
+		hit_zone = str(hit_info)
+	var dist := global_position.distance_to(target.global_position) if (target and is_instance_valid(target)) else 5.0
+	var res := apply_shot([{"zone": hit_zone, "pos": hit_pos, "dir": hit_dir, "dmg": amount, "dist": dist}], 0)
+	return bool(res.get("killed", false))
+
+
+static func _register_corpse(z: ZombieAI) -> void:
+	_corpses.append(z)
+	while _corpses.size() > MAX_CORPSES:
+		var old := _corpses.pop_front() as ZombieAI
+		if is_instance_valid(old):
+			_active_ragdolls.erase(old)
+			old.queue_free()

@@ -1,0 +1,184 @@
+name: Build & Release (Windows + macOS)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GODOT_VERSION: "4.7.2"
+  GODOT_RELEASE: "4.7.2-stable"
+  GODOT_TEMPLATE_DIR: "4.7.2.stable"
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache Godot binary & export templates
+        id: cache-godot
+        uses: actions/cache@v4
+        with:
+          path: |
+            /tmp/godot-bin
+            ~/.local/share/godot/export_templates/${{ env.GODOT_TEMPLATE_DIR }}
+          key: godot-${{ env.GODOT_RELEASE }}-linux-templates-v1
+
+      - name: Install Godot & export templates
+        if: steps.cache-godot.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/godot-bin ~/.local/share/godot/export_templates/${GODOT_TEMPLATE_DIR}
+          echo "Downloading Godot ${GODOT_RELEASE} Linux x86_64..."
+          curl -fSL -o /tmp/godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_linux.x86_64.zip"
+          unzip -q /tmp/godot.zip -d /tmp/godot-bin
+          chmod +x /tmp/godot-bin/Godot_v${GODOT_RELEASE}_linux.x86_64
+          rm -f /tmp/godot.zip
+
+          echo "Downloading Godot ${GODOT_RELEASE} export templates..."
+          curl -fSL -o /tmp/templates.tpz "https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_export_templates.tpz"
+          unzip -q /tmp/templates.tpz -d /tmp/templates_extract
+          mv /tmp/templates_extract/templates/* ~/.local/share/godot/export_templates/${GODOT_TEMPLATE_DIR}/
+          rm -rf /tmp/templates.tpz /tmp/templates_extract
+
+      - name: Import project resources
+        run: |
+          set -euo pipefail
+          GODOT="/tmp/godot-bin/Godot_v${GODOT_RELEASE}_linux.x86_64"
+          "$GODOT" --headless --path . --import --quit || true
+          ls -la .godot/imported | head -n 20
+
+      - name: Generate export_presets.cfg
+        run: |
+          cat << 'EOF' > export_presets.cfg
+          [preset.0]
+
+          name="Windows Desktop"
+          platform="Windows Desktop"
+          runnable=true
+          advanced_options=false
+          dedicated_server=false
+          custom_features=""
+          export_filter="all_resources"
+          include_filter=""
+          exclude_filter="checks/*,.hill-climb/*,reference_frames/*,tools/*,*.md,video_analysis.json,assets/models/zombie_head_gasmask.glb,assets/models/zombie_leo.glb,assets/models/zombie_soldier.glb,assets/models/office_notepads.glb,assets/models/zombie_head_gear.glb,assets/models/victorian_newel.glb,assets/models/zombie_vest_gear.glb,assets/models/stair_baluster_aaa.glb"
+          export_path=""
+          patches=PackedStringArray()
+          encryption_include_filters=""
+          encryption_exclude_filters=""
+          seed=0
+          encrypt_pck=false
+          encrypt_directory=false
+          script_export_mode=2
+
+          [preset.0.options]
+
+          custom_template/debug=""
+          custom_template/release=""
+          debug/export_console_wrapper=0
+          binary_format/embed_pck=false
+          texture_format/s3tc_bptc=true
+          texture_format/etc2_astc=false
+          binary_format/architecture="x86_64"
+          codesign/enable=false
+          application/modify_resources=false
+
+          [preset.1]
+
+          name="macOS"
+          platform="macOS"
+          runnable=true
+          advanced_options=false
+          dedicated_server=false
+          custom_features=""
+          export_filter="all_resources"
+          include_filter=""
+          exclude_filter="checks/*,.hill-climb/*,reference_frames/*,tools/*,*.md,video_analysis.json,assets/models/zombie_head_gasmask.glb,assets/models/zombie_leo.glb,assets/models/zombie_soldier.glb,assets/models/office_notepads.glb,assets/models/zombie_head_gear.glb,assets/models/victorian_newel.glb,assets/models/zombie_vest_gear.glb,assets/models/stair_baluster_aaa.glb"
+          export_path=""
+          patches=PackedStringArray()
+          encryption_include_filters=""
+          encryption_exclude_filters=""
+          seed=0
+          encrypt_pck=false
+          encrypt_directory=false
+          script_export_mode=2
+
+          [preset.1.options]
+
+          custom_template/debug=""
+          custom_template/release=""
+          debug/export_console_wrapper=0
+          binary_format/architecture="universal"
+          application/bundle_identifier="com.deadcam.blackout"
+          application/signature=""
+          application/app_category="Games"
+          application/short_version="0.9.${{ github.run_number }}"
+          application/version="0.9.${{ github.run_number }}"
+          application/copyright=""
+          application/min_macos_version_x86_64="10.15"
+          application/min_macos_version_arm64="11.00"
+          application/export_angle=0
+          display/high_res=true
+          codesign/codesign=0
+          notarization/notarization=0
+          EOF
+
+      - name: Export Windows x64
+        run: |
+          set -euo pipefail
+          GODOT="/tmp/godot-bin/Godot_v${GODOT_RELEASE}_linux.x86_64"
+          mkdir -p build/windows
+          "$GODOT" --headless --path . --export-release "Windows Desktop" "build/windows/DEADCAM-BLACKOUT.exe"
+          test -f build/windows/DEADCAM-BLACKOUT.exe
+          test -f build/windows/DEADCAM-BLACKOUT.pck
+          (cd build/windows && zip -r ../DEADCAM-BLACKOUT-Windows-x64.zip .)
+          ls -lh build/DEADCAM-BLACKOUT-Windows-x64.zip
+
+      - name: Export macOS Universal
+        run: |
+          set -euo pipefail
+          GODOT="/tmp/godot-bin/Godot_v${GODOT_RELEASE}_linux.x86_64"
+          mkdir -p build
+          "$GODOT" --headless --path . --export-release "macOS" "build/DEADCAM-BLACKOUT-macOS-Universal.zip"
+          test -f build/DEADCAM-BLACKOUT-macOS-Universal.zip
+          ls -lh build/DEADCAM-BLACKOUT-macOS-Universal.zip
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA::7}"
+          TAG="v0.9.${GITHUB_RUN_NUMBER}-${SHORT_SHA}"
+          COMMIT_MSG="$(git log -1 --pretty=%s)"
+
+          cat << EOF > build/release_notes.md
+          ## DEADCAM: BLACKOUT — Build \`${TAG}\`
+
+          **Commit:** \`${SHORT_SHA}\` — ${COMMIT_MSG}
+
+          ### Downloads
+          - **Windows (x64):** Download \`DEADCAM-BLACKOUT-Windows-x64.zip\`, extract the folder, and run \`DEADCAM-BLACKOUT.exe\`.
+          - **macOS (Apple Silicon + Intel Universal):** Download \`DEADCAM-BLACKOUT-macOS-Universal.zip\`, unzip it, and run:
+            \`\`\`bash
+            xattr -cr "DEADCAM- BLACKOUT.app"
+            \`\`\`
+            before double-clicking the app.
+          EOF
+
+          gh release create "$TAG" \
+            build/DEADCAM-BLACKOUT-Windows-x64.zip \
+            build/DEADCAM-BLACKOUT-macOS-Universal.zip \
+            --title "DEADCAM: BLACKOUT ${TAG}" \
+            --notes-file build/release_notes.md \
+            --latest

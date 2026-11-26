@@ -1,0 +1,12 @@
+.godot/
+.hill-climb/*/data/
+.hill-climb/*/last.txt
+.hill-climb/*/best.txt
+.hill-climb/judge-notes.md
+reference_frames/
+video_analysis.json
+*.avi
+*.mp4
+*.log
+__pycache__/
+*.pyc

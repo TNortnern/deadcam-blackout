@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://d1l3l5oipydje"
+path="res://.godot/imported/fp_hands_rifle.obj-4c6424f315698a538fe6f49ec8fed93e.mesh"
+
+[deps]
+
+files=["res://.godot/imported/fp_hands_rifle.obj-4c6424f315698a538fe6f49ec8fed93e.mesh"]
+
+source_file="res://assets/meshes/fp_hands_rifle.obj"
+dest_files=["res://.godot/imported/fp_hands_rifle.obj-4c6424f315698a538fe6f49ec8fed93e.mesh", "res://.godot/imported/fp_hands_rifle.obj-4c6424f315698a538fe6f49ec8fed93e.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false
