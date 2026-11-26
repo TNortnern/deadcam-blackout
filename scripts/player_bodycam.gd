@@ -195,8 +195,9 @@ var _w_rest_rot: Dictionary = {} # instance_id -> Vector3
 const EJECT_G17 := Vector3(0.0, -0.9336, 0.3583)
 const PIVOT_G17_SLIDESTOP := Vector3(-0.010, 0.025, -0.162)
 const PIVOT_G17_TRIGGER := Vector3(0.0, 0.022, -0.155)
-const EJECT_AR := Vector3(0.006, -0.9860, -0.1668)
+const EJECT_AR := Vector3(0.012, -0.9758, -0.2183)
 const PIVOT_AR_MAG := Vector3(0.0, -0.135, -0.135)
+const PIVOT_AR_HAND := Vector3(-0.010, -0.055, -0.310)
 const PIVOT_AR_LATCH := Vector3(-0.028, 0.0066, 0.038)
 const PIVOT_AR_DUST := Vector3(0.0185, -0.0275, -0.119)
 const PIVOT_AR_CATCH := Vector3(-0.0185, -0.039, -0.081)
@@ -210,7 +211,8 @@ const PIVOT_M870_LIFTER := Vector3(0.001, -0.036, -0.184)
 static var _casing_mesh: CylinderMesh = null
 static var _hull_mesh: CylinderMesh = null
 static var _mag_mesh_g17: BoxMesh = null
-static var _mag_mesh_ar: BoxMesh = null
+static var _mag_mesh_ar: Mesh = null
+static var _mag_mat_ar: Material = null
 static var _mag_mat_dark: StandardMaterial3D = null
 static var _sfx_flashlight_click: AudioStream = null
 static var _sfx_reload_mech: AudioStream = null
@@ -667,7 +669,14 @@ func _prep_viewmodel_node(n: Node) -> void:
 				n.set_surface_override_material(i, cloth)
 			else:
 				var gun := source.duplicate() as StandardMaterial3D
-				if "m16" in mname or "slide" in mname or "barrel" in mname or "reflex" in mname or "frame" in mname or "bolt" in mname or "mag" in mname or "charge" in mname or gun.metallic > 0.20:
+				var nname := n.name.to_lower()
+				if "magazine_m16a2" in nname:
+					gun.albedo_color = Color(2.35, 2.40, 2.24)
+					gun.metallic = 0.48
+					gun.roughness = 0.36
+					gun.metallic_specular = 0.62
+					gun.anisotropy_enabled = false
+				elif "m16" in mname or "slide" in mname or "barrel" in mname or "reflex" in mname or "frame" in mname or "bolt" in mname or "mag" in mname or "charge" in mname or gun.metallic > 0.20:
 					gun.metallic = 0.56
 					gun.roughness = 0.44
 					gun.metallic_specular = 0.56
@@ -1002,6 +1011,57 @@ func _build_shotgun_shell_rig() -> Node3D:
 	return rig
 
 
+func _attach_ar_top_cartridge(inst: Node3D, parts: Dictionary) -> void:
+	var mag_mi := _find_mesh_by_name(inst, "magazine_m16a2_0_hero")
+	if mag_mi == null:
+		return
+	if mag_mi.mesh != null:
+		_mag_mesh_ar = mag_mi.mesh
+		_mag_mat_ar = mag_mi.get_surface_override_material(0)
+	var round_rig := Node3D.new()
+	round_rig.name = "ARTopCartridge"
+	round_rig.position = Vector3(0.0, -0.036, -0.122)
+	round_rig.rotation = Vector3(PI * 0.5 - 0.14, 0.0, 0.0)
+	var brass := MeshInstance3D.new()
+	var bmesh := CylinderMesh.new()
+	bmesh.top_radius = 0.0046
+	bmesh.bottom_radius = 0.0046
+	bmesh.height = 0.044
+	bmesh.radial_segments = 12
+	var bmat := StandardMaterial3D.new()
+	bmat.albedo_color = Color(0.92, 0.74, 0.32)
+	bmat.metallic = 0.90
+	bmat.roughness = 0.22
+	bmesh.material = bmat
+	brass.mesh = bmesh
+	brass.layers = 2
+	brass.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	round_rig.add_child(brass)
+	var tip := MeshInstance3D.new()
+	var tmesh := CylinderMesh.new()
+	tmesh.top_radius = 0.0010
+	tmesh.bottom_radius = 0.0044
+	tmesh.height = 0.013
+	tmesh.radial_segments = 12
+	var tmat := StandardMaterial3D.new()
+	tmat.albedo_color = Color(0.82, 0.44, 0.24)
+	tmat.metallic = 0.86
+	tmat.roughness = 0.26
+	tmesh.material = tmat
+	tip.mesh = tmesh
+	tip.position = Vector3(0.0, 0.028, 0.0)
+	tip.layers = 2
+	tip.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	round_rig.add_child(tip)
+	mag_mi.add_child(round_rig)
+	if not parts.has("mag_bullet"):
+		parts["mag_bullet"] = []
+	(parts["mag_bullet"] as Array).append(round_rig)
+	var iid := round_rig.get_instance_id()
+	_w_rest_pos[iid] = round_rig.position
+	_w_rest_rot[iid] = round_rig.rotation
+
+
 func _prebuild_weapon_rigs() -> void:
 	_weapon_rigs.clear()
 	_w_parts_by_idx.clear()
@@ -1025,6 +1085,8 @@ func _prebuild_weapon_rigs() -> void:
 			_split_weapon_rig_meshes(inst, i)
 			holder.add_child(inst)
 			_collect_weapon_parts(inst, parts)
+			if i == 1:
+				_attach_ar_top_cartridge(inst, parts)
 		if i == 2:
 			_shotgun_shell_rig = _build_shotgun_shell_rig()
 			holder.add_child(_shotgun_shell_rig)
@@ -1197,7 +1259,10 @@ func _update_flashlight_and_iris(delta: float) -> void:
 	camera.position.y = lerpf(0.0, 0.065, _ads_blend)
 
 	var flash_rim := 0.14 if muzzle_elapsed < 0.05 else 0.0
-	vm_rim.light_energy = lerpf(0.22, 0.28, _ads_blend) + flash_rim
+	var base_rim := 0.46 if is_reloading else lerpf(0.22, 0.28, _ads_blend)
+	vm_rim.light_energy = lerpf(vm_rim.light_energy, base_rim + flash_rim, k)
+	var rim_pos_tgt := Vector3(-0.22, -0.06, -0.02) if is_reloading else Vector3(-0.24, 0.15, -0.04)
+	vm_rim.position = vm_rim.position.lerp(rim_pos_tgt, k)
 	if dust_motes:
 		dust_motes.emitting = (global_position.z > -26.5)
 
@@ -1692,16 +1757,19 @@ func _spawn_dropped_mag(weapon_idx: int) -> void:
 		_mag_mesh_g17.size = Vector3(0.024, 0.112, 0.036)
 		_mag_mesh_g17.material = _mag_mat_dark
 	if _mag_mesh_ar == null:
-		_mag_mesh_ar = BoxMesh.new()
-		_mag_mesh_ar.size = Vector3(0.026, 0.162, 0.066)
-		_mag_mesh_ar.material = _mag_mat_dark
+		var ar_box := BoxMesh.new()
+		ar_box.size = Vector3(0.026, 0.162, 0.066)
+		ar_box.material = _mag_mat_dark
+		_mag_mesh_ar = ar_box
 	if _casings.size() >= 18:
 		var old: Dictionary = _casings.pop_front()
 		if is_instance_valid(old["node"]):
 			(old["node"] as Node).queue_free()
 	var mi := MeshInstance3D.new()
 	mi.mesh = _mag_mesh_g17 if weapon_idx == 0 else _mag_mesh_ar
-	mi.layers = 1
+	if weapon_idx == 1 and _mag_mat_ar != null:
+		mi.set_surface_override_material(0, _mag_mat_ar)
+	mi.layers = 1 | 2
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_fx_parent().add_child(mi)
 	var local_spawn := (Vector3(0.0, -0.04, -0.145) + EJECT_G17 * 0.20) if weapon_idx == 0 else (Vector3(0.0, -0.11, -0.135) + EJECT_AR * 0.20)
@@ -1792,7 +1860,7 @@ func start_reload() -> bool:
 	if current_weapon == 0:
 		reload_dur = 1.72 if reload_was_empty else 1.32
 	elif current_weapon == 1:
-		reload_dur = 2.28 if reload_was_empty else 1.82
+		reload_dur = 2.42 if reload_was_empty else 1.96
 	else:
 		reload_dur = 1.2 # Managed by shell loop phases
 	return true
@@ -1810,87 +1878,99 @@ func _update_reload(delta: float) -> void:
 
 func _update_reload_rifle() -> void:
 	var t := reload_elapsed
-	var base_cant_p := Vector3(-0.048, 0.102, -0.072)
-	var base_cant_r := Vector3(0.26, 0.36, -0.62)
-	var hand_mag_p := Vector3(0.042, -0.078, 0.148)
-	var hand_mag_r := Vector3(0.14, 0.08, 0.18)
-	var hand_pouch_p := hand_mag_p + EJECT_AR * 0.26 + Vector3(-0.040, -0.055, 0.035)
-	var hand_pouch_r := Vector3(0.28, 0.14, 0.28)
-	var hand_ch_p := Vector3(0.038, 0.055, 0.258)
+	var base_cant_p := Vector3(-0.056, 0.152, -0.088)
+	var base_cant_r := Vector3(0.34, 0.48, -0.52)
+	var hand_mag_p := Vector3(0.008, -0.172, 0.168)
+	var hand_mag_r := Vector3(-0.64, 0.34, 0.52)
+	var hand_drop_r := Vector3(-0.78, 0.42, 0.62)
+	var hand_pouch_p := hand_mag_p + EJECT_AR * 0.25 + Vector3(-0.035, -0.065, 0.030)
+	var hand_ch_p := Vector3(0.036, 0.055, 0.256)
 	var hand_ch_r := Vector3(-0.14, 0.16, 0.20)
+	var round_vis := (not reload_was_empty) if t < 0.80 else true
 	_pose_part("dust_cover", Vector3.ZERO, Vector3.ZERO if _m16_dust_open else Vector3(0.0, 0.0, 1.48), PIVOT_AR_DUST)
+	_pose_part("mag_bullet", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, round_vis)
 
-	if t < 0.24:
-		var u := smoothstep(0.0, 0.24, t)
+	if t < 0.22:
+		var u := smoothstep(0.0, 0.22, t)
 		reload_pos_off = base_cant_p * u
 		reload_rot_off = base_cant_r * u
 		_pose_part("mag", Vector3.ZERO)
-		_pose_part("arm_left", hand_mag_p * u, hand_mag_r * u)
-	elif t < 0.60:
-		if not (reload_flags & 1):
+		_pose_part("arm_left", hand_mag_p * u, hand_mag_r * u, PIVOT_AR_HAND)
+	elif t < 0.66:
+		if t >= 0.24 and not (reload_flags & 1):
 			reload_flags |= 1
 			_play_reload_sfx(_sfx_mag_out, 1.0)
-		var u := smoothstep(0.24, 0.56, t)
-		if t >= 0.54 and reload_was_empty and not (reload_flags & 32):
+		var u := smoothstep(0.24, 0.62, t)
+		if t >= 0.58 and not (reload_flags & 32):
 			reload_flags |= 32
 			_spawn_dropped_mag(1)
-		reload_pos_off = base_cant_p + Vector3(0.0, -0.018 * sin(u * PI), 0.010)
-		reload_rot_off = base_cant_r + Vector3(0.05 * sin(u * PI), 0.0, -0.06 * sin(u * PI))
-		var mp := EJECT_AR * (0.26 * u)
-		_pose_part("mag", mp, Vector3(-0.16 * u, 0.0, 0.0), PIVOT_AR_MAG, u < 0.92)
-		_pose_part("arm_left", hand_mag_p + mp, hand_mag_r.lerp(hand_pouch_r, u))
-	elif t < 0.94:
-		var u := smoothstep(0.60, 0.94, t)
+		reload_pos_off = base_cant_p + Vector3(0.0, -0.022 * sin(u * PI), 0.012)
+		reload_rot_off = base_cant_r + Vector3(0.06 * sin(u * PI), 0.0, -0.08 * sin(u * PI))
+		var mp := EJECT_AR * (0.25 * u)
+		_pose_part("mag", mp, Vector3(-0.22 * u, 0.0, 0.0), PIVOT_AR_MAG, u < 0.96)
+		_pose_part("arm_left", hand_mag_p + mp, hand_mag_r.lerp(hand_drop_r, u), PIVOT_AR_HAND)
+	elif t < 0.92:
+		var u := smoothstep(0.66, 0.92, t)
 		var dip := sin(u * PI)
-		reload_pos_off = base_cant_p + Vector3(-0.01 * dip, -0.028 * dip, 0.012)
-		reload_rot_off = base_cant_r + Vector3(-0.06 * dip, 0.04, 0.05)
-		_pose_part("mag", EJECT_AR * 0.26, Vector3.ZERO, PIVOT_AR_MAG, false)
-		_pose_part("arm_left", hand_pouch_p + Vector3(-0.02 * dip, -0.035 * dip, 0.015 * dip), hand_pouch_r)
-	elif t < 1.24:
-		var u := smoothstep(0.94, 1.12, t)
-		var slap := sin(smoothstep(1.08, 1.24, t) * PI)
-		reload_pos_off = base_cant_p + Vector3(0.0, 0.024 * slap, -0.010 * slap)
-		reload_rot_off = base_cant_r + Vector3(0.08 * slap, 0.0, 0.06 * slap)
-		var mp := EJECT_AR * lerpf(0.24, 0.0, u)
-		_pose_part("mag", mp, Vector3(-0.12 * (1.0 - u), 0.0, 0.0), PIVOT_AR_MAG, true)
-		_pose_part("arm_left", hand_mag_p + mp + Vector3(0.0, 0.014 * slap, 0.0), hand_pouch_r.lerp(hand_mag_r, u))
-		if t >= 1.03 and not (reload_flags & 2):
+		reload_pos_off = base_cant_p + Vector3(-0.008 * dip, -0.024 * dip, 0.012)
+		reload_rot_off = base_cant_r + Vector3(-0.05 * dip, 0.03, 0.04)
+		_pose_part("mag", EJECT_AR * 0.25, Vector3.ZERO, PIVOT_AR_MAG, false)
+		var fetch_p := hand_pouch_p.lerp(hand_mag_p + EJECT_AR * 0.24, smoothstep(0.55, 1.0, u))
+		_pose_part("arm_left", fetch_p + Vector3(-0.015 * dip, -0.028 * dip, 0.012 * dip), hand_drop_r, PIVOT_AR_HAND)
+	elif t < 1.40:
+		var mp := Vector3.ZERO
+		var mrot := Vector3.ZERO
+		var slap := 0.0
+		if t < 1.12:
+			var u_align := smoothstep(0.92, 1.12, t)
+			mp = EJECT_AR * lerpf(0.24, 0.085, u_align)
+			mrot = Vector3(lerpf(-0.22, -0.07, u_align), 0.0, 0.0)
+			_pose_part("arm_left", hand_mag_p + mp, hand_drop_r.lerp(hand_mag_r, u_align), PIVOT_AR_HAND)
+		else:
+			var u_seat := smoothstep(1.12, 1.29, t)
+			slap = sin(smoothstep(1.27, 1.40, t) * PI)
+			mp = EJECT_AR * lerpf(0.085, 0.0, u_seat)
+			mrot = Vector3(lerpf(-0.07, 0.0, u_seat), 0.0, 0.0)
+			_pose_part("arm_left", hand_mag_p + mp + Vector3(0.0, 0.018 * slap, 0.0), hand_mag_r, PIVOT_AR_HAND)
+		reload_pos_off = base_cant_p + Vector3(0.0, 0.026 * slap, -0.012 * slap)
+		reload_rot_off = base_cant_r + Vector3(0.09 * slap, 0.0, 0.07 * slap)
+		_pose_part("mag", mp, mrot, PIVOT_AR_MAG, true)
+		if t >= 1.16 and not (reload_flags & 2):
 			reload_flags |= 2
 			_play_reload_sfx(_sfx_mag_in, 1.0)
-		if t >= 1.11 and not (reload_flags & 4):
+		if t >= 1.27 and not (reload_flags & 4):
 			reload_flags |= 4
 			_commit_mag_ammo()
 			trauma = minf(1.0, trauma + 0.09)
-	elif reload_was_empty and t < 1.72:
+	elif reload_was_empty and t < 1.90:
 		_m16_dust_open = true
 		_pose_part("dust_cover", Vector3.ZERO)
-		if t >= 1.32 and not (reload_flags & 8):
+		if t >= 1.48 and not (reload_flags & 8):
 			reload_flags |= 8
 			_play_reload_sfx(_sfx_bolt, 1.0)
-		if t >= 1.48 and not (reload_flags & 16):
+		if t >= 1.64 and not (reload_flags & 16):
 			reload_flags |= 16
 			trauma = minf(1.0, trauma + 0.11)
-		var u := smoothstep(1.24, 1.72, t)
-		var reach := smoothstep(0.0, 0.22, u)
-		var pull := sin(smoothstep(0.18, 0.78, u) * PI)
-		var latch_u := sin(smoothstep(0.12, 0.72, u) * PI)
+		var u := smoothstep(1.40, 1.90, t)
+		var reach := smoothstep(0.0, 0.24, u)
+		var pull := sin(smoothstep(0.20, 0.78, u) * PI)
+		var latch_u := sin(smoothstep(0.14, 0.72, u) * PI)
 		var fa_tap := sin(smoothstep(0.72, 0.96, u) * PI)
 		reload_pos_off = base_cant_p.lerp(Vector3(-0.02, 0.03, -0.02), u) + Vector3(-0.012 * pull, 0.012 * pull, 0.032 * pull)
-		reload_rot_off = base_cant_r.lerp(Vector3(0.10, 0.18, 0.26), smoothstep(0.0, 0.35, u))
+		reload_rot_off = base_cant_r.lerp(Vector3(0.10, 0.18, -0.24), smoothstep(0.0, 0.35, u))
 		var ch := pull * 0.068
 		_pose_part("charge", Vector3(0.0, 0.0, ch))
 		_pose_part("charge_latch", Vector3(0.0, 0.0, ch), Vector3(0.0, 0.26 * latch_u, 0.0), PIVOT_AR_LATCH)
 		_pose_part("slide", Vector3(0.0, 0.0, ch))
 		_pose_part("bolt_catch", Vector3.ZERO, Vector3(0.0, 0.0, 0.22 * pull), PIVOT_AR_CATCH)
 		_pose_part("fwd_assist", AXIS_AR_ASSIST * (0.012 * fa_tap))
-		_pose_part("arm_left", hand_mag_p.lerp(hand_ch_p, reach) + Vector3(0.0, 0.0, ch), hand_mag_r.lerp(hand_ch_r, reach))
+		var h_eff_start := hand_mag_p + (PIVOT_AR_HAND - Basis.from_euler(hand_mag_r) * PIVOT_AR_HAND)
+		_pose_part("arm_left", h_eff_start.lerp(hand_ch_p, reach) + Vector3(0.0, 0.0, ch), hand_mag_r.lerp(hand_ch_r, reach))
 	else:
-		var start_s := 1.72 if reload_was_empty else 1.24
+		var start_s := 1.90 if reload_was_empty else 1.40
 		var u := smoothstep(start_s, reload_dur, t)
 		var prev_p := Vector3(-0.02, 0.03, -0.02) if reload_was_empty else base_cant_p
-		var prev_r := Vector3(0.10, 0.18, 0.26) if reload_was_empty else base_cant_r
-		var prev_hp := hand_ch_p if reload_was_empty else hand_mag_p
-		var prev_hr := hand_ch_r if reload_was_empty else hand_mag_r
+		var prev_r := Vector3(0.10, 0.18, -0.24) if reload_was_empty else base_cant_r
 		reload_pos_off = prev_p.lerp(Vector3.ZERO, u)
 		reload_rot_off = prev_r.lerp(Vector3.ZERO, u)
 		_pose_part("charge", Vector3.ZERO)
@@ -1899,7 +1979,10 @@ func _update_reload_rifle() -> void:
 		_pose_part("bolt_catch", Vector3.ZERO)
 		_pose_part("fwd_assist", Vector3.ZERO)
 		_pose_part("mag", Vector3.ZERO)
-		_pose_part("arm_left", prev_hp.lerp(Vector3.ZERO, u), prev_hr.lerp(Vector3.ZERO, u))
+		if reload_was_empty:
+			_pose_part("arm_left", hand_ch_p.lerp(Vector3.ZERO, u), hand_ch_r.lerp(Vector3.ZERO, u))
+		else:
+			_pose_part("arm_left", hand_mag_p.lerp(Vector3.ZERO, u), hand_mag_r.lerp(Vector3.ZERO, u), PIVOT_AR_HAND)
 
 	if t >= reload_dur:
 		is_reloading = false

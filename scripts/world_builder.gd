@@ -43,8 +43,8 @@ var user_voxel_gi_enabled: bool = true
 var user_pom_level: float = 1.0
 var _pom_materials: Array[ShaderMaterial] = []
 
-const TUNNEL_DOOR := AABB(Vector3(-3.8, -0.6, -10.5), Vector3(7.6, 5.6, 4.2))
-const TUNNEL_EXIT := AABB(Vector3(-4.6, -0.8, -30.5), Vector3(9.2, 6.0, 4.5))
+const TUNNEL_DOOR := AABB(Vector3(-2.45, -0.30, -8.60), Vector3(4.90, 4.05, 0.95))
+const TUNNEL_EXIT := AABB(Vector3(-2.60, -0.40, -28.75), Vector3(5.20, 4.35, 1.05))
 
 # Structural/furniture/rubble props never cast expensive dynamic shadows, but NEVER pop-disappear!
 const NO_SHADOW_GLBS := {
@@ -68,6 +68,14 @@ const NO_SHADOW_GLBS := {
 	"fallen_log": 0.88, "dead_quiver_branch_01": 0.85, "winter_grass": 0.85,
 	"undergrowth_fern": 0.85, "threshold_lining": 0.95, "landing_portal": 0.95,
 	"porch_steps": 0.95,
+}
+
+# Small interior floor/desk clutter smoothly dither-fades past 28m (never hero rooms/furniture!)
+const SMALL_CLUTTER_GLBS := {
+	"books_set": 0.95, "binder_notebook": 0.95, "clipboard": 0.95,
+	"vintage_crutches": 0.95, "trash_can": 0.95, "trashbag": 0.95,
+	"medical_box": 0.95, "ammo_box": 0.95, "cardboard_box": 0.95,
+	"plaster_fall": 0.90, "splinter_heap": 0.90, "fractured_bricks": 0.92,
 }
 
 # Only tiny ankle-height outdoor ground scatter smoothly dither-fades well past 50m into night fog
@@ -110,10 +118,17 @@ func build_world() -> void:
 func _optimize_lights_recursive(n: Node) -> void:
 	if n is OmniLight3D or n is SpotLight3D:
 		var l := n as Light3D
+		var r := (l as OmniLight3D).omni_range if l is OmniLight3D else (l as SpotLight3D).spot_range
 		l.distance_fade_enabled = true
-		l.distance_fade_begin = 22.0
-		l.distance_fade_shadow = 15.0
-		l.distance_fade_length = 8.0
+		if r >= 7.0:
+			# Hero room/courtyard lights stay lit across full courtyard<->lobby sightlines; shadows still cull early!
+			l.distance_fade_shadow = 16.0
+			l.distance_fade_begin = 64.0
+			l.distance_fade_length = 16.0
+		else:
+			l.distance_fade_shadow = 12.0
+			l.distance_fade_begin = 30.0
+			l.distance_fade_length = 12.0
 		if l is OmniLight3D and l.shadow_enabled:
 			# Animated zombies in omni range invalidate dual-paraboloid omni caches (+425 shadow draws/frame); keep SpotLights + flashlight shadowing!
 			l.shadow_enabled = false
@@ -236,23 +251,73 @@ func _is_portal_possibly_visible(cam: Camera3D, cam_pos: Vector3, portal: AABB) 
 	return true
 
 
+func _can_see_through_tunnel(cam: Camera3D, cam_pos: Vector3, near_portal: AABB, far_portal: AABB) -> bool:
+	if cam == null:
+		return true
+	if not _is_portal_possibly_visible(cam, cam_pos, near_portal):
+		return false
+	if not _is_portal_possibly_visible(cam, cam_pos, far_portal):
+		return false
+	var nx0 := INF
+	var nx1 := -INF
+	var ny0 := INF
+	var ny1 := -INF
+	for i in range(8):
+		var pt := near_portal.get_endpoint(i)
+		var dz := maxf(absf(pt.z - cam_pos.z), 0.15)
+		var qx := (pt.x - cam_pos.x) / dz
+		var qy := (pt.y - cam_pos.y) / dz
+		nx0 = minf(nx0, qx)
+		nx1 = maxf(nx1, qx)
+		ny0 = minf(ny0, qy)
+		ny1 = maxf(ny1, qy)
+	var fx0 := INF
+	var fx1 := -INF
+	var fy0 := INF
+	var fy1 := -INF
+	for i in range(8):
+		var pt := far_portal.get_endpoint(i)
+		var dz := maxf(absf(pt.z - cam_pos.z), 0.15)
+		var qx := (pt.x - cam_pos.x) / dz
+		var qy := (pt.y - cam_pos.y) / dz
+		fx0 = minf(fx0, qx)
+		fx1 = maxf(fx1, qx)
+		fy0 = minf(fy0, qy)
+		fy1 = maxf(fy1, qy)
+	return not (nx1 < fx0 or nx0 > fx1 or ny1 < fy0 or ny0 > fy1)
+
+
 func update_zone_culling(cam_or_pos) -> void:
 	var cam: Camera3D = cam_or_pos if cam_or_pos is Camera3D else null
 	var cam_pos: Vector3 = cam.global_position if cam != null else (cam_or_pos as Vector3)
 	var z := cam_pos.z
 	var is_compat := _is_compat_renderer()
-	# Portal-aware enclosure culling inside the cave + Wall OccluderInstance3Ds with zero pop!
-	var in_cave := (z <= -10.0 and z >= -26.5)
-	var show_indoor := 1 if (z > -26.5 and (cam == null or not in_cave or _is_portal_possibly_visible(cam, cam_pos, TUNNEL_DOOR))) else 0
+	# Exact coaxial dual-portal sightline culling — ZERO distance cutoffs, ZERO room pop-in!
+	var show_indoor := 1
+	if z >= -8.60:
+		show_indoor = 1
+	elif z > -28.75:
+		show_indoor = 1 if (cam == null or _is_portal_possibly_visible(cam, cam_pos, TUNNEL_DOOR)) else 0
+	else:
+		show_indoor = 1 if (cam == null or _can_see_through_tunnel(cam, cam_pos, TUNNEL_EXIT, TUNNEL_DOOR)) else 0
+
 	var show_tunnel := 1
-	if z > -6.5 and z < 7.5:
+	if z >= -28.75 and z <= -7.65:
+		show_tunnel = 1
+	elif z > -7.65:
 		show_tunnel = 1 if (cam == null or _is_portal_possibly_visible(cam, cam_pos, TUNNEL_DOOR)) else 0
-	elif z < -30.5 and z > -48.0:
+	else:
 		show_tunnel = 1 if (cam == null or _is_portal_possibly_visible(cam, cam_pos, TUNNEL_EXIT)) else 0
-	elif z <= -48.0 or z >= 7.5:
-		show_tunnel = 0
-	var show_outdoor := 1 if (z < -4.0 and (cam == null or (not in_cave and z <= -10.0) or _is_portal_possibly_visible(cam, cam_pos, TUNNEL_EXIT))) else 0
-	var show_side_trees := 1 if (show_outdoor == 1 and z <= -17.5) else 0
+
+	var show_outdoor := 1
+	if z <= -27.70:
+		show_outdoor = 1
+	elif z < -8.60:
+		show_outdoor = 1 if (cam == null or _is_portal_possibly_visible(cam, cam_pos, TUNNEL_EXIT)) else 0
+	else:
+		show_outdoor = 1 if (cam == null or _can_see_through_tunnel(cam, cam_pos, TUNNEL_DOOR, TUNNEL_EXIT)) else 0
+
+	var show_side_trees := show_outdoor
 	if world_env and world_env.environment and not debug_lock_env and not is_compat:
 		var env := world_env.environment
 		var ssao_on := user_ssao_enabled and ((z > -28.0) if quality_preset >= 2 else (z > -10.5))
@@ -286,7 +351,7 @@ func update_zone_culling(cam_or_pos) -> void:
 				elif gi_key == "tunnel":
 					gi.visible = base_gi_on and (quality_preset >= 2) and (show_tunnel == 1)
 				elif gi_key == "cabin":
-					gi.visible = base_gi_on and (quality_preset >= 2) and (z < -28.0)
+					gi.visible = base_gi_on and (quality_preset >= 2) and (show_outdoor == 1)
 	var out_fill_w := smoothstep(-16.0, -24.0, z)
 	if absf(out_fill_w - _last_out_fill_w) > 0.01:
 		_last_out_fill_w = out_fill_w
@@ -569,6 +634,10 @@ func _optimize_glb_meshes(root: Node, key: String) -> void:
 		bias = MICRO_DEBRIS_GLBS[key]
 		vis_end = 52.0
 		vis_margin = 10.0
+	elif SMALL_CLUTTER_GLBS.has(key):
+		bias = SMALL_CLUTTER_GLBS[key]
+		vis_end = 28.0
+		vis_margin = 6.0
 	elif NO_SHADOW_GLBS.has(key):
 		bias = NO_SHADOW_GLBS[key]
 	elif TREE_GLBS.has(key):
@@ -1039,8 +1108,8 @@ func _build_asylum_lobby() -> void:
 			lgt.light_indirect_energy = 1.45
 			lgt.light_volumetric_fog_energy = 0.45
 			lgt.set_meta("keep_vol_fog", true)
-			lgt.omni_range = 8.8
-			lgt.omni_attenuation = 1.76
+			lgt.omni_range = 12.8
+			lgt.omni_attenuation = 1.92
 			lgt.shadow_enabled = (lamp_idx == 0)
 			lgt.light_bake_mode = Light3D.BAKE_STATIC
 			lgt.shadow_bias = 0.025
@@ -1103,8 +1172,13 @@ func _build_asylum_lobby() -> void:
 			var sc := Vector3(rng.randf_range(0.18, 0.28), 0.005, rng.randf_range(0.24, 0.34))
 			var b := Basis.from_euler(Vector3(0, rng.randf_range(0, TAU), 0)).scaled(sc)
 			paper_xforms.append(Transform3D(b, Vector3(px, 0.008, pz)))
-	_add_box_multimesh(g, wood_xforms, Vector3.ONE, mats["wood_carved"], false)
-	_add_box_multimesh(g, paper_xforms, Vector3.ONE, mats["old_paper"], false)
+	var mm_wood := _add_box_multimesh(g, wood_xforms, Vector3.ONE, mats["wood_carved"], false)
+	var mm_paper := _add_box_multimesh(g, paper_xforms, Vector3.ONE, mats["old_paper"], false)
+	for mm_clutter in [mm_wood, mm_paper]:
+		if mm_clutter:
+			mm_clutter.visibility_range_end = 24.0
+			mm_clutter.visibility_range_end_margin = 5.0
+			mm_clutter.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 
 	# Curled ledger leaves collect against the overturned stool and the foot of the counter.
 	var leaf := PlaneMesh.new()
@@ -1133,6 +1207,9 @@ func _build_asylum_lobby() -> void:
 			page.position = center + Vector3(rng.randfn(0, 0.42), sheet * 0.002, rng.randfn(0, 0.48))
 			page.rotation.y = rng.randf_range(-PI, PI)
 			page.scale = Vector3.ONE * rng.randf_range(0.9, 1.21)
+			page.visibility_range_end = 24.0
+			page.visibility_range_end_margin = 5.0
+			page.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 			g.add_child(page)
 		_add_glb(g, "plaster_fall", center + Vector3(0.37,-0.065,0.32), Vector3(0, rng.randf_range(0,TAU),0), Vector3(0.32,0.16,0.37))
 	var power_l := OmniLight3D.new()
@@ -2237,18 +2314,27 @@ func _build_occluders() -> void:
 	_add_box_occluder(occ_root, Vector3(0.0, 3.5, 8.15), Vector3(20.0, 6.8, 0.16))
 	_add_box_occluder(occ_root, Vector3(4.95, 3.5, 1.76), Vector3(4.1, 6.7, 0.10))
 	_add_box_occluder(occ_root, Vector3(3.2, 7.15, 0.0), Vector3(13.6, 0.14, 16.0))
-	# Lobby north wall flanking the tunnel archway (leaves |x| < 2.38, y < 3.88 wide open!)
-	_add_box_occluder(occ_root, Vector3(-6.25, 3.5, -8.15), Vector3(7.6, 6.8, 0.18))
-	_add_box_occluder(occ_root, Vector3(6.25, 3.5, -8.15), Vector3(7.6, 6.8, 0.18))
-	_add_box_occluder(occ_root, Vector3(0.0, 5.50, -8.15), Vector3(4.4, 3.0, 0.18))
-	# Solid tunnel outer masonry shell
+	# Lobby north wall flanking the tunnel archway (tightened around x in [-2.02..2.02], y in [0..3.48])
+	_add_box_occluder(occ_root, Vector3(-6.12, 3.5, -8.15), Vector3(7.90, 7.0, 0.18))
+	_add_box_occluder(occ_root, Vector3(6.12, 3.5, -8.15), Vector3(7.90, 7.0, 0.18))
+	_add_box_occluder(occ_root, Vector3(0.0, 5.38, -8.15), Vector3(4.36, 3.44, 0.18))
+	# Upper 3-story stairwell north wall, roof, and east shaft wall (prevents upper stairwell leak from courtyard)
+	_add_box_occluder(occ_root, Vector3(-6.9, 9.1, -8.15), Vector3(7.2, 4.2, 0.18))
+	_add_box_occluder(occ_root, Vector3(-6.9, 11.15, -2.5), Vector3(7.2, 0.16, 11.2))
+	_add_box_occluder(occ_root, Vector3(-3.65, 9.1, -2.5), Vector3(0.16, 4.2, 11.2))
+	# Lobby east wall flanking the tall arched windows
+	_add_box_occluder(occ_root, Vector3(10.15, 3.5, -6.2), Vector3(0.18, 7.0, 3.6))
+	_add_box_occluder(occ_root, Vector3(10.15, 3.5, 4.8), Vector3(0.18, 7.0, 6.4))
+	# Solid tunnel outer masonry shell + vault upper haunches
 	_add_box_occluder(occ_root, Vector3(-2.52, 1.8, -18.0), Vector3(0.16, 3.5, 19.6))
 	_add_box_occluder(occ_root, Vector3(2.52, 1.8, -18.0), Vector3(0.16, 3.5, 19.6))
 	_add_box_occluder(occ_root, Vector3(0.0, 3.65, -18.0), Vector3(4.8, 0.16, 19.6))
+	_add_box_occluder(occ_root, Vector3(-1.95, 3.15, -18.0), Vector3(1.1, 1.0, 19.6))
+	_add_box_occluder(occ_root, Vector3(1.95, 3.15, -18.0), Vector3(1.1, 1.0, 19.6))
 	# Courtyard brick retaining walls flanking the tunnel exit (leaves exit archway 100% open!)
-	_add_box_occluder(occ_root, Vector3(-6.85, 3.0, -28.2), Vector3(8.7, 5.8, 0.34))
-	_add_box_occluder(occ_root, Vector3(6.85, 3.0, -28.2), Vector3(8.7, 5.8, 0.34))
-	_add_box_occluder(occ_root, Vector3(0.0, 5.0, -28.2), Vector3(4.4, 1.9, 0.34))
+	_add_box_occluder(occ_root, Vector3(-6.80, 3.0, -28.2), Vector3(9.0, 5.9, 0.34))
+	_add_box_occluder(occ_root, Vector3(6.80, 3.0, -28.2), Vector3(9.0, 5.9, 0.34))
+	_add_box_occluder(occ_root, Vector3(0.0, 4.92, -28.2), Vector3(4.6, 2.25, 0.34))
 	# Timber cabin solid back & side walls (world z = -56)
 	_add_box_occluder(occ_root, Vector3(0.0, 2.2, -59.05), Vector3(7.0, 4.1, 0.14))
 	_add_box_occluder(occ_root, Vector3(-3.65, 2.2, -56.0), Vector3(0.14, 4.1, 5.8))
