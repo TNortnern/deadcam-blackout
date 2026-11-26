@@ -7,8 +7,8 @@ const MAX_BLOOD_DECALS := 56
 const MAX_BLOOD_POOLS := 20
 const MAX_IMPACT_DECALS := 64
 const POOL_BLOOD_MIST := 14
-const POOL_BLOOD_STREAKS := 10
-const POOL_TISSUE_CHUNKS := 6
+const POOL_BLOOD_STREAKS := 14
+const POOL_TISSUE_CHUNKS := 10
 const POOL_IMPACT_DUST := 10
 const POOL_IMPACT_CHIPS := 8
 const POOL_METAL_SPARKS := 6
@@ -434,7 +434,7 @@ func _orient_quad_normal(pos: Vector3, normal: Vector3, yaw_rand: float) -> Tran
 	var b := Basis(x_axis, y_axis, n) * Basis(Vector3.BACK, yaw_rand)
 	return Transform3D(b, pos + n * 0.007)
 
-func spawn_blood_impact(pos: Vector3, shot_dir: Vector3, intensity: float = 1.0, is_headshot: bool = false, is_close: bool = false) -> void:
+func spawn_blood_impact(pos: Vector3, shot_dir: Vector3, intensity: float = 1.0, is_headshot: bool = false, is_close: bool = false, skip_floor_drip: bool = false) -> void:
 	var dir := shot_dir.normalized()
 	if dir.length_squared() < 0.001:
 		dir = Vector3.FORWARD
@@ -519,11 +519,42 @@ func spawn_blood_impact(pos: Vector3, shot_dir: Vector3, intensity: float = 1.0,
 			spawn_blood_decal(h_pos, h_norm, Vector3(sz, 0.32, sz * stretch), tangent)
 
 	# 5. Floor drip directly beneath wound
-	var down_q := PhysicsRayQueryParameters3D.create(pos, pos + Vector3(randf_range(-0.22, 0.22), -2.6, randf_range(-0.22, 0.22)), 1)
-	var f_hit := space.intersect_ray(down_q)
-	if not f_hit.is_empty():
-		var fs := randf_range(0.45, 0.85) * clampf(intensity, 0.8, 1.35)
-		spawn_blood_decal(f_hit["position"], f_hit["normal"], Vector3(fs, 0.35, fs))
+	if not skip_floor_drip:
+		var down_q := PhysicsRayQueryParameters3D.create(pos, pos + Vector3(randf_range(-0.22, 0.22), -2.6, randf_range(-0.22, 0.22)), 1)
+		var f_hit := space.intersect_ray(down_q)
+		if not f_hit.is_empty():
+			var fs := randf_range(0.45, 0.85) * clampf(intensity, 0.8, 1.35)
+			spawn_blood_decal(f_hit["position"], f_hit["normal"], Vector3(fs, 0.35, fs))
+
+func spawn_dismember_burst(pos: Vector3, shot_dir: Vector3, is_head: bool = false) -> void:
+	var dir := shot_dir.normalized()
+	if dir.length_squared() < 0.001:
+		dir = Vector3.UP
+	spawn_blood_impact(pos, dir, 1.65 if is_head else 1.40, true, true, true)
+	# Extra upward arterial fountain + bone/flesh chunks for unmistakable dismemberment
+	var up_dir := (dir * 0.45 + Vector3.UP * 0.85).normalized()
+	var st := _streak_pool[_streak_idx % _streak_pool.size()]
+	_streak_idx += 1
+	st.global_transform = Transform3D(_orient_along_dir(up_dir), pos)
+	var s_pm := st.process_material as ParticleProcessMaterial
+	s_pm.spread = 42.0 if is_head else 34.0
+	s_pm.initial_velocity_min = 3.8
+	s_pm.initial_velocity_max = 11.2 if is_head else 8.8
+	st.restart()
+	st.emitting = true
+
+	var ch := _chunk_pool[_chunk_idx % _chunk_pool.size()]
+	_chunk_idx += 1
+	ch.global_transform = Transform3D(_orient_along_dir(up_dir), pos)
+	ch.restart()
+	ch.emitting = true
+
+	var space := get_world_3d().direct_space_state
+	if space:
+		var down_q := PhysicsRayQueryParameters3D.create(pos + Vector3(0, 0.15, 0), pos + Vector3(0, -3.5, 0), 1)
+		var f_hit := space.intersect_ray(down_q)
+		if not f_hit.is_empty():
+			spawn_blood_pool(f_hit["position"], f_hit["normal"], 1.85 if is_head else 1.45, 0.42)
 
 func spawn_blood_decal(pos: Vector3, normal: Vector3, size_vec: Vector3, tangent_hint: Vector3 = Vector3.ZERO) -> Decal:
 	if _blood_decals.is_empty():

@@ -472,13 +472,13 @@ func _build_rig() -> void:
 				break
 		if not has_limiter:
 			var lim := AudioEffectLimiter.new()
-			lim.ceiling_db = -0.8
-			lim.threshold_db = -4.0
-			lim.soft_clip_db = 2.0
+			lim.ceiling_db = -0.3
+			lim.threshold_db = -1.5
+			lim.soft_clip_db = 0.0
 			AudioServer.add_bus_effect(master_idx, lim)
 
 	sfx_gun = AudioStreamPlayer.new()
-	sfx_gun.volume_db = 2.0
+	sfx_gun.volume_db = -2.5
 	sfx_gun.max_polyphony = 6
 	add_child(sfx_gun)
 
@@ -2334,23 +2334,39 @@ func fire_weapon() -> bool:
 	var fwd := -camera.global_transform.basis.z
 	var right := camera.global_transform.basis.x
 	var up := camera.global_transform.basis.y
-	var spread: float = w["spread"] * (0.35 if is_ads else 1.0)
+	var spread_mult := (0.55 if is_ads else 1.0) if current_weapon == 2 else (0.14 if is_ads else 0.72)
+	var spread: float = w["spread"] * spread_mult
 	var impact_fx_budget := 3 if int(w["pellets"]) > 1 else 1
 	var z_hits := {}
 
 	for _p in range(w["pellets"]):
 		var dir := (fwd + right * randf_range(-spread, spread) + up * randf_range(-spread, spread)).normalized()
-		var q := PhysicsRayQueryParameters3D.create(origin, origin + dir * 75.0, 1 | 4)
-		q.collide_with_areas = false
-		q.collide_with_bodies = true
-		q.exclude = [get_rid()]
-		var hit := space.intersect_ray(q)
-		if hit:
-			var col = hit["collider"]
-			if col is ZombieAI and not (col as ZombieAI).dead:
-				var z := col as ZombieAI
-				var hpos: Vector3 = hit["position"]
-				var hz := z.resolve_hit_zone(origin, dir, hpos)
+		# Step 1: World wall raycast to find exact solid occlusion distance (pass through window barricades!)
+		var wall_excl: Array[RID] = [get_rid()]
+		var wall_hit := {}
+		for _retry in range(3):
+			var wq_hit := PhysicsRayQueryParameters3D.create(origin, origin + dir * 75.0, 1)
+			wq_hit.collide_with_areas = false
+			wq_hit.collide_with_bodies = true
+			wq_hit.exclude = wall_excl
+			wall_hit = space.intersect_ray(wq_hit)
+			if wall_hit.is_empty():
+				break
+			var wc = wall_hit["collider"]
+			if wc is InteractableObject and (wc as InteractableObject).kind == InteractableObject.Kind.BARRICADE:
+				wall_excl.append((wc as CollisionObject3D).get_rid())
+				wall_hit = {}
+				continue
+			break
+		var max_dist := origin.distance_to(wall_hit["position"]) if not wall_hit.is_empty() else 75.0
+
+		# Step 2: Exact analytical bone-capsule raycast against all live, dying, AND dead zombies (zero physics lag!)
+		var z_hit := ZombieAI.raycast_all_zombies(origin, dir, max_dist)
+		if not z_hit.is_empty():
+			var z := z_hit["zombie"] as ZombieAI
+			if is_instance_valid(z):
+				var hz := str(z_hit["zone"])
+				var hpos: Vector3 = z_hit["pos"]
 				if not z_hits.has(z):
 					z_hits[z] = []
 				(z_hits[z] as Array).append({
@@ -2358,36 +2374,45 @@ func fire_weapon() -> bool:
 					"pos": hpos,
 					"dir": dir,
 					"dmg": w["damage"],
-					"dist": origin.distance_to(hpos),
+					"dist": float(z_hit["dist"]),
 				})
-			else:
-				if impact_fx_budget > 0:
-					impact_fx_budget -= 1
-					if VFXManager.instance:
-						VFXManager.instance.spawn_surface_impact(hit["position"], hit["normal"], dir, col, current_weapon)
+				continue
+
+		if not wall_hit.is_empty():
+			if impact_fx_budget > 0:
+				impact_fx_budget -= 1
+				if VFXManager.instance:
+					VFXManager.instance.spawn_surface_impact(wall_hit["position"], wall_hit["normal"], dir, wall_hit["collider"], current_weapon)
 
 	var any_zombie_hit := false
-	var any_headshot := false
+	var any_live_hit := false
+	var any_live_headshot := false
+	var any_gore_crunch := false
 	for z_key in z_hits.keys():
 		var z := z_key as ZombieAI
 		var arr: Array = z_hits[z_key]
 		var res := z.apply_shot(arr, current_weapon)
 		var is_hs := bool(res.get("headshot", false))
 		var killed := bool(res.get("killed", false))
+		var corpse_hit := bool(res.get("corpse_hit", false))
+		var did_dismember := bool(res.get("dismembered", false))
 		any_zombie_hit = true
-		any_headshot = any_headshot or is_hs
-		emit_signal("hit_confirmed", is_hs, killed)
+		any_gore_crunch = any_gore_crunch or is_hs or did_dismember
+		if not corpse_hit:
+			any_live_hit = true
+			any_live_headshot = any_live_headshot or is_hs
+			emit_signal("hit_confirmed", is_hs, killed)
 
 	if any_zombie_hit:
 		if sfx_hit:
-			var pool := _sfx_hit_head if any_headshot else _sfx_hit_flesh
+			var pool := _sfx_hit_head if any_gore_crunch else _sfx_hit_flesh
 			if not pool.is_empty():
 				sfx_hit.stream = pool[randi() % pool.size()]
 				sfx_hit.pitch_scale = randf_range(0.92, 1.08)
 				sfx_hit.play()
-		if sfx_hit_tick and _sfx_hit_confirm:
+		if any_live_hit and sfx_hit_tick and _sfx_hit_confirm:
 			sfx_hit_tick.stream = _sfx_hit_confirm
-			sfx_hit_tick.pitch_scale = 1.18 if any_headshot else 0.96
+			sfx_hit_tick.pitch_scale = 1.18 if any_live_headshot else 0.96
 			sfx_hit_tick.play()
 	return true
 

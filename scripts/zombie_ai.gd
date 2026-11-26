@@ -24,8 +24,13 @@ var deterministic_pose: bool = false
 var poise: float = 0.0
 var poise_max: float = 60.0
 var poise_immunity: float = 0.0
+var head_dmg: float = 0.0
+var l_arm_dmg: float = 0.0
+var r_arm_dmg: float = 0.0
 var left_leg_dmg: float = 0.0
 var right_leg_dmg: float = 0.0
+var dismembered: Dictionary = {} # zone -> true ("HEAD", "ARM_L", "ARM_R", "LEG_L", "LEG_R")
+var _frozen_rest_rot: Dictionary = {} # bone_idx -> Quaternion
 var crippled_side: int = 0 # -1 left, +1 right, 0 none
 var disabled_arm_side: int = 0 # -1 left, +1 right
 var disabled_arm_timer: float = 0.0
@@ -128,8 +133,11 @@ static var _pain_streams: Array[AudioStream] = []
 static var _death_stream: AudioStream = null
 static var _body_fall_stream: AudioStream = null
 static var _audio_loaded: bool = false
+static var _all_zombies: Array[ZombieAI] = []
 static var _corpses: Array[ZombieAI] = []
 static var _active_ragdolls: Array[ZombieAI] = []
+static var _stump_flesh_mat: StandardMaterial3D = null
+static var _stump_bone_mat: StandardMaterial3D = null
 
 
 class ZombieSkeletonModifier extends SkeletonModifier3D:
@@ -187,7 +195,8 @@ class ZombieSkeletonModifier extends SkeletonModifier3D:
 		var has_springs := not _spring_vel.is_empty() or not _spring_rot.is_empty() or absf(_pelvis_spring_y) > 0.002 or absf(_pelvis_vel_y) > 0.01
 		var is_attack := zombie.state == State.WINDUP or zombie.state == State.STRIKE or zombie.state == State.RECOVER
 		var has_limp := zombie.crippled_side != 0 or zombie.disabled_arm_timer > 0.0
-		if not has_springs and not is_attack and not has_limp:
+		var has_dismember := not zombie.dismembered.is_empty()
+		if not has_springs and not is_attack and not has_limp and not has_dismember:
 			return
 
 		var d := clampf(delta, 0.0001, 0.05)
@@ -276,8 +285,8 @@ class ZombieSkeletonModifier extends SkeletonModifier3D:
 			var drag := maxf(0.0, sin(zombie.anim_phase))
 			leg_r_mod = Vector3(0.28 + 0.35 * drag, 0.0, 0.14)
 
-		var arm_droop_l := Vector3(0.65, 0.0, 0.45) if (zombie.disabled_arm_timer > 0.0 and zombie.disabled_arm_side < 0) else Vector3.ZERO
-		var arm_droop_r := Vector3(0.65, 0.0, -0.45) if (zombie.disabled_arm_timer > 0.0 and zombie.disabled_arm_side > 0) else Vector3.ZERO
+		var arm_droop_l := Vector3(0.65, 0.0, 0.45) if (zombie.dismembered.has("ARM_L") or (zombie.disabled_arm_timer > 0.0 and zombie.disabled_arm_side < 0)) else Vector3.ZERO
+		var arm_droop_r := Vector3(0.65, 0.0, -0.45) if (zombie.dismembered.has("ARM_R") or (zombie.disabled_arm_timer > 0.0 and zombie.disabled_arm_side > 0)) else Vector3.ZERO
 
 		var rig_basis := zombie.rig_root.global_transform.basis.orthonormalized()
 		var sk_world_basis := sk.global_transform.basis.orthonormalized()
@@ -300,6 +309,9 @@ class ZombieSkeletonModifier extends SkeletonModifier3D:
 		_rotate_bone_char(sk, rig_basis, sk_world_basis, zombie.l_leg_bone, _spring_rot.get(zombie.l_leg_bone, Vector3.ZERO) * 1.15 + leg_l_mod)
 		_rotate_bone_char(sk, rig_basis, sk_world_basis, zombie.r_upleg_bone, _spring_rot.get(zombie.r_upleg_bone, Vector3.ZERO) + leg_r_mod * 0.4)
 		_rotate_bone_char(sk, rig_basis, sk_world_basis, zombie.r_leg_bone, _spring_rot.get(zombie.r_leg_bone, Vector3.ZERO) * 1.15 + leg_r_mod)
+
+		if not zombie.dismembered.is_empty():
+			zombie._apply_dismembered_local_scales()
 
 
 static func preload_baked_assets() -> void:
@@ -389,6 +401,8 @@ func _ready() -> void:
 	growl_timer = randf_range(1.2, 4.5)
 	_build_body()
 	_setup_audio()
+	if not _all_zombies.has(self):
+		_all_zombies.append(self)
 
 
 func _find_node_of_type(root: Node, type_name: String) -> Node:
@@ -684,6 +698,7 @@ func _set_shadow_casting(enabled: bool) -> void:
 
 
 func _exit_tree() -> void:
+	_all_zombies.erase(self)
 	_active_ragdolls.erase(self)
 	_corpses.erase(self)
 
@@ -906,79 +921,302 @@ func _resolve_bones() -> void:
 			r_foot_bone = bone
 
 
+static func _ray_capsule_hit(ro: Vector3, rd: Vector3, a: Vector3, b: Vector3, radius: float, max_t: float) -> float:
+	# Exact analytical ray vs capsule (line segment a..b with radius) returning closest t in [0, max_t], or -1.0
+	var ab := b - a
+	var ab_len_sq := ab.length_squared()
+	var r2 := radius * radius
+	# Check if ray origin starts inside capsule (only register if pointing forward into capsule & max_t > 0)
+	var ao := ro - a
+	var proj0 := clampf(ao.dot(ab) / maxf(ab_len_sq, 1e-6), 0.0, 1.0) if ab_len_sq > 1e-6 else 0.0
+	var closest0 := a + ab * proj0
+	if max_t > 0.0 and (ro - closest0).length_squared() <= r2:
+		if (closest0 - ro).dot(rd) > 0.0:
+			return minf(0.01, max_t)
+
+	var best_t := -1.0
+	# 1. Endpoint spheres (a and b)
+	for c: Vector3 in ([a] if ab_len_sq <= 1e-6 else [a, b]):
+		var oc := ro - c
+		var hb := oc.dot(rd)
+		var cc := oc.length_squared() - r2
+		var disc := hb * hb - cc
+		if disc >= 0.0:
+			var t := -hb - sqrt(disc)
+			if t >= 0.0 and t <= max_t and (best_t < 0.0 or t < best_t):
+				best_t = t
+
+	# 2. Infinite cylinder around segment a..b, clamped to [0, 1]
+	if ab_len_sq > 1e-6:
+		var m := ro - a
+		var md := m.dot(ab)
+		var nd := rd.dot(ab)
+		var qa := ab_len_sq - nd * nd
+		if qa > 1e-6:
+			var qb := ab_len_sq * m.dot(rd) - nd * md
+			var qc := ab_len_sq * (m.length_squared() - r2) - md * md
+			var disc := qb * qb - qa * qc
+			if disc >= 0.0:
+				var t := (-qb - sqrt(disc)) / qa
+				if t >= 0.0 and t <= max_t and (best_t < 0.0 or t < best_t):
+					var s := md + t * nd
+					if s >= 0.0 and s <= ab_len_sq:
+						best_t = t
+	return best_t
+
+
+func raycast_skeleton(ray_orig: Vector3, ray_dir: Vector3, max_dist: float) -> Dictionary:
+	var rd := ray_dir.normalized()
+	var center := _bone_world_pos(hips_bone, Vector3(0.0, 0.95, 0.0)) if skeleton != null else (global_position + Vector3(0.0, 0.95, 0.0))
+	# Fast broadphase sphere reject (2.3m radius covers full outstretched / ragdolled body)
+	var oc := ray_orig - center
+	var b_proj := oc.dot(rd)
+	var c_val := oc.length_squared() - 5.29
+	if c_val > 0.0 and b_proj > 0.0:
+		return {}
+	var disc := b_proj * b_proj - c_val
+	if disc < 0.0:
+		return {}
+	if (-b_proj - sqrt(disc)) > max_dist:
+		return {}
+
+	var s := _model_scale_val * (0.72 if dead else 1.0)
+	var best_t := max_dist
+	var best_zone := ""
+
+	if skeleton == null:
+		var t_fb := _ray_capsule_hit(ray_orig, rd, global_position + Vector3(0, 0.35, 0), global_position + Vector3(0, 1.65, 0), 0.38 * s, best_t)
+		if t_fb >= 0.0:
+			var hp := ray_orig + rd * t_fb
+			return {"t": t_fb, "pos": hp, "zone": "HEAD" if (hp.y - global_position.y) > 1.38 else "CHEST"}
+		return {}
+
+	var p_hips := _bone_world_pos(hips_bone, Vector3(0, 0.92, 0))
+	var p_spine2 := _bone_world_pos(spine2_bone, Vector3(0, 1.32, 0))
+	var p_neck := _bone_world_pos(neck_bone, Vector3(0, 1.46, 0))
+	var p_head := _bone_world_pos(head_bone, Vector3(0, 1.60, 0))
+
+	# Head (skip if dismembered)
+	if not dismembered.has("HEAD"):
+		var head_dir := (p_head - p_neck).normalized() if p_head.distance_squared_to(p_neck) > 1e-4 else Vector3.UP
+		var t_h := _ray_capsule_hit(ray_orig, rd, p_neck + head_dir * 0.04, p_head + head_dir * (0.14 * s), 0.21 * s, best_t)
+		if t_h >= 0.0 and t_h < best_t:
+			best_t = t_h
+			best_zone = "HEAD"
+
+	# Chest / Torso / Pelvis
+	var t_c1 := _ray_capsule_hit(ray_orig, rd, p_hips, p_spine2, 0.26 * s, best_t)
+	if t_c1 >= 0.0 and t_c1 < best_t:
+		best_t = t_c1
+		best_zone = "CHEST"
+	var t_c2 := _ray_capsule_hit(ray_orig, rd, p_spine2, p_neck, 0.25 * s, best_t)
+	if t_c2 >= 0.0 and t_c2 < best_t:
+		best_t = t_c2
+		best_zone = "CHEST"
+
+	# Left Arm (upper always, forearm+hand unless dismembered)
+	var p_la := _bone_world_pos(l_arm_bone, Vector3(-0.24, 1.32, 0))
+	var p_lf := _bone_world_pos(l_forearm_bone, Vector3(-0.30, 1.08, 0.06))
+	var t_la1 := _ray_capsule_hit(ray_orig, rd, p_la, p_lf, 0.135 * s, best_t)
+	if t_la1 >= 0.0 and t_la1 < best_t:
+		best_t = t_la1
+		best_zone = "ARM_L"
+	if not dismembered.has("ARM_L"):
+		var p_lh := _bone_world_pos(l_hand_bone if l_hand_bone >= 0 else l_forearm_bone, Vector3(-0.34, 0.88, 0.12))
+		var t_la2 := _ray_capsule_hit(ray_orig, rd, p_lf, p_lh, 0.13 * s, best_t)
+		if t_la2 >= 0.0 and t_la2 < best_t:
+			best_t = t_la2
+			best_zone = "ARM_L"
+
+	# Right Arm
+	var p_ra := _bone_world_pos(r_arm_bone, Vector3(0.24, 1.32, 0))
+	var p_rf := _bone_world_pos(r_forearm_bone, Vector3(0.30, 1.08, 0.06))
+	var t_ra1 := _ray_capsule_hit(ray_orig, rd, p_ra, p_rf, 0.135 * s, best_t)
+	if t_ra1 >= 0.0 and t_ra1 < best_t:
+		best_t = t_ra1
+		best_zone = "ARM_R"
+	if not dismembered.has("ARM_R"):
+		var p_rh := _bone_world_pos(r_hand_bone if r_hand_bone >= 0 else r_forearm_bone, Vector3(0.34, 0.88, 0.12))
+		var t_ra2 := _ray_capsule_hit(ray_orig, rd, p_rf, p_rh, 0.13 * s, best_t)
+		if t_ra2 >= 0.0 and t_ra2 < best_t:
+			best_t = t_ra2
+			best_zone = "ARM_R"
+
+	# Left Leg
+	var p_ll1 := _bone_world_pos(l_upleg_bone, Vector3(-0.14, 0.90, 0))
+	var p_ll2 := _bone_world_pos(l_leg_bone, Vector3(-0.14, 0.48, 0))
+	var t_ll1 := _ray_capsule_hit(ray_orig, rd, p_ll1, p_ll2, 0.165 * s, best_t)
+	if t_ll1 >= 0.0 and t_ll1 < best_t:
+		best_t = t_ll1
+		best_zone = "LEG_L"
+	if not dismembered.has("LEG_L"):
+		var p_ll3 := _bone_world_pos(l_foot_bone if l_foot_bone >= 0 else l_leg_bone, Vector3(-0.14, 0.08, 0))
+		var t_ll2 := _ray_capsule_hit(ray_orig, rd, p_ll2, p_ll3, 0.145 * s, best_t)
+		if t_ll2 >= 0.0 and t_ll2 < best_t:
+			best_t = t_ll2
+			best_zone = "LEG_L"
+
+	# Right Leg
+	var p_rl1 := _bone_world_pos(r_upleg_bone, Vector3(0.14, 0.90, 0))
+	var p_rl2 := _bone_world_pos(r_leg_bone, Vector3(0.14, 0.48, 0))
+	var t_rl1 := _ray_capsule_hit(ray_orig, rd, p_rl1, p_rl2, 0.165 * s, best_t)
+	if t_rl1 >= 0.0 and t_rl1 < best_t:
+		best_t = t_rl1
+		best_zone = "LEG_R"
+	if not dismembered.has("LEG_R"):
+		var p_rl3 := _bone_world_pos(r_foot_bone if r_foot_bone >= 0 else r_leg_bone, Vector3(0.14, 0.08, 0))
+		var t_rl2 := _ray_capsule_hit(ray_orig, rd, p_rl2, p_rl3, 0.145 * s, best_t)
+		if t_rl2 >= 0.0 and t_rl2 < best_t:
+			best_t = t_rl2
+			best_zone = "LEG_R"
+
+	if best_zone == "":
+		return {}
+	return {"t": best_t, "pos": ray_orig + rd * best_t, "zone": best_zone}
+
+
+static func raycast_all_zombies(ray_orig: Vector3, ray_dir: Vector3, max_dist: float) -> Dictionary:
+	var best_t := max_dist
+	var best_res := {}
+	for z in _all_zombies:
+		if not is_instance_valid(z) or not z.is_inside_tree():
+			continue
+		var r := z.raycast_skeleton(ray_orig, ray_dir, best_t)
+		if not r.is_empty():
+			var t := float(r["t"])
+			if t < best_t:
+				best_t = t
+				best_res = {"zombie": z, "zone": str(r["zone"]), "pos": r["pos"], "dist": t}
+	return best_res
+
+
+func _dismember_bone_for_zone(zone: String) -> int:
+	match zone:
+		"HEAD": return head_bone
+		"ARM_L": return l_forearm_bone if l_forearm_bone >= 0 else l_arm_bone
+		"ARM_R": return r_forearm_bone if r_forearm_bone >= 0 else r_arm_bone
+		"LEG_L": return l_leg_bone if l_leg_bone >= 0 else l_upleg_bone
+		"LEG_R": return r_leg_bone if r_leg_bone >= 0 else r_upleg_bone
+	return -1
+
+
+func _apply_dismembered_local_scales() -> void:
+	if skeleton == null or dismembered.is_empty():
+		return
+	for z_key in dismembered.keys():
+		var b := _dismember_bone_for_zone(str(z_key))
+		if b >= 0:
+			skeleton.set_bone_pose_scale(b, Vector3(0.001, 0.001, 0.001))
+
+
+func _attach_stump_cap(parent_bone: int, child_bone: int, radius: float) -> void:
+	if skeleton == null or parent_bone < 0:
+		return
+	if _stump_flesh_mat == null:
+		_stump_flesh_mat = StandardMaterial3D.new()
+		_stump_flesh_mat.albedo_color = Color(0.24, 0.014, 0.016)
+		_stump_flesh_mat.roughness = 0.16
+		_stump_flesh_mat.metallic_specular = 0.72
+	if _stump_bone_mat == null:
+		_stump_bone_mat = StandardMaterial3D.new()
+		_stump_bone_mat.albedo_color = Color(0.84, 0.78, 0.66)
+		_stump_bone_mat.roughness = 0.42
+		_stump_bone_mat.metallic_specular = 0.35
+
+	var ba := BoneAttachment3D.new()
+	ba.name = "Stump_%d" % parent_bone
+	ba.bone_name = skeleton.get_bone_name(parent_bone)
+	skeleton.add_child(ba)
+	ba.bone_idx = parent_bone
+
+	var stump := Node3D.new()
+	var flesh := MeshInstance3D.new()
+	var fmesh := CylinderMesh.new()
+	fmesh.top_radius = radius * 0.85
+	fmesh.bottom_radius = radius
+	fmesh.height = radius * 0.55
+	fmesh.radial_segments = 10
+	fmesh.material = _stump_flesh_mat
+	flesh.mesh = fmesh
+	flesh.layers = 8
+	flesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	stump.add_child(flesh)
+
+	var bone_core := MeshInstance3D.new()
+	var bmesh := CylinderMesh.new()
+	bmesh.top_radius = radius * 0.34
+	bmesh.bottom_radius = radius * 0.38
+	bmesh.height = radius * 0.85
+	bmesh.radial_segments = 8
+	bmesh.material = _stump_bone_mat
+	bone_core.mesh = bmesh
+	bone_core.position = Vector3(0.0, radius * 0.25, 0.0)
+	bone_core.layers = 8
+	bone_core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	stump.add_child(bone_core)
+
+	if child_bone >= 0:
+		var p_g := skeleton.get_bone_global_pose(parent_bone)
+		var c_g := skeleton.get_bone_global_pose(child_bone)
+		var local_c := p_g.affine_inverse() * c_g.origin
+		var dir := local_c.normalized() if local_c.length_squared() > 1e-5 else Vector3.UP
+		var ref_v := Vector3.FORWARD if absf(dir.y) > 0.92 else Vector3.UP
+		var right_v := dir.cross(ref_v).normalized()
+		var fwd_v := right_v.cross(dir).normalized()
+		stump.transform = Transform3D(Basis(right_v, dir, fwd_v), local_c * 0.92)
+	ba.add_child(stump)
+
+
+func _dismember_zone(zone: String, hit_pos: Vector3, shot_dir: Vector3) -> bool:
+	if skeleton == null or dismembered.has(zone):
+		return false
+	var child_b := _dismember_bone_for_zone(zone)
+	if child_b < 0:
+		return false
+	var parent_b := skeleton.get_bone_parent(child_b)
+	if zone == "HEAD" and neck_bone >= 0:
+		parent_b = neck_bone
+	dismembered[zone] = true
+	skeleton.set_bone_pose_scale(child_b, Vector3(0.001, 0.001, 0.001))
+
+	if zone == "HEAD":
+		for bmi in _body_meshes:
+			if is_instance_valid(bmi):
+				var lname := str(bmi.name).to_lower()
+				if lname.begins_with("skigoggle") or "winterhelmet" in lname or "helmet" in lname or (not _is_tactical and lname == "object_6"):
+					bmi.visible = false
+
+	# If dismembered during active ragdoll, remove the severed PhysicalBone3D so PhysicalBoneSimulator3D
+	# stops overwriting the severed bone's 0.001 scale and stops propping the ragdoll on phantom limbs
+	if _ragdoll_active:
+		var idx := _pb_entries.size() - 1
+		while idx >= 0:
+			var entry: Dictionary = _pb_entries[idx]
+			if int(entry["bone"]) == child_b:
+				var pb := entry["pb"] as PhysicalBone3D
+				if is_instance_valid(pb):
+					pb.collision_layer = 0
+					pb.collision_mask = 0
+					if pb.get_parent():
+						pb.get_parent().remove_child(pb)
+					pb.queue_free()
+				_pb_entries.remove_at(idx)
+			idx -= 1
+		if zone == "HEAD":
+			_pb_head = null
+
+	var rad := 0.075 * _model_scale_val if zone == "HEAD" else (0.055 * _model_scale_val if zone.begins_with("ARM") else 0.072 * _model_scale_val)
+	_attach_stump_cap(parent_b, child_b, rad)
+
+	if VFXManager.instance:
+		VFXManager.instance.spawn_dismember_burst(hit_pos, shot_dir, zone == "HEAD")
+	return true
+
+
 func _bone_world_pos(b: int, fallback: Vector3) -> Vector3:
 	if skeleton and b >= 0:
 		return skeleton.to_global(skeleton.get_bone_global_pose(b).origin)
 	return to_global(fallback)
-
-
-static func _ray_to_segment_dist_sq(ro: Vector3, rd: Vector3, a: Vector3, b: Vector3) -> float:
-	var ab := b - a
-	var u := rd
-	var w := ro - a
-	var a_len := u.dot(u) # 1.0 when normalized
-	var b_len := ab.dot(ab)
-	var c := u.dot(w)
-	var f := ab.dot(w)
-	var sc := 0.0
-	var tc := 0.0
-	if b_len <= 1e-6:
-		sc = maxf(0.0, -c / maxf(a_len, 1e-6))
-		return (ro + u * sc - a).length_squared()
-	var e := u.dot(ab)
-	var denom := a_len * b_len - e * e
-	if absf(denom) > 1e-6:
-		sc = maxf(0.0, (e * f - b_len * c) / denom)
-	else:
-		sc = 0.0
-	tc = (e * sc + f) / b_len
-	if tc < 0.0:
-		tc = 0.0
-		sc = maxf(0.0, -c / maxf(a_len, 1e-6))
-	elif tc > 1.0:
-		tc = 1.0
-		sc = maxf(0.0, (e - c) / maxf(a_len, 1e-6))
-	var cp_ray := ro + u * sc
-	var cp_seg := a + ab * tc
-	return (cp_ray - cp_seg).length_squared()
-
-
-func resolve_hit_zone(ray_orig: Vector3, ray_dir: Vector3, hit_pos: Vector3) -> String:
-	var rd := ray_dir.normalized()
-	if skeleton == null:
-		return "HEAD" if (hit_pos.y - global_position.y) > 1.38 else "CHEST"
-
-	var hp := _bone_world_pos(head_bone, Vector3(0, 1.62, 0.04))
-	var np := _bone_world_pos(neck_bone, Vector3(0, 1.44, 0.02))
-	var hr := 0.21 * _model_scale_val
-	if _ray_to_segment_dist_sq(ray_orig, rd, np + Vector3(0, 0.04, 0), hp + Vector3(0, 0.14, 0)) <= hr * hr:
-		return "HEAD"
-	if hit_pos.y >= np.y + 0.07 and Vector2(hit_pos.x - hp.x, hit_pos.z - hp.z).length() <= 0.25 * _model_scale_val:
-		return "HEAD"
-
-	var arm_r := 0.145 * _model_scale_val
-	var la_a := _bone_world_pos(l_arm_bone, Vector3(-0.24, 1.32, 0))
-	var la_b := _bone_world_pos(l_hand_bone if l_hand_bone >= 0 else l_forearm_bone, Vector3(-0.34, 0.96, 0.1))
-	if _ray_to_segment_dist_sq(ray_orig, rd, la_a, la_b) <= arm_r * arm_r:
-		return "ARM_L"
-
-	var ra_a := _bone_world_pos(r_arm_bone, Vector3(0.24, 1.32, 0))
-	var ra_b := _bone_world_pos(r_hand_bone if r_hand_bone >= 0 else r_forearm_bone, Vector3(0.34, 0.96, 0.1))
-	if _ray_to_segment_dist_sq(ray_orig, rd, ra_a, ra_b) <= arm_r * arm_r:
-		return "ARM_R"
-
-	var leg_r := 0.18 * _model_scale_val
-	var ll_a := _bone_world_pos(l_upleg_bone, Vector3(-0.14, 0.92, 0))
-	var ll_b := _bone_world_pos(l_foot_bone if l_foot_bone >= 0 else l_leg_bone, Vector3(-0.14, 0.10, 0))
-	if _ray_to_segment_dist_sq(ray_orig, rd, ll_a, ll_b) <= leg_r * leg_r:
-		return "LEG_L"
-
-	var rl_a := _bone_world_pos(r_upleg_bone, Vector3(0.14, 0.92, 0))
-	var rl_b := _bone_world_pos(r_foot_bone if r_foot_bone >= 0 else r_leg_bone, Vector3(0.14, 0.10, 0))
-	if _ray_to_segment_dist_sq(ray_orig, rd, rl_a, rl_b) <= leg_r * leg_r:
-		return "LEG_R"
-
-	return "CHEST"
 
 
 func face_focus_position() -> Vector3:
@@ -1257,6 +1495,16 @@ func _sync_bones_from_jolt() -> void:
 			var b_idx: int = entry["bone"]
 			var inv_bo: Transform3D = entry["inv_bo"]
 			skeleton.set_bone_global_pose(b_idx, sk_inv * pb.global_transform * inv_bo)
+	if not dismembered.is_empty():
+		for z_key in dismembered.keys():
+			var b := _dismember_bone_for_zone(str(z_key))
+			if b >= 0:
+				var p := skeleton.get_bone_parent(b)
+				var base_xf := skeleton.get_bone_global_pose(p) if p >= 0 else skeleton.get_bone_global_pose(b)
+				var rest := skeleton.get_bone_rest(b)
+				var joint_pos := (base_xf * rest.origin) if p >= 0 else base_xf.origin
+				var joint_basis := (base_xf.basis * rest.basis).orthonormalized() if p >= 0 else base_xf.basis.orthonormalized()
+				skeleton.set_bone_global_pose(b, Transform3D(joint_basis.scaled(Vector3(0.001, 0.001, 0.001)), joint_pos))
 
 
 func _freeze_ragdoll_to_static() -> void:
@@ -1276,10 +1524,13 @@ func _freeze_ragdoll_to_static() -> void:
 			_ragdoll_sim.physical_bones_stop_simulation()
 			_ragdoll_sim.queue_free()
 		_ragdoll_sim = null
+		_frozen_rest_rot.clear()
 		for b in bc:
 			var p := skeleton.get_bone_parent(b)
 			var lp := globals[b] if p < 0 else (globals[p].affine_inverse() * globals[b])
 			skeleton.set_bone_pose(b, lp)
+			_frozen_rest_rot[b] = skeleton.get_bone_pose_rotation(b)
+		_apply_dismembered_local_scales()
 		if hips_bone >= 0 and hips_bone < bc:
 			var hips_l := globals[hips_bone].origin
 			var rag_box := AABB(hips_l - Vector3(1.6, 0.9, 1.6), Vector3(3.2, 2.0, 3.2))
@@ -1345,15 +1596,19 @@ func _enter_ragdoll(shot_dir: Vector3, _total_dmg: float, primary_zone: String, 
 
 	_pb_hips = _add_pbone(sim, hips_bone, spine2_bone, 0.16, 0.28, true, false, 0.35, 16.0)
 	_pb_spine2 = _add_pbone(sim, spine2_bone, head_bone, 0.18, 0.34, false, false, 0.55, 18.0)
-	_pb_head = _add_pbone(sim, head_bone, -1, 0.13, 0.24, false, false, 0.65, 5.5)
+	_pb_head = null if dismembered.has("HEAD") else _add_pbone(sim, head_bone, -1, 0.13, 0.24, false, false, 0.65, 5.5)
 	_pb_l_arm = _add_pbone(sim, l_arm_bone, l_forearm_bone, 0.075, 0.26, false, false, 1.35, 3.5)
-	_add_pbone(sim, l_forearm_bone, l_hand_bone, 0.065, 0.24, false, true, 0.25, 2.5)
+	if not dismembered.has("ARM_L"):
+		_add_pbone(sim, l_forearm_bone, l_hand_bone, 0.065, 0.24, false, true, 0.25, 2.5)
 	_pb_r_arm = _add_pbone(sim, r_arm_bone, r_forearm_bone, 0.075, 0.26, false, false, 1.35, 3.5)
-	_add_pbone(sim, r_forearm_bone, r_hand_bone, 0.065, 0.24, false, true, 0.25, 2.5)
+	if not dismembered.has("ARM_R"):
+		_add_pbone(sim, r_forearm_bone, r_hand_bone, 0.065, 0.24, false, true, 0.25, 2.5)
 	_pb_l_leg = _add_pbone(sim, l_upleg_bone, l_leg_bone, 0.10, 0.40, false, false, 1.05, 8.0)
-	_add_pbone(sim, l_leg_bone, l_foot_bone, 0.085, 0.38, false, true, 0.20, 5.5)
+	if not dismembered.has("LEG_L"):
+		_add_pbone(sim, l_leg_bone, l_foot_bone, 0.085, 0.38, false, true, 0.20, 5.5)
 	_pb_r_leg = _add_pbone(sim, r_upleg_bone, r_leg_bone, 0.10, 0.40, false, false, 1.05, 8.0)
-	_add_pbone(sim, r_leg_bone, r_foot_bone, 0.085, 0.38, false, true, 0.20, 5.5)
+	if not dismembered.has("LEG_R"):
+		_add_pbone(sim, r_leg_bone, r_foot_bone, 0.085, 0.38, false, true, 0.20, 5.5)
 
 	skeleton.add_child(sim)
 	sim.active = true
@@ -1574,7 +1829,9 @@ func _physics_process(delta: float) -> void:
 			if can_windup and _has_clear_los_to_player() and _request_token():
 				state = State.WINDUP
 				state_timer = _windup_dur
-				attack_side = -1 if disabled_arm_side == 1 else (1 if disabled_arm_side == -1 else (1 if randf() < 0.5 else -1))
+				var l_bad := dismembered.has("ARM_L") or (disabled_arm_timer > 0.0 and disabled_arm_side == -1)
+				var r_bad := dismembered.has("ARM_R") or (disabled_arm_timer > 0.0 and disabled_arm_side == 1)
+				attack_side = 1 if (l_bad and not r_bad) else (-1 if (r_bad and not l_bad) else (1 if randf() < 0.5 else -1))
 				if growl_player and not _snarl_streams.is_empty():
 					growl_player.stream = _snarl_streams[randi() % _snarl_streams.size()]
 					growl_player.pitch_scale = randf_range(0.92, 1.12)
@@ -1622,9 +1879,91 @@ func _attempt_melee_hit(raw_to: Vector3, dist_xz: float, dy_player: float) -> vo
 		target.take_damage(attack_damage, global_position + Vector3(0, 1.35, 0))
 
 
+func _pb_for_zone(zone: String) -> PhysicalBone3D:
+	match zone:
+		"HEAD": return _pb_head if is_instance_valid(_pb_head) else _pb_spine2
+		"ARM_L": return _pb_l_arm if is_instance_valid(_pb_l_arm) else _pb_spine2
+		"ARM_R": return _pb_r_arm if is_instance_valid(_pb_r_arm) else _pb_spine2
+		"LEG_L": return _pb_l_leg if is_instance_valid(_pb_l_leg) else _pb_hips
+		"LEG_R": return _pb_r_leg if is_instance_valid(_pb_r_leg) else _pb_hips
+		_: return _pb_spine2 if is_instance_valid(_pb_spine2) else _pb_hips
+
+
 func apply_shot(hits: Array, weapon_idx: int) -> Dictionary:
-	if dead or hits.is_empty():
-		return {"headshot": false, "killed": false, "zone": "CHEST"}
+	if hits.is_empty():
+		return {"headshot": false, "killed": false, "corpse_hit": dead, "dismembered": false, "zone": "CHEST"}
+
+	if dead:
+		var any_hs_d := false
+		var primary_z_d := str(hits[0].get("zone", "CHEST"))
+		var avg_pos_d := Vector3.ZERO
+		var avg_dir_d := Vector3.ZERO
+		var total_d := 0.0
+		var did_dismember_d := false
+		var zone_pos_d: Dictionary = {}
+		for h_raw in hits:
+			var h: Dictionary = h_raw
+			var hz := str(h.get("zone", "CHEST"))
+			var amt := float(h.get("dmg", 30.0))
+			var hp_d: Vector3 = h.get("pos", global_position)
+			avg_pos_d += hp_d
+			avg_dir_d += (h.get("dir", Vector3.FORWARD) as Vector3).normalized()
+			total_d += amt
+			if not zone_pos_d.has(hz):
+				zone_pos_d[hz] = hp_d
+			if hz == "HEAD":
+				any_hs_d = true
+				primary_z_d = "HEAD"
+				head_dmg += amt
+			elif hz == "ARM_L":
+				l_arm_dmg += amt
+			elif hz == "ARM_R":
+				r_arm_dmg += amt
+			elif hz == "LEG_L":
+				left_leg_dmg += amt
+			elif hz == "LEG_R":
+				right_leg_dmg += amt
+		avg_pos_d /= float(hits.size())
+		var hd_d := (avg_dir_d / float(hits.size())).normalized()
+		if hd_d.length_squared() < 0.01:
+			hd_d = Vector3.FORWARD
+
+		# Post-mortem dismemberment across ALL hit zones in the blast (handles multi-pellet shotguns!)
+		for hz_k in zone_pos_d.keys():
+			var hz_s := str(hz_k)
+			var z_pt: Vector3 = zone_pos_d[hz_k]
+			if hz_s == "HEAD" and not dismembered.has("HEAD") and (head_dmg >= 32.0 or weapon_idx == 2):
+				did_dismember_d = _dismember_zone("HEAD", z_pt, hd_d) or did_dismember_d
+			elif hz_s == "ARM_L" and not dismembered.has("ARM_L") and l_arm_dmg >= 38.0:
+				did_dismember_d = _dismember_zone("ARM_L", z_pt, hd_d) or did_dismember_d
+			elif hz_s == "ARM_R" and not dismembered.has("ARM_R") and r_arm_dmg >= 38.0:
+				did_dismember_d = _dismember_zone("ARM_R", z_pt, hd_d) or did_dismember_d
+			elif hz_s == "LEG_L" and not dismembered.has("LEG_L") and left_leg_dmg >= 42.0:
+				did_dismember_d = _dismember_zone("LEG_L", z_pt, hd_d) or did_dismember_d
+			elif hz_s == "LEG_R" and not dismembered.has("LEG_R") and right_leg_dmg >= 42.0:
+				did_dismember_d = _dismember_zone("LEG_R", z_pt, hd_d) or did_dismember_d
+
+		if not did_dismember_d and VFXManager.instance:
+			var b_int := clampf(0.80 + 0.14 * float(hits.size()), 0.80, 1.45)
+			VFXManager.instance.spawn_blood_impact(avg_pos_d, hd_d, b_int, any_hs_d, true)
+
+		# Kick active ragdoll bone physically so shooting dying/ragdolling bodies jolts them!
+		if _ragdoll_active:
+			var pb := _pb_for_zone(primary_z_d)
+			if is_instance_valid(pb):
+				var imp := (24.0 if weapon_idx == 2 else 11.0) * clampf(total_d / 35.0, 0.7, 2.2)
+				pb.apply_central_impulse(hd_d * imp + Vector3(0.0, 2.2, 0.0))
+				_ragdoll_settle_timer = 0.0
+		elif skeleton:
+			# Frozen corpse: bounded bone twitch around _frozen_rest_rot (never twists unboundedly!)
+			var tb := head_bone if primary_z_d == "HEAD" else (l_arm_bone if primary_z_d == "ARM_L" else (r_arm_bone if primary_z_d == "ARM_R" else (l_upleg_bone if primary_z_d == "LEG_L" else (r_upleg_bone if primary_z_d == "LEG_R" else spine2_bone))))
+			if tb >= 0 and not (primary_z_d == "HEAD" and dismembered.has("HEAD")):
+				var base_r: Quaternion = _frozen_rest_rot.get(tb, skeleton.get_bone_pose_rotation(tb))
+				var twitch := Quaternion(Vector3.RIGHT, randf_range(-0.18, 0.18)) * Quaternion(Vector3.UP, randf_range(-0.14, 0.14))
+				skeleton.set_bone_pose_rotation(tb, twitch * base_r)
+				_apply_dismembered_local_scales()
+
+		return {"headshot": any_hs_d, "killed": false, "corpse_hit": true, "dismembered": did_dismember_d, "zone": primary_z_d}
 
 	var any_hs := false
 	var total_dmg := 0.0
@@ -1634,6 +1973,7 @@ func apply_shot(hits: Array, weapon_idx: int) -> Dictionary:
 	var min_dist := 99.0
 	var rig_basis := rig_root.global_transform.basis
 	var inv_rig := rig_basis.inverse()
+	var zone_pos: Dictionary = {}
 
 	for h_raw in hits:
 		var h: Dictionary = h_raw
@@ -1645,6 +1985,8 @@ func apply_shot(hits: Array, weapon_idx: int) -> Dictionary:
 		min_dist = minf(min_dist, hdist)
 		avg_pos += hpos
 		avg_dir += hdir.normalized()
+		if not zone_pos.has(hz):
+			zone_pos[hz] = hpos
 
 		var zone_mult := 1.0
 		var poise_mult := 1.0
@@ -1654,6 +1996,7 @@ func apply_shot(hits: Array, weapon_idx: int) -> Dictionary:
 				poise_mult = 2.4
 				any_hs = true
 				primary_zone = "HEAD"
+				head_dmg += amt
 			"CHEST":
 				zone_mult = 1.0 * _chest_armor_mult
 				poise_mult = 1.0 * _chest_armor_mult
@@ -1670,15 +2013,19 @@ func apply_shot(hits: Array, weapon_idx: int) -> Dictionary:
 		poise += amt * poise_mult
 
 		if hz == "LEG_L":
-			left_leg_dmg += fd
+			left_leg_dmg += amt
 			if left_leg_dmg >= max_health * 0.28: crippled_side = -1
 		elif hz == "LEG_R":
-			right_leg_dmg += fd
+			right_leg_dmg += amt
 			if right_leg_dmg >= max_health * 0.28: crippled_side = 1
 		elif hz == "ARM_L":
-			disabled_arm_side = -1; disabled_arm_timer = 0.65
+			l_arm_dmg += amt
+			if not dismembered.has("ARM_R"):
+				disabled_arm_side = -1; disabled_arm_timer = 0.65
 		elif hz == "ARM_R":
-			disabled_arm_side = 1; disabled_arm_timer = 0.65
+			r_arm_dmg += amt
+			if not dismembered.has("ARM_L"):
+				disabled_arm_side = 1; disabled_arm_timer = 0.65
 
 	avg_pos /= float(hits.size())
 	var hd_world := (avg_dir / float(hits.size())).normalized()
@@ -1689,6 +2036,29 @@ func apply_shot(hits: Array, weapon_idx: int) -> Dictionary:
 	if bend_axis.length_squared() < 0.002:
 		bend_axis = Vector3.RIGHT
 	bend_axis = bend_axis.normalized()
+
+	# Live dismemberment across ALL hit zones in the blast (supports multi-pellet shotgun hits cleanly!)
+	var did_dismember := false
+	for hz_k in zone_pos.keys():
+		var hz_s := str(hz_k)
+		var z_pt: Vector3 = zone_pos[hz_k]
+		if hz_s == "HEAD" and not dismembered.has("HEAD") and (health <= 0.0 or head_dmg >= 55.0 or (weapon_idx == 2 and min_dist < 6.0 and head_dmg >= 48.0)):
+			did_dismember = _dismember_zone("HEAD", z_pt, hd_world) or did_dismember
+			health = 0.0
+		elif hz_s == "ARM_L" and not dismembered.has("ARM_L") and l_arm_dmg >= 45.0:
+			did_dismember = _dismember_zone("ARM_L", z_pt, hd_world) or did_dismember
+			poise = poise_max
+		elif hz_s == "ARM_R" and not dismembered.has("ARM_R") and r_arm_dmg >= 45.0:
+			did_dismember = _dismember_zone("ARM_R", z_pt, hd_world) or did_dismember
+			poise = poise_max
+		elif hz_s == "LEG_L" and not dismembered.has("LEG_L") and left_leg_dmg >= 48.0:
+			did_dismember = _dismember_zone("LEG_L", z_pt, hd_world) or did_dismember
+			health = 0.0
+		elif hz_s == "LEG_R" and not dismembered.has("LEG_R") and right_leg_dmg >= 48.0:
+			did_dismember = _dismember_zone("LEG_R", z_pt, hd_world) or did_dismember
+			health = 0.0
+	if dismembered.has("ARM_L") and dismembered.has("ARM_R"):
+		health = 0.0
 
 	var imp_allow := clampf(1.35 - _pellet_impulse_accum, 0.25, 1.0)
 	_pellet_impulse_accum += 0.45
@@ -1728,8 +2098,8 @@ func apply_shot(hits: Array, weapon_idx: int) -> Dictionary:
 				sm.add_spring_impulse(head_bone, -bend_axis * (5.5 * k))
 				sm.add_pelvis_drop(-0.8 * k)
 
-	# ONE aggregated pooled blood spray burst per hit zombie per blast!
-	if VFXManager.instance:
+	# ONE aggregated pooled blood spray burst per hit zombie per blast (skip duplicate if dismember burst already fired)
+	if not did_dismember and VFXManager.instance:
 		var b_int := clampf(0.85 + 0.16 * float(hits.size()), 0.85, 1.55)
 		VFXManager.instance.spawn_blood_impact(avg_pos, hd_world, b_int, any_hs, min_dist < 5.5)
 
@@ -1745,7 +2115,7 @@ func apply_shot(hits: Array, weapon_idx: int) -> Dictionary:
 		_enter_ragdoll(hd_world, total_dmg, primary_zone, min_dist, weapon_idx)
 		_register_corpse(self)
 		emit_signal("died", self, any_hs)
-		return {"headshot": any_hs, "killed": true, "zone": primary_zone}
+		return {"headshot": any_hs, "killed": true, "corpse_hit": false, "dismembered": did_dismember, "zone": primary_zone}
 
 	var runner_tripped: bool = (variant == Variant.RUNNER and primary_zone.begins_with("LEG") and state == State.CHASE and poise > 18.0)
 	if (any_hs or poise >= poise_max or runner_tripped) and poise_immunity <= 0.0:
@@ -1762,7 +2132,7 @@ func apply_shot(hits: Array, weapon_idx: int) -> Dictionary:
 		growl_player.pitch_scale = randf_range(0.90, 1.14)
 		growl_player.volume_db = -2.5
 		growl_player.play()
-	return {"headshot": any_hs, "killed": false, "zone": primary_zone}
+	return {"headshot": any_hs, "killed": false, "corpse_hit": false, "dismembered": did_dismember, "zone": primary_zone}
 
 
 func take_damage(amount: float, hit_pos: Vector3, hit_dir: Vector3, hit_info = "CHEST") -> bool:
