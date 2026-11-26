@@ -114,10 +114,10 @@ const WEAPONS := [
 		"recoil_pitch": 0.025,
 		"recoil_kick": 0.020,
 		"flash_scale": 0.0,
-		"hip_pos": Vector3(0.145, -0.155, -0.34),
-		"hip_rot": Vector3(0.02, 0.06, -0.24),
-		"ads_pos": Vector3(0.024, -0.095, -0.30),
-		"ads_rot": Vector3(0.0, 0.0, -0.08),
+		"hip_pos": Vector3(0.24, -0.22, -0.44),
+		"hip_rot": Vector3(0.04, 0.08, -0.36),
+		"ads_pos": Vector3(0.135, -0.145, -0.42),
+		"ads_rot": Vector3(0.0, 0.04, -0.16),
 		"muzzle": Vector3(0.0, 0.02, -0.42),
 		"ejection": Vector3.ZERO,
 		"has_holo": false,
@@ -189,15 +189,15 @@ const WEAPONS := [
 		"recoil_pitch": 0.120,
 		"recoil_kick": 0.080,
 		"flash_scale": 1.30,
-		"ads_fov": 42.0,
+		"ads_fov": 34.0,
 		"hip_pos": Vector3(0.132, -0.185, -0.32),
 		"hip_rot": Vector3(0.02, 0.08, -0.04),
 		"ads_pos": Vector3(0.0, -0.088, -0.23),
 		"ads_rot": Vector3(0.0, 0.0, 0.0),
 		"muzzle": Vector3(0.0, 0.030, -0.82),
 		"ejection": Vector3(0.040, 0.036, -0.10),
-		"has_holo": true,
-		"holo_pos": Vector3(0.0, 0.088, -0.12),
+		"has_holo": false,
+		"holo_pos": Vector3.ZERO,
 	}
 ]
 
@@ -1355,73 +1355,139 @@ func _add_vm_mesh(parent: Node3D, m: Mesh, pos: Vector3, rot := Vector3.ZERO, n_
 	return mi
 
 
+func _clone_tactical_arms(src_idx: int, holder: Node3D, parts: Dictionary,
+		left_off := Vector3.ZERO, left_rot := Vector3.ZERO,
+		right_off := Vector3.ZERO, right_rot := Vector3.ZERO,
+		include_left := true, include_right := true) -> void:
+	if src_idx < 0 or src_idx >= _w_parts_by_idx.size():
+		return
+	var src_parts: Dictionary = _w_parts_by_idx[src_idx]
+	for spec in [
+		["arm_left", include_left, left_off, left_rot, "ArmLeftPivot"],
+		["arm_right", include_right, right_off, right_rot, "ArmRightPivot"],
+	]:
+		var grp: String = spec[0]
+		if not bool(spec[1]) or not src_parts.has(grp):
+			continue
+		var arr: Array = src_parts[grp]
+		if arr.is_empty():
+			continue
+		var src_mi := arr[0] as MeshInstance3D
+		if src_mi == null or src_mi.mesh == null:
+			continue
+		var piv := Node3D.new()
+		piv.name = spec[4]
+		piv.position = spec[2]
+		piv.rotation = spec[3]
+		var dup := MeshInstance3D.new()
+		dup.name = src_mi.name
+		dup.mesh = src_mi.mesh
+		dup.transform = src_mi.transform
+		dup.layers = 2
+		dup.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var ovr := src_mi.get_surface_override_material(0)
+		if ovr != null:
+			dup.set_surface_override_material(0, ovr)
+		piv.add_child(dup)
+		holder.add_child(piv)
+		if not parts.has(grp):
+			parts[grp] = []
+		(parts[grp] as Array).append(piv)
+		_w_rest_pos[piv.get_instance_id()] = piv.position
+		_w_rest_rot[piv.get_instance_id()] = piv.rotation
+
+
 func _build_bow_viewmodel_rig(holder: Node3D, parts: Dictionary) -> void:
 	_bow_parts.clear()
-	var riser_mat := _make_vm_mat(Color(0.28, 0.30, 0.32), 0.44, 0.72, 0.58, Color.BLACK, "metal_tactical")
-	var limb_mat := _make_vm_mat(Color(0.22, 0.24, 0.22), 0.48, 0.28, 0.45, Color.BLACK, "metal_tactical")
-	var cam_mat := _make_vm_mat(Color(0.62, 0.10, 0.08), 0.32, 0.82, 0.65)
-	var string_mat := _make_vm_mat(Color(0.84, 0.82, 0.78), 0.75, 0.0, 0.15)
-	var grip_mat := _make_vm_mat(Color(0.42, 0.28, 0.18), 0.85, 0.0, 0.14, Color.BLACK, "wood_carved")
-	var shaft_mat := _make_vm_mat(Color(0.14, 0.15, 0.16), 0.36, 0.35, 0.50)
-	var tip_mat := _make_vm_mat(Color(0.78, 0.80, 0.84), 0.22, 0.92, 0.75)
-	var fletch_mat := _make_vm_mat(Color(0.82, 0.12, 0.10), 0.52, 0.0, 0.25)
+	var riser_mat := _make_vm_mat(Color(0.18, 0.20, 0.19), 0.42, 0.72, 0.56, Color.BLACK, "metal_tactical")
+	var limb_mat := _make_vm_mat(Color(0.12, 0.13, 0.12), 0.46, 0.30, 0.44, Color.BLACK, "metal_tactical")
+	var cam_mat := _make_vm_mat(Color(0.24, 0.25, 0.27), 0.28, 0.88, 0.68, Color.BLACK, "metal_tactical")
+	var cam_accent := _make_vm_mat(Color(0.38, 0.10, 0.08), 0.36, 0.72, 0.55)
+	var string_mat := _make_vm_mat(Color(0.22, 0.22, 0.21), 0.82, 0.0, 0.12)
+	var grip_mat := _make_vm_mat(Color(0.28, 0.18, 0.12), 0.85, 0.0, 0.14, Color.BLACK, "wood_carved")
+	var shaft_mat := _make_vm_mat(Color(0.10, 0.11, 0.12), 0.34, 0.38, 0.48)
+	var tip_mat := _make_vm_mat(Color(0.76, 0.78, 0.82), 0.22, 0.92, 0.75)
+	var fletch_mat := _make_vm_mat(Color(0.58, 0.11, 0.09), 0.56, 0.0, 0.22)
 	var pin_g := _make_vm_mat(Color(0.2, 1.0, 0.3), 0.2, 0.0, 0.2, Color(0.2, 1.0, 0.35))
 	var pin_y := _make_vm_mat(Color(1.0, 0.8, 0.15), 0.2, 0.0, 0.2, Color(1.0, 0.75, 0.15))
 
-	# Machined riser + grip + stabilizer
-	var r_main := BoxMesh.new(); r_main.size = Vector3(0.024, 0.32, 0.038); r_main.material = riser_mat
-	_add_vm_mesh(holder, r_main, Vector3(-0.028, 0.0, -0.18))
-	var r_grip := CylinderMesh.new(); r_grip.top_radius = 0.015; r_grip.bottom_radius = 0.016; r_grip.height = 0.12; r_grip.material = grip_mat
-	_add_vm_mesh(holder, r_grip, Vector3(-0.028, -0.04, -0.172))
-	var stab := CylinderMesh.new(); stab.top_radius = 0.008; stab.bottom_radius = 0.010; stab.height = 0.18; stab.material = riser_mat
-	_add_vm_mesh(holder, stab, Vector3(-0.028, -0.095, -0.28), Vector3(PI * 0.5, 0, 0))
-	var s_ring := CylinderMesh.new(); s_ring.top_radius = 0.022; s_ring.bottom_radius = 0.022; s_ring.height = 0.014; s_ring.material = riser_mat
-	_add_vm_mesh(holder, s_ring, Vector3(-0.006, 0.055, -0.21), Vector3(PI * 0.5, 0, 0))
-	var p1 := BoxMesh.new(); p1.size = Vector3(0.014, 0.0025, 0.0025); p1.material = pin_g
-	_add_vm_mesh(holder, p1, Vector3(-0.010, 0.059, -0.21))
-	var p2 := BoxMesh.new(); p2.size = Vector3(0.012, 0.0022, 0.0022); p2.material = pin_y
-	_add_vm_mesh(holder, p2, Vector3(-0.011, 0.052, -0.21))
+	# Compact sculpted tactical compound bow riser (twin machined truss bars + grip + sight cage)
+	var r_front := BoxMesh.new(); r_front.size = Vector3(0.015, 0.24, 0.014); r_front.material = riser_mat
+	_add_vm_mesh(holder, r_front, Vector3(-0.022, 0.01, -0.175))
+	var r_back := BoxMesh.new(); r_back.size = Vector3(0.013, 0.20, 0.011); r_back.material = riser_mat
+	_add_vm_mesh(holder, r_back, Vector3(-0.022, 0.01, -0.148))
+	var r_bridge := BoxMesh.new(); r_bridge.size = Vector3(0.015, 0.014, 0.036); r_bridge.material = riser_mat
+	_add_vm_mesh(holder, r_bridge, Vector3(-0.022, 0.11, -0.162))
+	_add_vm_mesh(holder, r_bridge, Vector3(-0.022, -0.09, -0.162))
+	_add_vm_mesh(holder, r_bridge, Vector3(-0.022, 0.025, -0.162))
+	# Contoured grip + tactical stabilizer + arrow rest
+	var r_grip := CylinderMesh.new(); r_grip.top_radius = 0.012; r_grip.bottom_radius = 0.014; r_grip.height = 0.095; r_grip.material = grip_mat
+	_add_vm_mesh(holder, r_grip, Vector3(-0.022, -0.038, -0.145), Vector3(0.14, 0, 0))
+	var stab := CylinderMesh.new(); stab.top_radius = 0.0065; stab.bottom_radius = 0.008; stab.height = 0.14; stab.material = riser_mat
+	_add_vm_mesh(holder, stab, Vector3(-0.022, -0.082, -0.245), Vector3(PI * 0.5, 0, 0))
+	var stab_cap := CylinderMesh.new(); stab_cap.top_radius = 0.011; stab_cap.bottom_radius = 0.011; stab_cap.height = 0.022; stab_cap.material = cam_mat
+	_add_vm_mesh(holder, stab_cap, Vector3(-0.022, -0.082, -0.318), Vector3(PI * 0.5, 0, 0))
+	# Fiber-optic sight ring + glowing aiming pins
+	var s_arm := BoxMesh.new(); s_arm.size = Vector3(0.022, 0.008, 0.010); s_arm.material = riser_mat
+	_add_vm_mesh(holder, s_arm, Vector3(-0.012, 0.048, -0.188))
+	var s_ring := CylinderMesh.new(); s_ring.top_radius = 0.017; s_ring.bottom_radius = 0.017; s_ring.height = 0.010; s_ring.material = cam_mat
+	_add_vm_mesh(holder, s_ring, Vector3(0.002, 0.048, -0.192), Vector3(PI * 0.5, 0, 0))
+	var p1 := BoxMesh.new(); p1.size = Vector3(0.010, 0.0020, 0.0020); p1.material = pin_g
+	_add_vm_mesh(holder, p1, Vector3(-0.001, 0.051, -0.192))
+	var p2 := BoxMesh.new(); p2.size = Vector3(0.009, 0.0018, 0.0018); p2.material = pin_y
+	_add_vm_mesh(holder, p2, Vector3(-0.002, 0.045, -0.192))
 
-	# Upper & lower flexing limbs seated flush in riser pockets + eccentric cams
-	var limb_top := Node3D.new(); limb_top.name = "BowLimbTop"; limb_top.position = Vector3(-0.028, 0.15, -0.18)
-	var lt_m := BoxMesh.new(); lt_m.size = Vector3(0.026, 0.24, 0.014); lt_m.material = limb_mat
-	_add_vm_mesh(limb_top, lt_m, Vector3(0.0, 0.105, 0.030), Vector3(0.26, 0, 0))
-	var cam_t := CylinderMesh.new(); cam_t.top_radius = 0.026; cam_t.bottom_radius = 0.026; cam_t.height = 0.010; cam_t.material = cam_mat
-	var cam_t_node := _add_vm_mesh(limb_top, cam_t, Vector3(0.0, 0.220, 0.062), Vector3(0, 0, PI * 0.5))
+	# Compact split-limb recurve arms + dark gunmetal cams (NOT giant red discs!)
+	var limb_top := Node3D.new(); limb_top.name = "BowLimbTop"; limb_top.position = Vector3(-0.022, 0.115, -0.165)
+	var lt_m := BoxMesh.new(); lt_m.size = Vector3(0.006, 0.165, 0.010); lt_m.material = limb_mat
+	_add_vm_mesh(limb_top, lt_m, Vector3(-0.006, 0.074, 0.028), Vector3(0.36, 0, 0))
+	_add_vm_mesh(limb_top, lt_m, Vector3(0.006, 0.074, 0.028), Vector3(0.36, 0, 0))
+	var cam_t := CylinderMesh.new(); cam_t.top_radius = 0.017; cam_t.bottom_radius = 0.017; cam_t.height = 0.008; cam_t.material = cam_mat
+	_add_vm_mesh(limb_top, cam_t, Vector3(0.0, 0.155, 0.058), Vector3(0, 0, PI * 0.5))
+	var cam_ta := CylinderMesh.new(); cam_ta.top_radius = 0.008; cam_ta.bottom_radius = 0.008; cam_ta.height = 0.010; cam_ta.material = cam_accent
+	_add_vm_mesh(limb_top, cam_ta, Vector3(0.0, 0.155, 0.058), Vector3(0, 0, PI * 0.5))
 	holder.add_child(limb_top)
 
-	var limb_bot := Node3D.new(); limb_bot.name = "BowLimbBot"; limb_bot.position = Vector3(-0.028, -0.15, -0.18)
-	var lb_m := BoxMesh.new(); lb_m.size = Vector3(0.026, 0.24, 0.014); lb_m.material = limb_mat
-	_add_vm_mesh(limb_bot, lb_m, Vector3(0.0, -0.105, 0.030), Vector3(-0.26, 0, 0))
-	var cam_b := CylinderMesh.new(); cam_b.top_radius = 0.026; cam_b.bottom_radius = 0.026; cam_b.height = 0.010; cam_b.material = cam_mat
-	var cam_b_node := _add_vm_mesh(limb_bot, cam_b, Vector3(0.0, -0.220, 0.062), Vector3(0, 0, PI * 0.5))
+	var limb_bot := Node3D.new(); limb_bot.name = "BowLimbBot"; limb_bot.position = Vector3(-0.022, -0.095, -0.165)
+	var lb_m := BoxMesh.new(); lb_m.size = Vector3(0.006, 0.165, 0.010); lb_m.material = limb_mat
+	_add_vm_mesh(limb_bot, lb_m, Vector3(-0.006, -0.074, 0.028), Vector3(-0.36, 0, 0))
+	_add_vm_mesh(limb_bot, lb_m, Vector3(0.006, -0.074, 0.028), Vector3(-0.36, 0, 0))
+	var cam_b := CylinderMesh.new(); cam_b.top_radius = 0.017; cam_b.bottom_radius = 0.017; cam_b.height = 0.008; cam_b.material = cam_mat
+	_add_vm_mesh(limb_bot, cam_b, Vector3(0.0, -0.155, 0.058), Vector3(0, 0, PI * 0.5))
+	var cam_ba := CylinderMesh.new(); cam_ba.top_radius = 0.008; cam_ba.bottom_radius = 0.008; cam_ba.height = 0.010; cam_ba.material = cam_accent
+	_add_vm_mesh(limb_bot, cam_ba, Vector3(0.0, -0.155, 0.058), Vector3(0, 0, PI * 0.5))
 	holder.add_child(limb_bot)
 
-	# Upper & lower dynamic bowstring halves (unit height = 1.0, scaled exactly from cam to arrow nock!)
-	var st_m := CylinderMesh.new(); st_m.top_radius = 0.0018; st_m.bottom_radius = 0.0018; st_m.height = 1.0; st_m.material = string_mat
-	var str_top := _add_vm_mesh(holder, st_m, Vector3(-0.022, 0.18, -0.11), Vector3.ZERO, "BowStringTop")
-	var str_bot := _add_vm_mesh(holder, st_m, Vector3(-0.022, -0.18, -0.11), Vector3.ZERO, "BowStringBot")
+	# Dark braided dynamic bowstring halves (unit height = 1.0, scaled locally from cam to nock)
+	var st_m := CylinderMesh.new(); st_m.top_radius = 0.0014; st_m.bottom_radius = 0.0014; st_m.height = 1.0; st_m.material = string_mat
+	var str_top := _add_vm_mesh(holder, st_m, Vector3(-0.020, 0.14, -0.105), Vector3.ZERO, "BowStringTop")
+	var str_bot := _add_vm_mesh(holder, st_m, Vector3(-0.020, -0.12, -0.105), Vector3.ZERO, "BowStringBot")
 
-	# Nocked carbon arrow with broadhead & crimson fletching
-	var arrow := Node3D.new(); arrow.name = "BowNockedArrow"; arrow.position = Vector3(-0.012, 0.030, -0.24)
-	var sh := CylinderMesh.new(); sh.top_radius = 0.0036; sh.bottom_radius = 0.0036; sh.height = 0.50; sh.material = shaft_mat
-	_add_vm_mesh(arrow, sh, Vector3(0, 0, -0.12), Vector3(PI * 0.5, 0, 0))
-	var bh := CylinderMesh.new(); bh.top_radius = 0.0005; bh.bottom_radius = 0.010; bh.height = 0.044; bh.radial_segments = 4; bh.material = tip_mat
-	_add_vm_mesh(arrow, bh, Vector3(0, 0, -0.385), Vector3(-PI * 0.5, 0, 0))
-	var fl := BoxMesh.new(); fl.size = Vector3(0.002, 0.018, 0.068); fl.material = fletch_mat
-	_add_vm_mesh(arrow, fl, Vector3(0, 0.009, 0.085))
-	_add_vm_mesh(arrow, fl, Vector3(0.008, -0.005, 0.085), Vector3(0, 0, 2.09))
-	_add_vm_mesh(arrow, fl, Vector3(-0.008, -0.005, 0.085), Vector3(0, 0, -2.09))
+	# Nocked carbon arrow with steel broadhead & dark crimson fletching
+	var arrow := Node3D.new(); arrow.name = "BowNockedArrow"; arrow.position = Vector3(-0.008, 0.032, -0.22)
+	var sh := CylinderMesh.new(); sh.top_radius = 0.0030; sh.bottom_radius = 0.0030; sh.height = 0.42; sh.material = shaft_mat
+	_add_vm_mesh(arrow, sh, Vector3(0, 0, -0.10), Vector3(PI * 0.5, 0, 0))
+	var bh := CylinderMesh.new(); bh.top_radius = 0.0005; bh.bottom_radius = 0.0085; bh.height = 0.038; bh.radial_segments = 4; bh.material = tip_mat
+	_add_vm_mesh(arrow, bh, Vector3(0, 0, -0.325), Vector3(-PI * 0.5, 0, 0))
+	var fl := BoxMesh.new(); fl.size = Vector3(0.0018, 0.013, 0.056); fl.material = fletch_mat
+	_add_vm_mesh(arrow, fl, Vector3(0, 0.007, 0.072))
+	_add_vm_mesh(arrow, fl, Vector3(0.006, -0.004, 0.072), Vector3(0, 0, 2.09))
+	_add_vm_mesh(arrow, fl, Vector3(-0.006, -0.004, 0.072), Vector3(0, 0, -2.09))
 	holder.add_child(arrow)
+
+	# Attach real gloved tactical arms: ArmLeft grips bow riser, ArmRight pulls bowstring!
+	_clone_tactical_arms(1, holder, parts,
+		Vector3(0.02, -0.01, 0.12), Vector3(0.08, -0.10, 0.20),
+		Vector3(0.03, 0.02, 0.08), Vector3(0.10, 0.18, -0.15),
+		true, true)
 
 	_bow_parts = {
 		"limb_top": limb_top,
 		"limb_bot": limb_bot,
-		"cam_top": cam_t_node,
-		"cam_bot": cam_b_node,
 		"str_top": str_top,
 		"str_bot": str_bot,
 		"arrow": arrow,
+		"arm_draw": (parts["arm_right"][0] if (parts.has("arm_right") and not (parts["arm_right"] as Array).is_empty()) else null),
 	}
 	parts["bow_arrow"] = [arrow]
 	_pose_bow_rig()
@@ -1475,6 +1541,7 @@ func _build_mp5_viewmodel_rig(holder: Node3D, parts: Dictionary) -> void:
 	for n: Node3D in [mag_root, ch_node]:
 		_w_rest_pos[n.get_instance_id()] = n.position
 		_w_rest_rot[n.get_instance_id()] = n.rotation
+	_clone_tactical_arms(1, holder, parts, Vector3(0.0, 0.025, 0.02), Vector3.ZERO, Vector3(0.0, 0.025, 0.02), Vector3.ZERO)
 
 
 func _build_magnum_viewmodel_rig(holder: Node3D, parts: Dictionary) -> void:
@@ -1521,6 +1588,7 @@ func _build_magnum_viewmodel_rig(holder: Node3D, parts: Dictionary) -> void:
 	for n: Node3D in [crane, cyl, hammer]:
 		_w_rest_pos[n.get_instance_id()] = n.position
 		_w_rest_rot[n.get_instance_id()] = n.rotation
+	_clone_tactical_arms(0, holder, parts, Vector3(0.0, -0.02, 0.08), Vector3.ZERO, Vector3(0.0, -0.02, 0.08), Vector3.ZERO)
 
 
 func _build_hunting_rifle_viewmodel_rig(holder: Node3D, parts: Dictionary) -> void:
@@ -1565,6 +1633,7 @@ func _build_hunting_rifle_viewmodel_rig(holder: Node3D, parts: Dictionary) -> vo
 	parts["bolt"] = [bolt_root]
 	_w_rest_pos[bolt_root.get_instance_id()] = bolt_root.position
 	_w_rest_rot[bolt_root.get_instance_id()] = bolt_root.rotation
+	_clone_tactical_arms(1, holder, parts, Vector3(0.0, 0.015, 0.01), Vector3.ZERO, Vector3(0.0, 0.015, 0.01), Vector3.ZERO)
 
 
 func _build_single_weapon_rig(i: int) -> void:
@@ -1578,6 +1647,7 @@ func _build_single_weapon_rig(i: int) -> void:
 	var custom_rig := str(w.get("custom_rig", ""))
 	if bool(w.get("is_melee", false)):
 		_build_melee_viewmodel_rig(holder)
+		_clone_tactical_arms(0, holder, parts, Vector3.ZERO, Vector3.ZERO, Vector3(-0.02, -0.04, 0.14), Vector3(0.18, 0.45, -0.15), false, true)
 	elif custom_rig == "bow":
 		_build_bow_viewmodel_rig(holder, parts)
 	elif custom_rig == "mp5":
@@ -2016,6 +2086,9 @@ func set_deterministic_view(pos: Vector3, look_yaw: float, look_pitch: float, we
 	head.rotation = Vector3(pitch, 0.0, 0.0)
 	_equip_weapon(weapon_idx)
 	is_ads = ads_state
+	_ads_blend = 1.0 if ads_state else 0.0
+	if weapon_rig_holder:
+		weapon_rig_holder.visible = not (current_weapon == 7 and _ads_blend > 0.72)
 	flashlight_on = light_state
 	flashlight.visible = flashlight_on
 	flashlight_spill.visible = false
@@ -2338,6 +2411,8 @@ func _process(delta: float) -> void:
 	var bow_fov_off := -7.5 * _bow_draw if bool(w.get("is_bow", false)) else 0.0
 	var target_fov := lerpf(94.0, ads_fov_val, _ads_blend) + _sprint_blend * 5.5 + recoil_fov + bow_fov_off
 	camera.fov = lerpf(camera.fov, target_fov, 1.0 - exp(-delta * 14.0))
+	if weapon_rig_holder:
+		weapon_rig_holder.visible = not (current_weapon == 7 and _ads_blend > 0.72 and not is_reloading and not dead)
 
 	_update_flashlight_and_iris(delta)
 
@@ -3020,15 +3095,19 @@ func _pose_bow_rig() -> void:
 		limb_top.rotation.x = 0.18 * d
 	if is_instance_valid(limb_bot):
 		limb_bot.rotation.x = -0.18 * d
-	var nock_pos := Vector3(-0.018, 0.030, -0.115 + 0.195 * d)
-	var top_cam_p := limb_top.transform * Vector3(0.0, 0.220, 0.062) if is_instance_valid(limb_top) else Vector3(-0.028, 0.37, -0.118)
-	var bot_cam_p := limb_bot.transform * Vector3(0.0, -0.220, 0.062) if is_instance_valid(limb_bot) else Vector3(-0.028, -0.37, -0.118)
+	var nock_pos := Vector3(-0.014, 0.032, -0.105 + 0.165 * d)
+	var top_cam_p := limb_top.transform * Vector3(0.0, 0.155, 0.058) if is_instance_valid(limb_top) else Vector3(-0.022, 0.27, -0.107)
+	var bot_cam_p := limb_bot.transform * Vector3(0.0, -0.155, 0.058) if is_instance_valid(limb_bot) else Vector3(-0.022, -0.25, -0.107)
 	_align_bow_string_segment(str_top, top_cam_p, nock_pos)
 	_align_bow_string_segment(str_bot, bot_cam_p, nock_pos)
 	if is_instance_valid(arrow):
 		var has_arrow := (ammo_in_mag[4] > 0) and (_bow_nock_timer <= 0.0)
 		arrow.visible = has_arrow
-		arrow.position = Vector3(-0.012, 0.030, -0.23 + 0.195 * d)
+		arrow.position = Vector3(-0.008, 0.032, -0.21 + 0.165 * d)
+	var arm_draw: Node3D = _bow_parts.get("arm_draw")
+	if is_instance_valid(arm_draw):
+		var rest_p: Vector3 = _w_rest_pos.get(arm_draw.get_instance_id(), Vector3.ZERO)
+		arm_draw.position = rest_p + Vector3(0.0, 0.015 * d, 0.14 * d)
 
 
 func _update_bow_input(delta: float) -> void:

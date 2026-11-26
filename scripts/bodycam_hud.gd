@@ -47,6 +47,74 @@ class TacticalHitmarker extends Control:
 				draw_line(o0, o1, main_col, w * 0.9, true)
 
 
+class SniperScopeOverlay extends Control:
+	var scope_alpha: float = 0.0
+	var sway_px: Vector2 = Vector2.ZERO
+
+	func update_scope(alpha: float, sway: Vector2) -> void:
+		var clamped := clampf(alpha, 0.0, 1.0)
+		var want_vis := clamped > 0.01
+		if visible != want_vis:
+			visible = want_vis
+		if not want_vis:
+			return
+		scope_alpha = clamped
+		sway_px = sway
+		queue_redraw()
+
+	func _draw() -> void:
+		if scope_alpha <= 0.01:
+			return
+		var sz := get_rect().size
+		if sz.x < 10.0 or sz.y < 10.0:
+			return
+		var center := sz * 0.5 + sway_px
+		var radius := minf(sz.x, sz.y) * 0.435
+		var a := scope_alpha
+		var black := Color(0.008, 0.010, 0.012, a)
+
+		# Opaque matte scope tube surround outside the lens circle
+		draw_rect(Rect2(0.0, 0.0, sz.x, maxf(0.0, center.y - radius)), black, true)
+		draw_rect(Rect2(0.0, center.y + radius, sz.x, maxf(0.0, sz.y - (center.y + radius))), black, true)
+		draw_rect(Rect2(0.0, center.y - radius, maxf(0.0, center.x - radius), radius * 2.0), black, true)
+		draw_rect(Rect2(center.x + radius, center.y - radius, maxf(0.0, sz.x - (center.x + radius)), radius * 2.0), black, true)
+		# Thick circular ring mask filling the four corners cleanly
+		var corner_r := radius * 1.48
+		var ring_w := (corner_r - radius) * 2.0
+		draw_arc(center, radius + ring_w * 0.5, 0.0, TAU, 96, black, ring_w, true)
+
+		# Subtle optical glass rim + inner shadow vignette
+		draw_arc(center, radius * 0.985, 0.0, TAU, 96, Color(0.0, 0.0, 0.0, 0.58 * a), radius * 0.055, true)
+		draw_arc(center, radius * 1.002, 0.0, TAU, 96, Color(0.22, 0.25, 0.28, 0.45 * a), 2.2, true)
+
+		# Crisp duplex mil-dot reticle
+		var hair := Color(0.04, 0.05, 0.05, 0.92 * a)
+		var post := Color(0.02, 0.02, 0.02, 0.98 * a)
+		var post_start := radius * 0.48
+		# Thin inner crosshairs
+		draw_line(center + Vector2(-radius, 0.0), center + Vector2(radius, 0.0), hair, 1.3, true)
+		draw_line(center + Vector2(0.0, -radius), center + Vector2(0.0, radius), hair, 1.3, true)
+		# Heavy outer duplex posts
+		draw_line(center + Vector2(-radius, 0.0), center + Vector2(-post_start, 0.0), post, 4.2, true)
+		draw_line(center + Vector2(post_start, 0.0), center + Vector2(radius, 0.0), post, 4.2, true)
+		draw_line(center + Vector2(0.0, post_start), center + Vector2(0.0, radius), post, 4.2, true)
+		draw_line(center + Vector2(0.0, -radius), center + Vector2(0.0, -post_start * 1.15), post, 3.6, true)
+
+		# Mil-dot rangefinder stadia ticks
+		var step := radius * 0.085
+		for k in range(1, 5):
+			var off := step * float(k)
+			var tick := 6.0 if (k % 2 == 0) else 3.8
+			draw_line(center + Vector2(-off, -tick), center + Vector2(-off, tick), hair, 1.4, true)
+			draw_line(center + Vector2(off, -tick), center + Vector2(off, tick), hair, 1.4, true)
+			draw_line(center + Vector2(-tick, off), center + Vector2(tick, off), hair, 1.4, true)
+			draw_line(center + Vector2(-tick, -off), center + Vector2(tick, -off), hair, 1.4, true)
+
+		# Illuminated tactical red/amber center aiming dot
+		draw_circle(center, 3.6, Color(1.0, 0.16, 0.08, 0.35 * a))
+		draw_circle(center, 1.9, Color(1.0, 0.24, 0.12, 0.96 * a))
+
+
 var post_rect: TextureRect
 var post_mat: ShaderMaterial
 var rec_label: Label
@@ -57,6 +125,7 @@ var perf_label: Label
 var loading_overlay: ColorRect
 var _loading_label: Label
 var hit_marker: TacticalHitmarker
+var scope_overlay: SniperScopeOverlay
 var title_panel: Control
 var defeat_panel: Control
 var defeat_info: Label
@@ -90,6 +159,13 @@ func _ready() -> void:
 	post_mat.shader = load("res://shaders/bodycam_post.gdshader")
 	post_rect.material = post_mat
 	add_child(post_rect)
+
+	# Full-screen 4x telescopic sniper scope overlay (active strictly when ADS on M700 Hunting Rifle!)
+	scope_overlay = SniperScopeOverlay.new()
+	scope_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	scope_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	scope_overlay.visible = false
+	add_child(scope_overlay)
 
 	# Authentic subtle AXON-style Bodycam overlay (top-right corner, very understated)
 	rec_label = Label.new()
@@ -153,7 +229,10 @@ func _ready() -> void:
 	hit_marker = TacticalHitmarker.new()
 	hit_marker.set_anchors_preset(Control.PRESET_CENTER)
 	hit_marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hit_marker.visible = false
+	if hit_marker:
+		hit_marker.visible = false
+	if scope_overlay:
+		scope_overlay.update_scope(0.0, Vector2.ZERO)
 	add_child(hit_marker)
 
 	# Top-left live telemetry (toggle with F3)
@@ -398,7 +477,10 @@ func set_capture_mode(clean: bool) -> void:
 	rec_label.visible = not clean
 	prompt_label.visible = not clean
 	toast_label.visible = not clean
-	hit_marker.visible = false
+	if hit_marker:
+		hit_marker.visible = false
+	if scope_overlay:
+		scope_overlay.update_scope(0.0, Vector2.ZERO)
 	post_mat.set_shader_parameter("fixed_time", 42.0 if clean else -1.0)
 	post_mat.set_shader_parameter("glitch_amount", 0.0)
 	post_mat.set_shader_parameter("yaw_vel", 0.0)
@@ -426,6 +508,9 @@ func update_hud(delta: float, player: PlayerBodycam, wave: int, points: int, zom
 	post_mat.set_shader_parameter("yaw_vel", player.yaw_vel)
 	post_mat.set_shader_parameter("hit_ca_boost", player.hit_ca_boost)
 	post_mat.set_shader_parameter("hit_dir_screen", player.hit_dir_screen)
+	if scope_overlay:
+		var scope_a := smoothstep(0.45, 0.88, player._ads_blend) if (player.current_weapon == 7 and not player.dead and not player.is_reloading) else 0.0
+		scope_overlay.update_scope(scope_a, Vector2(-player.sway_offset.x * 260.0, player.sway_offset.y * 260.0))
 
 	if not rec_label.visible:
 		return
