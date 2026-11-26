@@ -478,7 +478,7 @@ func _build_rig() -> void:
 			AudioServer.add_bus_effect(master_idx, lim)
 
 	sfx_gun = AudioStreamPlayer.new()
-	sfx_gun.volume_db = -2.5
+	sfx_gun.volume_db = -1.0
 	sfx_gun.max_polyphony = 6
 	add_child(sfx_gun)
 
