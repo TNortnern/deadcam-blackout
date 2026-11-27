@@ -1414,80 +1414,28 @@ func _attach_ar_top_cartridge(inst: Node3D, parts: Dictionary) -> void:
 
 func _build_melee_viewmodel_rig(holder: Node3D) -> void:
 	_melee_nodes.clear()
-	var steel := StandardMaterial3D.new()
-	steel.albedo_color = Color(0.24, 0.26, 0.29)
-	steel.metallic = 0.86
-	steel.roughness = 0.30
-	var edge := StandardMaterial3D.new()
-	edge.albedo_color = Color(0.76, 0.78, 0.80)
-	edge.metallic = 0.94
-	edge.roughness = 0.18
-	var grip_mat := StandardMaterial3D.new()
-	grip_mat.albedo_color = Color(0.11, 0.11, 0.12)
-	grip_mat.roughness = 0.84
-	var wood_mat := StandardMaterial3D.new()
-	wood_mat.albedo_color = Color(0.24, 0.13, 0.07)
-	wood_mat.roughness = 0.82
-	var blood_mat := StandardMaterial3D.new()
-	blood_mat.albedo_color = Color(0.34, 0.02, 0.025)
-	blood_mat.roughness = 0.18
-	blood_mat.metallic_specular = 0.75
-
-	var _vm_part := func(parent: Node3D, m: Mesh, pos: Vector3, rot := Vector3.ZERO) -> MeshInstance3D:
-		var mi := MeshInstance3D.new()
-		mi.mesh = m
-		mi.position = pos
-		mi.rotation = rot
-		mi.layers = 2
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		parent.add_child(mi)
-		return mi
-
-	# 1. Combat Knife
-	var knife := Node3D.new()
-	knife.name = "Melee_Knife"
-	var kh := CylinderMesh.new(); kh.top_radius = 0.015; kh.bottom_radius = 0.016; kh.height = 0.13; kh.material = grip_mat
-	_vm_part.call(knife, kh, Vector3(0.0, -0.06, 0.0))
-	var kg := BoxMesh.new(); kg.size = Vector3(0.048, 0.012, 0.024); kg.material = steel
-	_vm_part.call(knife, kg, Vector3(0.0, 0.01, 0.0))
-	var kb := BoxMesh.new(); kb.size = Vector3(0.008, 0.21, 0.032); kb.material = steel
-	_vm_part.call(knife, kb, Vector3(0.0, 0.12, -0.004))
-	var ke := BoxMesh.new(); ke.size = Vector3(0.004, 0.20, 0.008); ke.material = edge
-	_vm_part.call(knife, ke, Vector3(0.0, 0.12, -0.022))
-	holder.add_child(knife)
-	_melee_nodes["knife"] = knife
-
-	# 2. Fire Axe
-	var axe := Node3D.new()
-	axe.name = "Melee_FireAxe"
-	var ah := CylinderMesh.new(); ah.top_radius = 0.017; ah.bottom_radius = 0.020; ah.height = 0.68; ah.material = wood_mat
-	_vm_part.call(axe, ah, Vector3(0.0, 0.08, 0.0))
-	var ag := CylinderMesh.new(); ag.top_radius = 0.021; ag.bottom_radius = 0.022; ag.height = 0.16; ag.material = grip_mat
-	_vm_part.call(axe, ag, Vector3(0.0, -0.14, 0.0))
-	var ahd := BoxMesh.new(); ahd.size = Vector3(0.028, 0.105, 0.18); ahd.material = steel
-	_vm_part.call(axe, ahd, Vector3(0.0, 0.36, -0.06))
-	var abit := BoxMesh.new(); abit.size = Vector3(0.012, 0.125, 0.036); abit.material = edge
-	_vm_part.call(axe, abit, Vector3(0.0, 0.36, -0.155))
-	var abld := BoxMesh.new(); abld.size = Vector3(0.014, 0.09, 0.045); abld.material = blood_mat
-	_vm_part.call(axe, abld, Vector3(0.0, 0.35, -0.135))
-	axe.visible = false
-	holder.add_child(axe)
-	_melee_nodes["fire_axe"] = axe
-
-	# 3. Tactical Machete
-	var mach := Node3D.new()
-	mach.name = "Melee_Machete"
-	var mh := CylinderMesh.new(); mh.top_radius = 0.016; mh.bottom_radius = 0.018; mh.height = 0.15; mh.material = grip_mat
-	_vm_part.call(mach, mh, Vector3(0.0, -0.06, 0.0))
-	var mb := BoxMesh.new(); mb.size = Vector3(0.008, 0.44, 0.056); mb.material = steel
-	_vm_part.call(mach, mb, Vector3(0.0, 0.22, -0.01))
-	var me := BoxMesh.new(); me.size = Vector3(0.004, 0.42, 0.012); me.material = edge
-	_vm_part.call(mach, me, Vector3(0.0, 0.22, -0.040))
-	var mbl := BoxMesh.new(); mbl.size = Vector3(0.010, 0.18, 0.032); mbl.material = blood_mat
-	_vm_part.call(mach, mbl, Vector3(0.0, 0.30, -0.025))
-	mach.visible = false
-	holder.add_child(mach)
-	_melee_nodes["machete"] = mach
+	var specs := [
+		["knife", "res://assets/models/weapon_melee_knife.glb", true],
+		["fire_axe", "res://assets/models/weapon_melee_axe.glb", false],
+		["machete", "res://assets/models/weapon_melee_machete.glb", false],
+	]
+	for sp in specs:
+		var mid: String = sp[0]
+		var glb_path: String = sp[1]
+		var vis: bool = sp[2]
+		var root_n := Node3D.new()
+		root_n.name = "Melee_%s" % mid
+		root_n.visible = vis
+		if ResourceLoader.exists(glb_path):
+			if not _glb_cache.has(glb_path):
+				_glb_cache[glb_path] = load(glb_path)
+			var pk: PackedScene = _glb_cache[glb_path]
+			if pk:
+				var inst := pk.instantiate()
+				_prep_viewmodel_node(inst)
+				root_n.add_child(inst)
+		holder.add_child(root_n)
+		_melee_nodes[mid] = root_n
 
 
 func _make_vm_mat(col: Color, rough: float, metal: float = 0.0, spec: float = 0.45, emit := Color.BLACK, pbr_prefix := "") -> StandardMaterial3D:
