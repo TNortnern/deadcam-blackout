@@ -21,8 +21,14 @@ var tunnel_group: Node3D
 var courtyard_group: Node3D
 var cabin_group: Node3D
 var sawmill_group: Node3D
+var boiler_group: Node3D
+var morgue_group: Node3D
 var sawmill_gate_open: bool = false
+var boiler_gate_open: bool = false
+var morgue_gate_open: bool = false
 var sawmill_spawn_points: Array[Vector3] = []
+var boiler_spawn_points: Array[Vector3] = []
+var morgue_spawn_points: Array[Vector3] = []
 var reflection_probes: Array[ReflectionProbe] = []
 var outdoor_fill_lights: Array[Light3D] = []
 var bg_horde_group: Node3D
@@ -109,12 +115,15 @@ func build_world() -> void:
 	_load_assets()
 	_setup_environment()
 	_build_asylum_lobby()
+	_build_boiler_wing()
 	_build_grand_staircase()
 	_build_storage_alcove()
 	_build_catacomb_tunnel()
 	_build_snow_courtyard()
+	_build_quarantine_morgue()
 	_build_cabin()
 	_build_sawmill_perimeter()
+	_build_extended_logging_yard()
 	_build_occluders()
 	_build_interactables()
 	_build_snow_particles()
@@ -131,9 +140,10 @@ func build_world_web_async(hud: BodycamHUD = null) -> void:
 	_opaque_mesh_cache.clear()
 	var tree := get_tree()
 	await _load_assets_web_async(hud)
-	if hud: hud.set_loading_status("BODYCAM-04 // BUILDING ASYLUM LOBBY...")
+	if hud: hud.set_loading_status("BODYCAM-04 // BUILDING ASYLUM LOBBY & BOILER WING...")
 	_setup_environment()
 	_build_asylum_lobby()
+	_build_boiler_wing()
 	await tree.process_frame
 	if hud: hud.set_loading_status("BODYCAM-04 // BUILDING GRAND STAIRCASE...")
 	_build_grand_staircase()
@@ -142,12 +152,14 @@ func build_world_web_async(hud: BodycamHUD = null) -> void:
 	if hud: hud.set_loading_status("BODYCAM-04 // BUILDING CATACOMB TUNNEL...")
 	_build_catacomb_tunnel()
 	await tree.process_frame
-	if hud: hud.set_loading_status("BODYCAM-04 // BUILDING WINTER COURTYARD...")
+	if hud: hud.set_loading_status("BODYCAM-04 // BUILDING WINTER COURTYARD & QUARANTINE MORGUE...")
 	_build_snow_courtyard()
+	_build_quarantine_morgue()
 	await tree.process_frame
-	if hud: hud.set_loading_status("BODYCAM-04 // BUILDING CABIN & FROZEN SAWMILL...")
+	if hud: hud.set_loading_status("BODYCAM-04 // BUILDING CABIN, SAWMILL & LOGGING MILL...")
 	_build_cabin()
 	_build_sawmill_perimeter()
+	_build_extended_logging_yard()
 	await tree.process_frame
 	_build_occluders()
 	_build_interactables()
@@ -408,6 +420,7 @@ func update_zone_culling(cam_or_pos) -> void:
 		_last_indoor = show_indoor
 		var b_in := show_indoor == 1
 		if lobby_group: lobby_group.visible = b_in
+		if boiler_group: boiler_group.visible = b_in
 		if staircase_group: staircase_group.visible = b_in
 		if alcove_group: alcove_group.visible = b_in
 	if show_tunnel != _last_tunnel:
@@ -417,6 +430,7 @@ func update_zone_culling(cam_or_pos) -> void:
 		_last_outdoor = show_outdoor
 		var b_out := show_outdoor == 1
 		if courtyard_group: courtyard_group.visible = b_out
+		if morgue_group: morgue_group.visible = b_out
 		if cabin_group: cabin_group.visible = b_out
 		if sawmill_group: sawmill_group.visible = b_out
 		if snow_particles: snow_particles.visible = b_out
@@ -427,7 +441,11 @@ func update_zone_culling(cam_or_pos) -> void:
 			if bg_horde_group.visible != want_horde:
 				bg_horde_group.visible = want_horde
 		if snow_particles:
-			snow_particles.position.z = clampf(cam_pos.z - 4.0, -78.0, -44.0)
+			var in_morgue := cam_pos.x < -18.3 and cam_pos.x > -40.7 and z > -56.6 and z < -40.4
+			var in_shed := cam_pos.x > 11.9 and cam_pos.x < 23.1 and z > -88.1 and z < -75.9
+			snow_particles.visible = not in_morgue and not in_shed
+			snow_particles.position.x = clampf(cam_pos.x, -18.0, 18.0)
+			snow_particles.position.z = clampf(cam_pos.z - 4.0, -106.0, -44.0)
 	if show_side_trees != _last_side_trees:
 		_last_side_trees = show_side_trees
 		var b_side := show_side_trees == 1
@@ -439,11 +457,14 @@ func update_zone_culling(cam_or_pos) -> void:
 
 func set_all_zones_visible_for_bake(all_vis: bool) -> void:
 	if lobby_group: lobby_group.visible = all_vis
+	if boiler_group: boiler_group.visible = all_vis
 	if staircase_group: staircase_group.visible = all_vis
 	if alcove_group: alcove_group.visible = all_vis
 	if tunnel_group: tunnel_group.visible = all_vis
 	if courtyard_group: courtyard_group.visible = all_vis
+	if morgue_group: morgue_group.visible = all_vis
 	if cabin_group: cabin_group.visible = all_vis
+	if sawmill_group: sawmill_group.visible = all_vis
 	if bg_horde_group: bg_horde_group.visible = all_vis
 	for mmi in _tree_bucket_left:
 		if is_instance_valid(mmi): mmi.visible = all_vis
@@ -477,7 +498,7 @@ const WORLD_GLB_LIST := [
 	"fallen_log", "dead_quiver_branch_01", "winter_grass",
 	"zombie_tactical", "zombie_runner",
 	"watchtower_aaa", "sawmill_log_stack", "diesel_generator_aaa", "sawmill_shed_aaa",
-	"evidence_chest_aaa", "upgrade_bench_aaa"
+	"evidence_chest_aaa", "upgrade_bench_aaa", "modular_pipes"
 ]
 
 
@@ -1209,16 +1230,18 @@ func _build_asylum_lobby() -> void:
 
 	_add_box(g, Vector3(10.15, 3.5, -6.2), Vector3(0.4, 7.2, 3.8), mats["plaster_brick"])
 	_add_box(g, Vector3(10.15, 3.5, -1.6), Vector3(0.4, 7.2, 1.3), mats["plaster_brick"])
-	_add_box(g, Vector3(10.15, 3.5, 4.8), Vector3(0.4, 7.2, 6.6), mats["plaster"])
+	# Open East Boiler Wing doorway at z in [1.95, 4.55] (guarded by BoilerBreachGate, 750 PTS)!
+	_add_box(g, Vector3(10.15, 3.5, 1.72), Vector3(0.4, 7.2, 0.46), mats["plaster"])
+	_add_box(g, Vector3(10.15, 3.5, 6.38), Vector3(0.4, 7.2, 3.65), mats["plaster"])
+	_add_box(g, Vector3(10.15, 5.25, 3.25), Vector3(0.4, 3.7, 2.65), mats["plaster"])
 	for wz: float in [-3.4, 0.25]:
 		_add_box(g, Vector3(10.15, 0.9, wz), Vector3(0.4, 1.8, 2.5), mats["plaster"])
 		_add_box(g, Vector3(10.15, 5.9, wz), Vector3(0.4, 2.4, 2.5), mats["plaster_brick"])
 		_add_glb(g, "arched_window", Vector3(9.95, 1.80, wz), Vector3(0, -PI * 0.5, 0), Vector3(1.15, 1.15, 1.15))
 
-	_add_glb(g, "ornate_door", Vector3(9.86, 0.0, 3.25), Vector3(0, -PI * 0.5, 0), Vector3(0.95, 1.02, 0.95))
-	_add_box(g, Vector3(9.86, 1.65, 2.18), Vector3(0.24, 3.3, 0.22), mats["wood_carved"], Vector3.ZERO, false)
-	_add_box(g, Vector3(9.86, 1.65, 4.32), Vector3(0.24, 3.3, 0.22), mats["wood_carved"], Vector3.ZERO, false)
-	_add_box(g, Vector3(9.86, 3.38, 3.25), Vector3(0.26, 0.26, 2.42), mats["wood_carved"], Vector3.ZERO, false)
+	_add_box(g, Vector3(9.92, 1.70, 1.96), Vector3(0.24, 3.4, 0.22), mats["wood_carved"], Vector3.ZERO, false)
+	_add_box(g, Vector3(9.92, 1.70, 4.54), Vector3(0.24, 3.4, 0.22), mats["wood_carved"], Vector3.ZERO, false)
+	_add_box(g, Vector3(9.92, 3.42, 3.25), Vector3(0.26, 0.26, 2.82), mats["wood_carved"], Vector3.ZERO, false)
 
 	_add_box(g, Vector3(-6.1, 3.5, -8.15), Vector3(8.0, 7.2, 0.4), mats["plaster"])
 	_add_box(g, Vector3(6.1, 3.5, -8.15), Vector3(8.0, 7.2, 0.4), mats["plaster_brick"])
@@ -1227,8 +1250,10 @@ func _build_asylum_lobby() -> void:
 	_add_box(g, Vector3(2.15, 1.8, -7.95), Vector3(0.26, 3.6, 0.28), mats["wood_carved"])
 	_add_box(g, Vector3(0.0, 3.62, -7.95), Vector3(4.6, 0.28, 0.30), mats["wood_carved"])
 
-	_add_box(g, Vector3(9.88, 0.72, 0.0), Vector3(0.14, 1.44, 15.8), mats["wood_carved"], Vector3.ZERO, false)
-	_add_box(g, Vector3(9.82, 1.46, 0.0), Vector3(0.22, 0.11, 15.8), mats["wood_carved"], Vector3.ZERO, false)
+	_add_box(g, Vector3(9.88, 0.72, -3.05), Vector3(0.14, 1.44, 9.7), mats["wood_carved"], Vector3.ZERO, false)
+	_add_box(g, Vector3(9.82, 1.46, -3.05), Vector3(0.22, 0.11, 9.7), mats["wood_carved"], Vector3.ZERO, false)
+	_add_box(g, Vector3(9.88, 0.72, 6.28), Vector3(0.14, 1.44, 3.24), mats["wood_carved"], Vector3.ZERO, false)
+	_add_box(g, Vector3(9.82, 1.46, 6.28), Vector3(0.22, 0.11, 3.24), mats["wood_carved"], Vector3.ZERO, false)
 	_add_box(g, Vector3(0.0, 0.72, 7.88), Vector3(19.8, 1.44, 0.14), mats["wood_carved"], Vector3.ZERO, false)
 	for pz in [-7.2, -5.2, -1.6, 1.9, 5.5, 7.5]:
 		_add_box(g, Vector3(9.82, 3.5, pz), Vector3(0.26, 7.0, 0.34), mats["wood_carved"], Vector3.ZERO, false)
@@ -1901,34 +1926,37 @@ func _build_snow_courtyard() -> void:
 	hmap_body.set_meta(&"surface", "snow")
 	var hmap_cs := CollisionShape3D.new()
 	var hmap := HeightMapShape3D.new()
-	hmap.map_width = 85
-	hmap.map_depth = 67
+	hmap.map_width = 89
+	hmap.map_depth = 92
 	var hdata := PackedFloat32Array()
-	hdata.resize(85 * 67)
-	for iz in 67:
-		var wz := -93.5 + float(iz)
-		var row_off := iz * 85
-		for ix in 85:
-			var wx := -42.0 + float(ix)
+	hdata.resize(89 * 92)
+	for iz in 92:
+		var wz := -118.5 + float(iz)
+		var row_off := iz * 89
+		for ix in 89:
+			var wx := -44.0 + float(ix)
 			hdata[row_off + ix] = _snow_height_at(wx, wz)
 	hmap.map_data = hdata
 	hmap_cs.shape = hmap
-	hmap_cs.position = Vector3(0.0, 0.0, -60.5)
+	hmap_cs.position = Vector3(0.0, 0.0, -73.0)
 	hmap_body.add_child(hmap_cs)
 	g.add_child(hmap_body)
 
-	var terrain_mesh := PlaneMesh.new()
-	terrain_mesh.size = Vector2(84, 66)
+	# Tile snowfield into a seamless 2x4 grid (44x22.75m chunks) so WebGL2's 8-OmniLight-per-object limit NEVER drops Courtyard/Sawmill/Muzzle lights!
 	var low_geo := OS.has_feature("web") or _is_compat_renderer()
-	terrain_mesh.subdivide_width = 112 if low_geo else 224
-	terrain_mesh.subdivide_depth = 96 if low_geo else 192
-	var snowfield := MeshInstance3D.new()
-	snowfield.mesh = terrain_mesh
-	snowfield.material_override = mats["snow_ground"]
-	snowfield.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	snowfield.position.z = -60.5
-	snowfield.custom_aabb = AABB(Vector3(-42.0, -0.4, -33.0), Vector3(84.0, 2.2, 66.0))
-	g.add_child(snowfield)
+	var chunk_mesh := PlaneMesh.new()
+	chunk_mesh.size = Vector2(44.0, 22.75)
+	chunk_mesh.subdivide_width = 56 if low_geo else 112
+	chunk_mesh.subdivide_depth = 28 if low_geo else 56
+	for cz_i in range(4):
+		for cx_i in range(2):
+			var snowfield := MeshInstance3D.new()
+			snowfield.mesh = chunk_mesh
+			snowfield.material_override = mats["snow_ground"]
+			snowfield.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			snowfield.position = Vector3(-22.0 + float(cx_i) * 44.0, 0.0, -107.125 + float(cz_i) * 22.75)
+			snowfield.custom_aabb = AABB(Vector3(-22.0, -0.4, -11.375), Vector3(44.0, 2.4, 22.75))
+			g.add_child(snowfield)
 
 	_add_box(g, Vector3(-6.8, 3.0, -28.2), Vector3(9.2, 6.2, 0.7), mats["brick"])
 	_add_box(g, Vector3(6.8, 3.0, -28.2), Vector3(9.2, 6.2, 0.7), mats["brick"])
@@ -1997,6 +2025,9 @@ func _build_snow_courtyard() -> void:
 		var tz := -34.0 + sin(angle) * radius * 1.32
 		if abs(tx) < 6.4 and tz > -62.0:
 			tx += (7.6 if tx >= 0 else -7.6)
+		# Keep West Quarantine Morgue footprint (x < -16.5, z in [-58.5, -38.5]) completely clear of trees!
+		if tx < -16.5 and tz > -58.5 and tz < -38.5:
+			continue
 		var scl := rng.randf_range(0.95, 1.45)
 		var ry := rng.randf_range(0.0, TAU)
 		var xf := Transform3D(Basis.from_euler(Vector3(0, ry, 0)).scaled(Vector3.ONE * scl), Vector3(tx, -0.1, tz))
@@ -2067,12 +2098,28 @@ func _build_snow_courtyard() -> void:
 	for _ht in range(10):
 		var htx := h_rng.randf_range(-17.8, -8.2)
 		var htz := h_rng.randf_range(-47.5, -40.0)
+		# Keep Quarantine Morgue East entry ramp approach completely clear!
+		if htx < -12.0 and htz < -45.5:
+			continue
 		var hscl := h_rng.randf_range(0.90, 1.45)
 		var xf := Transform3D(Basis.from_euler(Vector3(0, h_rng.randf_range(0, TAU), 0)).scaled(Vector3.ONE * hscl), Vector3(htx, -0.1, htz))
 		if h_rng.randf() < 0.65:
 			dead_xforms.append(xf)
 		else:
 			fir_xforms.append(xf)
+
+	# Frame the Extended North Logging Yard horizon (z < -115 & flanks |x| > 26) with winter conifers!
+	for ni in range(18):
+		var nx := lerpf(-28.0, 26.0, float(ni) / 17.0) + h_rng.randf_range(-1.2, 1.2)
+		var nz := -116.5 - h_rng.randf_range(0.0, 4.5)
+		var nsc := h_rng.randf_range(1.1, 1.65)
+		fir_xforms.append(Transform3D(Basis.from_euler(Vector3(0, h_rng.randf_range(0, TAU), 0)).scaled(Vector3.ONE * nsc), Vector3(nx, _snow_height_at(nx, nz) - 0.15, nz)))
+	for si in range(8):
+		var sz := -74.0 - float(si) * 5.6
+		for sx_base: float in [-26.5, 26.5]:
+			var sx := sx_base + h_rng.randf_range(-1.5, 1.5)
+			var ssc := h_rng.randf_range(1.05, 1.55)
+			fir_xforms.append(Transform3D(Basis.from_euler(Vector3(0, h_rng.randf_range(0, TAU), 0)).scaled(Vector3.ONE * ssc), Vector3(sx, _snow_height_at(sx, sz) - 0.15, sz)))
 
 	for trunk in [
 		[Vector3(-14.66, -0.1, -39.18), 1.72],
@@ -2221,11 +2268,12 @@ func _build_snow_courtyard() -> void:
 	g.add_child(moon_break)
 	moon_break.look_at_from_position(Vector3(-13.39, 2.54, -34.82), Vector3(-12.21, 1.74, -37.15))
 
-	_add_box(g, Vector3(-28, 3, -60), Vector3(1, 6, 68), mats["timber"]).visible = false
-	_add_box(g, Vector3(28, 3, -60), Vector3(1, 6, 68), mats["timber"]).visible = false
-	_add_box(g, Vector3(0, 3, -92), Vector3(58, 6, 1), mats["timber"]).visible = false
+	# Expanded perimeter boundaries enclosing West Quarantine Morgue (X=-42.5) and Extended North Logging Yard (Z=-114.5)!
+	_add_box(g, Vector3(-42.5, 3, -72), Vector3(1, 6, 92), mats["timber"]).visible = false
+	_add_box(g, Vector3(28, 3, -72), Vector3(1, 6, 92), mats["timber"]).visible = false
+	_add_box(g, Vector3(-7, 3, -114.5), Vector3(72, 6, 1), mats["timber"]).visible = false
 	# Close the southern snow terrain edge outside the tunnel facade (|X| > 11.4, Z = -27.5) so nobody can walk off the snow void!
-	_add_box(g, Vector3(-19.8, 3.0, -27.8), Vector3(17.0, 6.0, 1.0), mats["timber"]).visible = false
+	_add_box(g, Vector3(-27.0, 3.0, -27.8), Vector3(31.5, 6.0, 1.0), mats["timber"]).visible = false
 	_add_box(g, Vector3( 19.8, 3.0, -27.8), Vector3(17.0, 6.0, 1.0), mats["timber"]).visible = false
 
 	# Collidable courtyard cover island (crates + timber barrier) creating a readable figure-8 kiting circuit!
@@ -2409,10 +2457,10 @@ func _build_sawmill_perimeter() -> void:
 	sawmill_group = g
 	add_child(g)
 
-	# 1. Perimeter fence at z = -66.0 with Chain-Link Breach Gate opening at x = 5.5..10.5 (750 PTS)
-	_add_box(g, Vector3(-11.25, 1.35, -66.0), Vector3(33.5, 2.7, 0.28), mats["timber"])
+	# 1. Perimeter fence at z = -66.0 extended west to x = -43.0 (ZERO bypass gap!) with Breach Gate opening at x = 5.5..10.5 (750 PTS)
+	_add_box(g, Vector3(-18.75, 1.35, -66.0), Vector3(48.5, 2.7, 0.28), mats["timber"])
 	_add_box(g, Vector3(19.25, 1.35, -66.0), Vector3(17.5, 2.7, 0.28), mats["timber"])
-	for px: float in [-22.0, -14.0, -6.0, 2.0, 5.4, 10.6, 16.0, 22.0]:
+	for px: float in [-38.0, -30.0, -22.0, -14.0, -6.0, 2.0, 5.4, 10.6, 16.0, 22.0]:
 		_add_box(g, Vector3(px, 1.55, -66.0), Vector3(0.28, 3.1, 0.28), mats["timber"], Vector3.ZERO, false)
 	# Warm gate guide lantern so player immediately spots the Sawmill Breach Gate in blackout night!
 	var gate_l := OmniLight3D.new()
@@ -2577,6 +2625,458 @@ func _build_sawmill_perimeter() -> void:
 	]
 
 
+func _build_boiler_wing() -> void:
+	# Wing 1: East Boiler & Generator Wing (x in [10.05, 30.45], z in [-6.5, +9.5] -> +320 m² indoor industrial hall!)
+	var g := Node3D.new()
+	g.name = "EastBoilerWing"
+	boiler_group = g
+	add_child(g)
+	_add_reflection_probe(g, Vector3(20.2, 2.6, 1.5), Vector3(22.0, 6.2, 18.0), true, 1.15)
+
+	# Solid concrete floor (overlapped into Lobby threshold at x=10.05 for zero seam!) & plaster-brick ceiling
+	_add_box(g, Vector3(20.25, -0.15, 1.5), Vector3(20.4, 0.30, 16.4), mats["concrete"])
+	_add_box(g, Vector3(20.25, 5.25, 1.5), Vector3(20.4, 0.30, 16.4), mats["plaster_brick"])
+	# Perimeter walls (North z=-6.55, South z=9.55, East x=30.35, SW West-return sealing z in [8.15, 9.65] + brick backing behind Lobby arched windows!)
+	_add_box(g, Vector3(20.35, 2.6, -6.55), Vector3(20.2, 5.4, 0.4), mats["brick"])
+	_add_box(g, Vector3(20.35, 2.6, 9.55), Vector3(20.2, 5.4, 0.4), mats["brick"])
+	_add_box(g, Vector3(30.35, 2.6, 1.5), Vector3(0.4, 5.4, 16.4), mats["brick"])
+	_add_box(g, Vector3(10.15, 2.6, 8.90), Vector3(0.4, 5.4, 1.52), mats["brick"])
+	for wz_back: float in [-3.4, 0.25]:
+		_add_box(g, Vector3(10.32, 3.25, wz_back), Vector3(0.24, 3.2, 2.55), mats["brick"])
+	# Steel ceiling girders
+	for gx: float in [14.0, 19.0, 24.0, 28.0]:
+		_add_box(g, Vector3(gx, 4.95, 1.5), Vector3(0.28, 0.36, 15.8), mats["metal"], Vector3.ZERO, false)
+
+	# Boiler Wing Breach Gate in East Lobby doorway (x = 10.25, z = 3.25, 750 PTS, swings cleanly into Boiler Wing!)
+	var gate := InteractableObject.new()
+	gate.name = "BoilerBreachGate"
+	gate.kind = InteractableObject.Kind.BREACH_GATE
+	gate.gate_id = "boiler"
+	gate.gate_label = "BOILER WING GATE"
+	gate.gate_open_yaw = -1.65
+	gate.cost = 750
+	gate.collision_layer = 1 | 16
+	gate.position = Vector3(10.25, 0.0, 3.25)
+	gate.rotation.y = PI * 0.5
+	g.add_child(gate)
+	var gcol := CollisionShape3D.new()
+	var gsh := BoxShape3D.new(); gsh.size = Vector3(2.65, 3.2, 0.45)
+	gcol.shape = gsh; gcol.position = Vector3(0.0, 1.6, 0.0)
+	gate.add_child(gcol)
+	var gvis := Node3D.new(); gvis.position = Vector3(-1.3, 0.0, 0.0)
+	gate.add_child(gvis)
+	gate.gate_visual = gvis
+	_add_box(gvis, Vector3(1.3, 1.55, 0.0), Vector3(2.55, 3.1, 0.10), mats["metal"], Vector3.ZERO, false)
+	interactables.append(gate)
+
+	# Twin Industrial Cast-Iron Furnaces seated firmly on concrete cradles + Smokestacks + Overhead Piping + Cover Crates
+	var firebox_m := StandardMaterial3D.new()
+	firebox_m.albedo_color = Color(1.0, 0.38, 0.08); firebox_m.emission_enabled = true
+	firebox_m.emission = Color(1.0, 0.34, 0.06); firebox_m.emission_energy_multiplier = 3.2
+	for bz: float in [-2.8, 5.8]:
+		var cyl := MeshInstance3D.new()
+		var cm := CylinderMesh.new(); cm.top_radius = 1.35; cm.bottom_radius = 1.35; cm.height = 5.6; cm.radial_segments = 18
+		cm.material = mats["metal"]
+		cyl.mesh = cm
+		cyl.position = Vector3(24.5, 1.75, bz)
+		cyl.rotation.z = PI * 0.5
+		g.add_child(cyl)
+		# Solid steel saddle cradles grounding each boiler to the floor (ZERO floating!)
+		for cx_cr: float in [22.4, 26.6]:
+			_add_box(g, Vector3(cx_cr, 0.50, bz), Vector3(0.48, 1.0, 2.35), mats["concrete"], Vector3.ZERO, false)
+		_add_box(g, Vector3(24.5, 1.4, bz), Vector3(5.8, 2.8, 2.7), mats["metal"]).visible = false
+		_add_box(g, Vector3(21.55, 1.35, bz), Vector3(0.16, 0.72, 0.95), firebox_m, Vector3.ZERO, false)
+		_add_box(g, Vector3(26.5, 3.9, bz), Vector3(0.65, 2.6, 0.65), mats["metal"])
+	_add_glb(g, "modular_pipes", Vector3(16.0, 4.2, 3.25), Vector3(0.0, PI * 0.5, 0.0), Vector3(1.4, 1.4, 1.4))
+	_add_glb(g, "modular_pipes", Vector3(21.0, 4.2, 1.2), Vector3(0.0, 0.0, 0.0), Vector3(1.4, 1.4, 1.4))
+	_add_glb(g, "diesel_generator_aaa", Vector3(17.5, 0.0, -3.6), Vector3(0.0, 0.4, 0.0), Vector3.ONE, Vector3(1.7, 1.5, 2.8))
+	_add_glb(g, "military_crate", Vector3(16.8, 0.0, 6.8), Vector3(0.0, -0.3, 0.0), Vector3(1.2, 1.2, 1.2), Vector3(1.3, 0.95, 0.9))
+	_add_glb(g, "wine_barrel", Vector3(18.5, 0.0, 7.2), Vector3.ZERO, Vector3(1.1, 1.1, 1.1), Vector3(0.8, 1.1, 0.8))
+
+	# Warm amber industrial lighting
+	for lp: Vector3 in [Vector3(14.5, 4.4, 3.25), Vector3(21.5, 4.2, -1.8), Vector3(21.5, 4.2, 5.2)]:
+		var bl := OmniLight3D.new()
+		bl.light_color = Color(1.0, 0.62, 0.28)
+		bl.light_energy = 4.2
+		bl.omni_range = 13.5
+		bl.shadow_enabled = false
+		bl.position = lp
+		g.add_child(bl)
+
+	# Activatable Choke-Point Flame Jet Trap (750 PTS, right inside Boiler Wing entrance!)
+	_spawn_trap(g, "BoilerFlameTrap", "flame", "BOILER FLAME JET TRAP", 750,
+		Vector3(12.2, 1.25, 0.85), Vector3(14.0, 1.0, 3.25), Vector3(2.3, 2.2, 2.3), 16.0, 32.0)
+
+	# Wall-Buy MP5A3 9MM (1000 PTS) on North Boiler Wall!
+	_spawn_wall_buy(g, "WallBuy_MP5", 5, 1000, 250, Vector3(17.5, 1.45, -6.22), 0.0)
+
+	boiler_spawn_points = [
+		Vector3(28.0, 0.1, -4.5),
+		Vector3(28.0, 0.1, 7.5),
+		Vector3(15.5, 0.1, -4.8),
+		Vector3(21.0, 0.1, 8.0),
+	]
+
+
+func _build_quarantine_morgue() -> void:
+	# Wing 2: West Quarantine Morgue & Triage Annex (x in [-40.5, -18.5], z in [-56.5, -40.5] -> +352 m² clinical horror wing!)
+	var g := Node3D.new()
+	g.name = "WestQuarantineMorgue"
+	morgue_group = g
+	add_child(g)
+
+	var h_m := maxf(_snow_height_at(-19.0, -48.5), maxf(_snow_height_at(-29.5, -48.5), maxf(_snow_height_at(-38.0, -54.0), _snow_height_at(-38.0, -42.0)))) + 0.34
+	_add_reflection_probe(g, Vector3(-29.5, h_m + 2.2, -48.5), Vector3(23.5, 5.2, 17.5), true, 1.10)
+	# Clinical tiled slab floor, plaster ceiling, and long gently-sloped East entry ramp sunk cleanly into snow (walkable by players & crawlers!)
+	var floor_mat: Material = mats["tile"] if mats.has("tile") else mats["concrete"]
+	_add_box(g, Vector3(-29.5, h_m - 0.12, -48.5), Vector3(22.4, 0.30, 16.4), floor_mat)
+	var h_foot := _snow_height_at(-13.1, -48.5)
+	var ramp_len := 5.4
+	var y_west := h_m + 0.03
+	var y_east := h_foot - 0.10
+	var ramp_ang := -atan2(y_west - y_east, ramp_len)
+	_add_box(g, Vector3(-15.8, (y_west + y_east) * 0.5 - 0.14, -48.5), Vector3(ramp_len, 0.28, 4.2), mats["concrete"], Vector3(0.0, 0.0, ramp_ang))
+	_add_box(g, Vector3(-29.5, h_m + 4.35, -48.5), Vector3(22.4, 0.34, 16.4), mats["plaster_brick"])
+	# Perimeter walls + dead-end west alley blocker behind x = -40.6
+	_add_box(g, Vector3(-29.5, h_m + 2.15, -56.6), Vector3(22.4, 4.4, 0.4), mats["concrete"])
+	_add_box(g, Vector3(-29.5, h_m + 2.15, -40.4), Vector3(22.4, 4.4, 0.4), mats["concrete"])
+	_add_box(g, Vector3(-40.6, h_m + 2.15, -48.5), Vector3(0.4, 4.4, 16.4), mats["concrete"])
+	_add_box(g, Vector3(-41.6, h_m + 2.5, -48.5), Vector3(1.8, 6.0, 16.6), mats["concrete"]).visible = false
+	_add_box(g, Vector3(-18.4, h_m + 2.15, -53.45), Vector3(0.4, 4.4, 6.5), mats["concrete"])
+	_add_box(g, Vector3(-18.4, h_m + 2.15, -43.55), Vector3(0.4, 4.4, 6.5), mats["concrete"])
+	_add_box(g, Vector3(-18.4, h_m + 3.75, -48.5), Vector3(0.4, 1.25, 3.6), mats["concrete"])
+
+	# Quarantine Breach Gate (1000 PTS, swings outward East cleanly away from Electric Trap switch!)
+	var gate := InteractableObject.new()
+	gate.name = "MorgueBreachGate"
+	gate.kind = InteractableObject.Kind.BREACH_GATE
+	gate.gate_id = "morgue"
+	gate.gate_label = "QUARANTINE MORGUE GATE"
+	gate.gate_open_yaw = -1.65
+	gate.cost = 1000
+	gate.collision_layer = 1 | 16
+	gate.position = Vector3(-18.4, h_m, -48.5)
+	gate.rotation.y = PI * 0.5
+	g.add_child(gate)
+	var gcol := CollisionShape3D.new()
+	var gsh := BoxShape3D.new(); gsh.size = Vector3(3.4, 3.1, 0.45)
+	gcol.shape = gsh; gcol.position = Vector3(0.0, 1.55, 0.0)
+	gate.add_child(gcol)
+	var gvis := Node3D.new(); gvis.position = Vector3(-1.7, 0.0, 0.0)
+	gate.add_child(gvis)
+	gate.gate_visual = gvis
+	_add_box(gvis, Vector3(1.7, 1.55, 0.0), Vector3(3.3, 3.0, 0.10), mats["metal"], Vector3.ZERO, false)
+	interactables.append(gate)
+
+	# PBR metal morgue exam tables, refrigerated body locker bank, medical crates & wheelchairs
+	for tx: float in [-26.5, -31.5, -36.0]:
+		_add_box(g, Vector3(tx, h_m + 0.88, -51.5), Vector3(1.05, 0.12, 2.25), mats["metal"])
+		_add_box(g, Vector3(tx, h_m + 0.42, -51.5), Vector3(0.42, 0.84, 0.42), mats["metal"])
+	# Mortuary cold-storage drawer wall along North Wall
+	_add_box(g, Vector3(-31.5, h_m + 1.4, -55.85), Vector3(12.0, 2.8, 1.0), mats["metal"])
+	_add_glb(g, "wheelchair", Vector3(-24.2, h_m, -44.2), Vector3(0.0, 1.1, 0.0), Vector3(1.05, 1.05, 1.05))
+	_add_glb(g, "medical_box", Vector3(-27.5, h_m, -43.0), Vector3(0.0, 0.3, 0.0), Vector3(1.3, 1.3, 1.3))
+	_add_glb(g, "military_crate", Vector3(-34.0, h_m, -43.2), Vector3(0.0, -0.4, 0.0), Vector3(1.2, 1.2, 1.2), Vector3(1.3, 0.95, 0.9))
+
+	# Cold clinical cyan-white fluorescent lighting (tightened indoor range <= 9.5m so lights never leak onto outdoor snow chunks!)
+	for mspec in [[Vector3(-17.4, h_m + 3.2, -48.5), 11.0], [Vector3(-25.5, h_m + 3.8, -48.5), 9.5], [Vector3(-35.0, h_m + 3.8, -48.5), 9.5]]:
+		var ml := OmniLight3D.new()
+		ml.light_color = Color(0.62, 0.90, 1.0)
+		ml.light_energy = 3.8
+		ml.omni_range = float(mspec[1])
+		ml.shadow_enabled = false
+		ml.position = mspec[0]
+		g.add_child(ml)
+
+	# 3rd Mystery Box inside Quarantine Ward!
+	_spawn_evidence_chest(g, "MysteryBoxMorgue", Vector3(-37.8, h_m + 0.18, -44.2), PI * 0.5)
+
+	# Activatable Electric Fence Trap (750 PTS) spanning Quarantine entrance choke!
+	_spawn_trap(g, "MorgueElectricTrap", "electric", "QUARANTINE ELECTRIC FENCE", 750,
+		Vector3(-20.4, h_m + 1.25, -45.4), Vector3(-21.6, h_m + 1.0, -48.5), Vector3(2.2, 2.2, 2.6), 18.0, 34.0)
+
+	# Wall-Buy KAR98K MAUSER (1200 PTS) on South Morgue Wall!
+	_spawn_wall_buy(g, "WallBuy_Kar98k", 14, 1200, 250, Vector3(-29.5, h_m + 1.45, -40.75), PI)
+
+	morgue_spawn_points = [
+		Vector3(-38.5, h_m + 0.1, -54.0),
+		Vector3(-38.5, h_m + 0.1, -42.5),
+		Vector3(-26.0, h_m + 0.1, -54.2),
+		Vector3(-23.0, h_m + 0.1, -42.2),
+	]
+
+
+func _build_extended_logging_yard() -> void:
+	# Wing 3: Extended North Logging Mill & Lumber Yard (z in [-112.0, -88.0], x in [-24.0, +24.0] -> +1,150 m²!)
+	var g := sawmill_group if sawmill_group != null else self
+	# Towering timber A-frame gantry over the central Sawmill Blade Chute (x = 0.0, z = -98.0)
+	var hy := _snow_height_at(0.0, -98.0)
+	_add_box(g, Vector3(-3.4, hy + 2.4, -98.0), Vector3(0.45, 4.8, 0.45), mats["timber"])
+	_add_box(g, Vector3( 3.4, hy + 2.4, -98.0), Vector3(0.45, 4.8, 0.45), mats["timber"])
+	_add_box(g, Vector3( 0.0, hy + 4.7, -98.0), Vector3(7.4, 0.50, 0.65), mats["timber"])
+	# Timber conveyor rails framing the Sawmill Blade Chute
+	_add_box(g, Vector3(-2.6, hy + 0.45, -98.0), Vector3(0.32, 0.90, 6.2), mats["timber"])
+	_add_box(g, Vector3( 2.6, hy + 0.45, -98.0), Vector3(0.32, 0.90, 6.2), mats["timber"])
+
+	# Stacked pine timber cover lanes across North Logging Yard
+	for lspec in [
+		[Vector3(-12.5, 0.0, -98.5), 0.16],
+		[Vector3(12.2, 0.0, -101.0), -0.22],
+		[Vector3(-4.5, 0.0, -108.5), 0.08],
+		[Vector3(8.5, 0.0, -108.0), -0.14],
+	]:
+		var lp: Vector3 = lspec[0]
+		var ly := _snow_height_at(lp.x, lp.z)
+		_add_glb(g, "sawmill_log_stack", Vector3(lp.x, ly, lp.z), Vector3(0.0, float(lspec[1]), 0.0), Vector3.ONE)
+		_add_box(g, Vector3(lp.x, ly + 0.9, lp.z), Vector3(6.6, 1.8, 2.5), mats["timber"], Vector3(0.0, float(lspec[1]), 0.0)).visible = false
+
+	# North Logging Yard warm overhead work floodlights (illuminates Gantry, Sawblade & Garand Booth!)
+	var mill_l := OmniLight3D.new()
+	mill_l.light_color = Color(1.0, 0.78, 0.46)
+	mill_l.light_energy = 9.5
+	mill_l.omni_range = 28.0
+	mill_l.shadow_enabled = false
+	mill_l.position = Vector3(0.0, hy + 4.4, -96.5)
+	g.add_child(mill_l)
+
+	# Activatable Spinning Sawmill Blade Trap (1000 PTS) right in the timber chute (exact ground height for switch & tightened kill-box!)
+	var sw_y := _snow_height_at(3.8, -95.8)
+	_spawn_trap(g, "SawmillBladeTrap", "sawblade", "SPINNING SAWMILL BLADE TRAP", 1000,
+		Vector3(3.8, sw_y + 1.25, -95.8), Vector3(0.0, hy + 1.45, -98.0), Vector3(1.85, 2.0, 0.95), 18.0, 35.0)
+
+	# Timber foreman booth wall holding Wall-Buy M1 GARAND .30-06 (1400 PTS)!
+	var by := _snow_height_at(9.0, -95.5)
+	_add_box(g, Vector3(9.0, by + 1.5, -95.5), Vector3(0.32, 3.0, 3.6), mats["timber"])
+	_spawn_wall_buy(g, "WallBuy_Garand", 13, 1400, 250, Vector3(8.72, by + 1.45, -95.5), -PI * 0.5)
+	var booth_l := OmniLight3D.new()
+	booth_l.light_color = Color(1.0, 0.80, 0.48)
+	booth_l.light_energy = 4.0
+	booth_l.omni_range = 12.0
+	booth_l.shadow_enabled = false
+	booth_l.position = Vector3(7.5, by + 2.7, -95.5)
+	g.add_child(booth_l)
+
+	# Append Extended North Logging Yard spawns to sawmill_spawn_points!
+	for extra_sp: Vector3 in [
+		Vector3(-18.0, _snow_height_at(-18.0, -104.0) + 0.1, -104.0),
+		Vector3(18.0, _snow_height_at(18.0, -104.0) + 0.1, -104.0),
+		Vector3(0.0, _snow_height_at(0.0, -111.5) + 0.1, -111.5),
+		Vector3(-12.0, _snow_height_at(-12.0, -111.0) + 0.1, -111.0),
+		Vector3(12.0, _snow_height_at(12.0, -111.0) + 0.1, -111.0),
+	]:
+		sawmill_spawn_points.append(extra_sp)
+
+
+func _spawn_wall_buy(parent_grp: Node3D, node_name: String, w_idx: int, price: int, a_cost: int, pos: Vector3, rot_y: float) -> InteractableObject:
+	var wb := InteractableObject.new()
+	wb.name = node_name
+	wb.kind = InteractableObject.Kind.WALL_BUY
+	wb.weapon_index = w_idx
+	wb.cost = price
+	wb.ammo_cost = a_cost
+	wb.weapon_label = str(PlayerBodycam.WEAPONS[w_idx]["name"])
+	wb.collision_layer = 16
+	wb.position = pos
+	wb.rotation.y = rot_y
+	(parent_grp if parent_grp != null else self).add_child(wb)
+
+	var col := CollisionShape3D.new()
+	var sh := BoxShape3D.new(); sh.size = Vector3(1.25, 0.72, 0.45)
+	col.shape = sh
+	wb.add_child(col)
+
+	# Dark PBR steel mounting plaque + chalk border frame (never blows out flat white under flashlight!)
+	_add_box(wb, Vector3(0.0, 0.0, -0.02), Vector3(1.24, 0.56, 0.05), mats["metal"], Vector3.ZERO, false)
+	var chalk_m := StandardMaterial3D.new()
+	chalk_m.albedo_color = Color(0.86, 0.92, 1.0); chalk_m.emission_enabled = true
+	chalk_m.emission = Color(0.55, 0.80, 1.0); chalk_m.emission_energy_multiplier = 0.75
+	_add_box(wb, Vector3(0.0, 0.27, 0.01), Vector3(1.26, 0.025, 0.02), chalk_m, Vector3.ZERO, false)
+	_add_box(wb, Vector3(0.0, -0.27, 0.01), Vector3(1.26, 0.025, 0.02), chalk_m, Vector3.ZERO, false)
+
+	# Mount the ACTUAL photoreal 3D weapon GLB cleanly on the wall plaque (AGENTS.md Rule #1!)
+	var glb_p := str(PlayerBodycam.WEAPONS[w_idx].get("glb", ""))
+	if glb_p != "" and ResourceLoader.exists(glb_p):
+		var pk := load(glb_p) as PackedScene
+		if pk:
+			var inst := pk.instantiate() as Node3D
+			wb._strip_preview_arms(inst)
+			if w_idx == 13:
+				var gm := inst.find_child("Mag", true, false)
+				if gm:
+					if gm is Node3D: (gm as Node3D).visible = false
+					if gm.get_parent(): gm.get_parent().remove_child(gm)
+					gm.queue_free()
+			var aabb := wb._compute_local_aabb(inst)
+			var max_d := maxf(aabb.size.x, maxf(aabb.size.y, aabb.size.z))
+			var n_sc := clampf(0.96 / maxf(max_d, 0.15), 0.55, 1.45)
+			inst.scale = Vector3.ONE * n_sc
+			inst.position = -aabb.get_center() * n_sc
+			var piv := Node3D.new()
+			piv.position = Vector3(0.0, 0.0, 0.08)
+			piv.rotation.y = PI * 0.5
+			piv.add_child(inst)
+			wb.add_child(piv)
+
+	var wl := OmniLight3D.new()
+	wl.light_color = Color(0.68, 0.88, 1.0)
+	wl.light_energy = 0.34
+	wl.omni_range = 2.4
+	wl.shadow_enabled = false
+	wl.light_cull_mask = 0xFFFFD
+	wl.light_volumetric_fog_energy = 0.0
+	wl.position = Vector3(0.0, 0.0, 0.42)
+	wb.add_child(wl)
+	interactables.append(wb)
+	return wb
+
+
+func _spawn_trap(parent_grp: Node3D, node_name: String, t_type: String, t_label: String, price: int,
+		switch_pos: Vector3, zone_center: Vector3, zone_he: Vector3, dur: float, cd: float) -> InteractableObject:
+	var tr := InteractableObject.new()
+	tr.name = node_name
+	tr.kind = InteractableObject.Kind.TRAP
+	tr.trap_type = t_type
+	tr.trap_label = t_label
+	tr.cost = price
+	tr.trap_duration = dur
+	tr.trap_cooldown = cd
+	tr.trap_zone_center = zone_center
+	tr.trap_zone_half_extents = zone_he
+	tr.collision_layer = 1 | 16
+	tr.position = switch_pos
+	(parent_grp if parent_grp != null else self).add_child(tr)
+
+	# Solid grounded wall/pedestal control switch box (flush on floor!)
+	var col := CollisionShape3D.new()
+	var sh := BoxShape3D.new(); sh.size = Vector3(0.46, 1.35, 0.46)
+	col.shape = sh; col.position = Vector3(0.0, -0.58, 0.0)
+	tr.add_child(col)
+	_add_box(tr, Vector3(0.0, -0.625, 0.0), Vector3(0.24, 1.25, 0.24), mats["metal"], Vector3.ZERO, false)
+	var sw_m := StandardMaterial3D.new()
+	sw_m.albedo_color = Color(0.58, 0.14, 0.10); sw_m.metallic = 0.45; sw_m.roughness = 0.42
+	_add_box(tr, Vector3(0.0, 0.08, 0.0), Vector3(0.36, 0.46, 0.26), sw_m, Vector3.ZERO, false)
+	var ind_l := OmniLight3D.new()
+	ind_l.light_color = Color(0.28, 0.96, 0.42)
+	ind_l.light_energy = 1.2
+	ind_l.omni_range = 3.2
+	ind_l.shadow_enabled = false
+	ind_l.light_cull_mask = 0xFFFFD
+	ind_l.light_volumetric_fog_energy = 0.0
+	ind_l.position = Vector3(0.0, 0.36, 0.22)
+	tr.add_child(ind_l)
+	tr.glow_light = ind_l
+
+	# Static hardware frame at zone_center (always visible so player spots traps before activating!)
+	var frame_root := Node3D.new()
+	frame_root.position = zone_center - switch_pos
+	tr.add_child(frame_root)
+
+	# Active trap hazard visual rig placed at zone_center (relative to switch_pos)
+	var fx_root := Node3D.new()
+	fx_root.position = zone_center - switch_pos
+	fx_root.visible = false
+	tr.add_child(fx_root)
+	tr.trap_fx_node = fx_root
+
+	if t_type == "flame":
+		# Industrial twin floor gas-jet manifold pipes + textured additive flame plume quads!
+		for fz_o: float in [-1.25, 1.25]:
+			_add_box(frame_root, Vector3(0.0, -0.88, fz_o), Vector3(zone_he.x * 1.55, 0.14, 0.16), mats["metal"], Vector3.ZERO, false)
+		var f_mat := StandardMaterial3D.new()
+		f_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		f_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		f_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		f_mat.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
+		f_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		f_mat.albedo_color = Color(1.0, 0.54, 0.16, 0.92)
+		if ResourceLoader.exists("res://assets/textures/muzzle_flash_side.png"):
+			f_mat.albedo_texture = load("res://assets/textures/muzzle_flash_side.png")
+		var qm := QuadMesh.new(); qm.size = Vector2(0.85, 1.85); qm.material = f_mat
+		for fz_o: float in [-1.25, 1.25]:
+			for fx_o: float in [-1.4, -0.45, 0.45, 1.4]:
+				var flame_q := MeshInstance3D.new()
+				flame_q.mesh = qm
+				flame_q.position = Vector3(fx_o, 0.05, fz_o)
+				flame_q.rotation.z = PI * 0.5
+				flame_q.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				fx_root.add_child(flame_q)
+	elif t_type == "electric":
+		# Twin high-voltage Tesla coil pylons + animated glowing plasma arcs!
+		for ez_s: float in [-zone_he.z * 0.82, zone_he.z * 0.82]:
+			_add_box(frame_root, Vector3(0.0, 0.05, ez_s), Vector3(0.22, 2.25, 0.22), mats["metal"], Vector3.ZERO, false)
+		var e_mat := StandardMaterial3D.new()
+		e_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		e_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		e_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		e_mat.albedo_color = Color(0.42, 0.92, 1.0, 0.94)
+		var e_halo := StandardMaterial3D.new()
+		e_halo.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		e_halo.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		e_halo.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		e_halo.albedo_color = Color(0.16, 0.62, 1.0, 0.36)
+		for ey: float in [-0.42, 0.14, 0.68]:
+			var arc := MeshInstance3D.new()
+			var acm := CylinderMesh.new(); acm.top_radius = 0.018; acm.bottom_radius = 0.018; acm.height = zone_he.z * 1.64; acm.radial_segments = 8
+			acm.material = e_mat; arc.mesh = acm
+			arc.position = Vector3(0.0, ey, 0.0); arc.rotation.x = PI * 0.5
+			arc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			fx_root.add_child(arc)
+			var halo := MeshInstance3D.new()
+			var hcm := CylinderMesh.new(); hcm.top_radius = 0.055; hcm.bottom_radius = 0.055; hcm.height = zone_he.z * 1.64; hcm.radial_segments = 8
+			hcm.material = e_halo; halo.mesh = hcm
+			halo.position = Vector3(0.0, ey, 0.0); halo.rotation.x = PI * 0.5
+			halo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			fx_root.add_child(halo)
+	else:
+		# Overhead steel rotor mount + ALWAYS-VISIBLE PBR steel circular sawblade seated cleanly ABOVE snow (spins violently when active!)
+		_add_box(frame_root, Vector3(0.0, 1.85, 0.0), Vector3(0.32, 2.2, 0.32), mats["metal"], Vector3.ZERO, false)
+		var blade_piv := Node3D.new()
+		blade_piv.position = Vector3(0.0, 0.18, 0.0)
+		frame_root.add_child(blade_piv)
+		tr.trap_blade_node = blade_piv
+		var disc := MeshInstance3D.new()
+		var cm := CylinderMesh.new(); cm.top_radius = 1.48; cm.bottom_radius = 1.48; cm.height = 0.045; cm.radial_segments = 28
+		cm.material = mats["metal"]; disc.mesh = cm; disc.rotation.x = PI * 0.5
+		disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		blade_piv.add_child(disc)
+		var hub_mat := StandardMaterial3D.new()
+		hub_mat.albedo_color = Color(0.45, 0.12, 0.08); hub_mat.metallic = 0.72; hub_mat.roughness = 0.38
+		var hub := MeshInstance3D.new()
+		var hm := CylinderMesh.new(); hm.top_radius = 0.34; hm.bottom_radius = 0.34; hm.height = 0.12; hm.radial_segments = 16
+		hm.material = hub_mat; hub.mesh = hm; hub.rotation.x = PI * 0.5
+		hub.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		blade_piv.add_child(hub)
+		for ti in range(12):
+			var ang := float(ti) * TAU / 12.0
+			_add_box(blade_piv, Vector3(cos(ang) * 1.49, sin(ang) * 1.49, 0.0), Vector3(0.20, 0.12, 0.055), mats["metal"], Vector3(0.0, 0.0, ang + 0.35), false)
+		# Active spinning spark glow ring under fx_root
+		var sp_mat := StandardMaterial3D.new()
+		sp_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		sp_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		sp_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		sp_mat.albedo_color = Color(1.0, 0.76, 0.28, 0.65)
+		var sp_ring := MeshInstance3D.new()
+		var sr := CylinderMesh.new(); sr.top_radius = 1.56; sr.bottom_radius = 1.56; sr.height = 0.08; sr.radial_segments = 24
+		sr.material = sp_mat; sp_ring.mesh = sr; sp_ring.rotation.x = PI * 0.5; sp_ring.position.y = 0.18
+		sp_ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		fx_root.add_child(sp_ring)
+
+	if not OS.has_feature("web"):
+		var tl := OmniLight3D.new()
+		tl.light_color = Color(1.0, 0.42, 0.08) if t_type == "flame" else (Color(0.24, 0.82, 1.0) if t_type == "electric" else Color(1.0, 0.82, 0.42))
+		tl.light_energy = 0.0
+		tl.omni_range = 9.0
+		tl.shadow_enabled = false
+		tl.light_cull_mask = 0xFFFFD
+		tl.light_volumetric_fog_energy = 0.0
+		tl.visible = false
+		fx_root.add_child(tl)
+		tr.trap_light = tl
+
+	interactables.append(tr)
+	return tr
+
+
 func _build_interactables() -> void:
 	var gen := InteractableObject.new()
 	gen.name = "AsylumGenerator"
@@ -2658,6 +3158,10 @@ func _build_interactables() -> void:
 	ac_light.position = Vector3(0.0, 0.82, 0.0)
 	ac.add_child(ac_light)
 	interactables.append(ac)
+
+	# Lobby & Tunnel Wall-Buy Weapons (Sawed-Off centered cleanly between -10.0 and -14.0 tunnel arch ribs!)
+	_spawn_wall_buy(lobby_group, "WallBuy_M870", 2, 750, 250, Vector3(-4.2, 1.55, -7.82), 0.0)
+	_spawn_wall_buy(tunnel_group, "WallBuy_SawedOff", 11, 850, 250, Vector3(2.12, 1.38, -12.0), -PI * 0.5)
 
 
 func _spawn_melee_pickup(node_name: String, m_id: String, label: String, pos: Vector3, rot: Vector3, parent_grp: Node3D) -> void:
@@ -2786,9 +3290,10 @@ func _build_occluders() -> void:
 	_add_box_occluder(occ_root, Vector3(-6.9, 9.1, -8.15), Vector3(7.2, 4.2, 0.18))
 	_add_box_occluder(occ_root, Vector3(-6.9, 11.15, -2.5), Vector3(7.2, 0.16, 11.2))
 	_add_box_occluder(occ_root, Vector3(-3.65, 9.1, -2.5), Vector3(0.16, 4.2, 11.2))
-	# Lobby east wall flanking the tall arched windows
+	# Lobby east wall flanking the tall arched windows & OPEN East Boiler Wing doorway (z in [1.95, 4.55], y in [0..3.40])!
 	_add_box_occluder(occ_root, Vector3(10.15, 3.5, -6.2), Vector3(0.18, 7.0, 3.6))
-	_add_box_occluder(occ_root, Vector3(10.15, 3.5, 4.8), Vector3(0.18, 7.0, 6.4))
+	_add_box_occluder(occ_root, Vector3(10.15, 3.5, 6.38), Vector3(0.18, 7.0, 3.50))
+	_add_box_occluder(occ_root, Vector3(10.15, 5.25, 3.25), Vector3(0.18, 3.50, 2.55))
 	# Solid tunnel outer masonry shell + vault upper haunches
 	_add_box_occluder(occ_root, Vector3(-2.52, 1.8, -18.0), Vector3(0.16, 3.5, 19.6))
 	_add_box_occluder(occ_root, Vector3(2.52, 1.8, -18.0), Vector3(0.16, 3.5, 19.6))

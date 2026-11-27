@@ -1,14 +1,26 @@
 extends StaticBody3D
 class_name InteractableObject
 
-enum Kind { GENERATOR, MYSTERY_BOX, BARRICADE, MELEE_PICKUP, BREACH_GATE, UPGRADE_BENCH, AMMO_CRATE }
+enum Kind { GENERATOR, MYSTERY_BOX, BARRICADE, MELEE_PICKUP, BREACH_GATE, UPGRADE_BENCH, AMMO_CRATE, WALL_BUY, TRAP }
 enum BoxState { IDLE, CYCLING, READY_CLAIM, CLOSING }
+enum TrapState { READY, ACTIVE, COOLDOWN }
 
 @export var kind: Kind = Kind.GENERATOR
 @export var prompt_text: String = "Press [E] to Interact"
 @export var cost: int = 0
 @export var melee_id: String = "fire_axe"
 @export var weapon_label: String = "FIRE AXE"
+@export var weapon_index: int = 2
+@export var ammo_cost: int = 250
+@export var gate_id: String = "sawmill"
+@export var gate_label: String = "SAWMILL BREACH GATE"
+@export var gate_open_yaw: float = 1.65
+@export var trap_type: String = "flame" # "flame", "electric", "sawblade"
+@export var trap_label: String = "FLAME JET TRAP"
+@export var trap_duration: float = 16.0
+@export var trap_cooldown: float = 32.0
+@export var trap_zone_center: Vector3 = Vector3.ZERO
+@export var trap_zone_half_extents: Vector3 = Vector3(2.4, 2.2, 2.4)
 
 var activated: bool = false
 var plank_count: int = 4
@@ -18,6 +30,13 @@ var glow_light: OmniLight3D = null
 var plank_nodes: Array[Node3D] = []
 var cooldown: float = 0.0
 var gate_visual: Node3D = null
+var trap_state: TrapState = TrapState.READY
+var trap_timer: float = 0.0
+var _trap_tick: float = 0.0
+var trap_fx_node: Node3D = null
+var trap_blade_node: Node3D = null
+var trap_light: OmniLight3D = null
+var _trap_owner_player: Node = null
 
 # Explicit Mystery Box state machine (IDLE -> CYCLING -> READY_CLAIM -> CLOSING)
 var box_state: BoxState = BoxState.IDLE
@@ -53,7 +72,7 @@ func _ready() -> void:
 		_sfx_cycle = load("res://assets/audio/reload_shell_in.wav")
 	if _sfx_reveal == null and ResourceLoader.exists("res://assets/audio/reload_mag_in.wav"):
 		_sfx_reveal = load("res://assets/audio/reload_mag_in.wav")
-	if kind == Kind.MYSTERY_BOX or kind == Kind.UPGRADE_BENCH or kind == Kind.BREACH_GATE:
+	if kind == Kind.MYSTERY_BOX or kind == Kind.UPGRADE_BENCH or kind == Kind.BREACH_GATE or kind == Kind.WALL_BUY or kind == Kind.TRAP:
 		_box_audio = AudioStreamPlayer3D.new()
 		_box_audio.unit_size = 5.0
 		_box_audio.max_distance = 22.0
@@ -78,6 +97,102 @@ func _process(delta: float) -> void:
 	elif kind == Kind.UPGRADE_BENCH and glow_light:
 		var pulse := 0.15 * sin(Time.get_ticks_msec() * 0.005)
 		glow_light.light_energy = (2.2 + pulse) if activated else 0.25
+	elif kind == Kind.TRAP:
+		_update_trap(delta)
+
+
+func _update_trap(delta: float) -> void:
+	if trap_state == TrapState.ACTIVE:
+		trap_timer -= delta
+		var msec := float(Time.get_ticks_msec()) * 0.001
+		if trap_blade_node and is_instance_valid(trap_blade_node):
+			trap_blade_node.rotation.z += delta * 24.0
+		if trap_fx_node and is_instance_valid(trap_fx_node):
+			trap_fx_node.visible = true
+			if trap_type == "flame":
+				# Dynamic roaring fire plume flicker
+				for ci in range(trap_fx_node.get_child_count()):
+					var ch := trap_fx_node.get_child(ci)
+					if ch is MeshInstance3D:
+						var sc_y := 0.85 + 0.30 * sin(msec * 28.0 + float(ci) * 1.7)
+						(ch as Node3D).scale = Vector3(0.92 + 0.14 * cos(msec * 22.0 + float(ci)), sc_y, 1.0)
+			elif trap_type == "electric":
+				# High-voltage plasma arc jitter
+				for ci in range(trap_fx_node.get_child_count()):
+					var ch := trap_fx_node.get_child(ci)
+					if ch is MeshInstance3D:
+						(ch as Node3D).scale.x = 0.7 + 0.6 * absf(sin(msec * 52.0 + float(ci) * 2.1))
+		if trap_light and is_instance_valid(trap_light):
+			var flk := 0.78 + 0.36 * sin(msec * (42.0 if trap_type == "electric" else 25.0))
+			trap_light.visible = true
+			trap_light.light_energy = (5.5 if trap_type == "sawblade" else 7.2) * flk
+		_trap_tick += delta
+		if _trap_tick >= 0.22:
+			_trap_tick = 0.0
+			_apply_trap_damage_tick()
+		if trap_timer <= 0.0:
+			trap_state = TrapState.COOLDOWN
+			trap_timer = trap_cooldown
+			if trap_fx_node and is_instance_valid(trap_fx_node):
+				trap_fx_node.visible = false
+			if trap_light and is_instance_valid(trap_light):
+				trap_light.visible = false
+				trap_light.light_energy = 0.0
+			if glow_light and is_instance_valid(glow_light):
+				glow_light.light_color = Color(1.0, 0.62, 0.12)
+				glow_light.light_energy = 0.45
+			_play_spatial(_sfx_latch, 0.72)
+	elif trap_state == TrapState.COOLDOWN:
+		trap_timer -= delta
+		if glow_light and is_instance_valid(glow_light):
+			glow_light.light_color = Color(1.0, 0.62, 0.12)
+			glow_light.light_energy = 0.45
+		if trap_timer <= 0.0:
+			trap_state = TrapState.READY
+			trap_timer = 0.0
+			if glow_light and is_instance_valid(glow_light):
+				glow_light.light_color = Color(0.28, 0.96, 0.42)
+				glow_light.light_energy = 1.4
+	else:
+		if glow_light and is_instance_valid(glow_light):
+			glow_light.light_color = Color(0.28, 0.96, 0.42)
+			glow_light.light_energy = 1.15 + 0.2 * sin(Time.get_ticks_msec() * 0.004)
+
+
+func _apply_trap_damage_tick() -> void:
+	if _trap_owner_player and is_instance_valid(_trap_owner_player) and _trap_owner_player.dead:
+		return
+	var c := trap_fx_node.global_position if (trap_fx_node and is_instance_valid(trap_fx_node)) else trap_zone_center
+	var he := trap_zone_half_extents
+	var any_hit := false
+	for z_raw in ZombieAI._all_zombies.duplicate():
+		var z := z_raw as ZombieAI
+		if not is_instance_valid(z) or z.dead:
+			continue
+		var d := (z.global_position + Vector3(0.0, 0.9, 0.0)) - c
+		if absf(d.x) <= he.x and absf(d.y) <= he.y and absf(d.z) <= he.z:
+			any_hit = true
+			if trap_type == "flame":
+				z.apply_burn(4.0, 52.0)
+				z.apply_status_damage(34.0)
+			elif trap_type == "electric":
+				z.apply_shock(2.4)
+				z.apply_status_damage(42.0)
+			else:
+				# Spinning Sawmill Blade shreds & dismembers zombies!
+				var hit_zone := "HEAD" if randf() < 0.45 else "CHEST"
+				var res := z.apply_shot([{"zone": hit_zone, "pos": z.global_position + Vector3(0.0, 1.15, 0.0), "dir": Vector3.FORWARD, "dmg": 92.0, "dist": 1.2}], 3)
+				if _trap_owner_player and is_instance_valid(_trap_owner_player) and not bool(res.get("corpse_hit", false)):
+					_trap_owner_player.emit_signal("hit_confirmed", bool(res.get("headshot", false)), bool(res.get("killed", false)))
+	if any_hit and _box_audio and _sfx_cycle:
+		_box_audio.global_position = c
+		_play_spatial(_sfx_cycle, 1.45 if trap_type == "electric" else (0.72 if trap_type == "flame" else 1.18))
+	# Reckless player hazard check (respects god_mode inside take_damage!)
+	if _trap_owner_player and is_instance_valid(_trap_owner_player) and not _trap_owner_player.dead:
+		var pd: Vector3 = (_trap_owner_player.global_position + Vector3(0.0, 0.9, 0.0)) - c
+		if absf(pd.x) <= he.x * 0.82 and absf(pd.y) <= he.y and absf(pd.z) <= he.z * 0.82:
+			if _trap_owner_player.has_method("take_damage"):
+				_trap_owner_player.take_damage(12.0, c)
 
 
 func _update_mystery_box(delta: float) -> void:
@@ -174,18 +289,35 @@ func reset_state() -> void:
 	elif kind == Kind.UPGRADE_BENCH and glow_light:
 		glow_light.light_color = Color(0.24, 0.88, 1.0)
 		glow_light.light_energy = 0.25
+	elif kind == Kind.TRAP:
+		trap_state = TrapState.READY
+		trap_timer = 0.0
+		_trap_tick = 0.0
+		_trap_owner_player = null
+		if trap_fx_node and is_instance_valid(trap_fx_node):
+			trap_fx_node.visible = false
+		if trap_light and is_instance_valid(trap_light):
+			trap_light.visible = false
+			trap_light.light_energy = 0.0
+		if glow_light and is_instance_valid(glow_light):
+			glow_light.light_color = Color(0.28, 0.96, 0.42)
+			glow_light.light_energy = 1.2
 
 
 func _strip_preview_arms(n: Node) -> void:
 	var nl := n.name.to_lower()
-	if "arm" in nl or "hand" in nl or "glove" in nl or "sleeve" in nl or "skeleton" in nl or nl == "feedround" or nl == "speedloader" or nl == "bullet_pack":
+	if "arm" in nl or "hand" in nl or "glove" in nl or "sleeve" in nl or "skeleton" in nl or nl == "feedround" or nl == "speedloader" or nl == "bullet_pack" or nl == "object_86_hero" or nl == "object_67_hero":
+		if n is Node3D:
+			(n as Node3D).visible = false
+		if n.get_parent():
+			n.get_parent().remove_child(n)
 		n.queue_free()
 		return
 	if n is MeshInstance3D:
 		var mi := n as MeshInstance3D
 		mi.layers = 1
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	for c in n.get_children():
+	for c in n.get_children().duplicate():
 		_strip_preview_arms(c)
 
 
@@ -197,7 +329,7 @@ func _compute_local_aabb(root: Node3D) -> AABB:
 		if mi.mesh == null or not mi.visible:
 			continue
 		var a := mi.mesh.get_aabb()
-		var xf := root.transform.affine_inverse() * mi.transform
+		var xf := mi.transform
 		var cur: Node = mi.get_parent()
 		while cur != null and cur != root:
 			if cur is Node3D:
@@ -235,9 +367,12 @@ func _set_box_preview(weapon_idx: int, target_y: float) -> void:
 	var inst := packed.instantiate() as Node3D
 	_strip_preview_arms(inst)
 	if weapon_idx == 13:
-		# Hide M1 Garand's reload-only en-bloc clip in Mystery Box display!
+		# Hide & detach M1 Garand's reload-only en-bloc clip immediately BEFORE _compute_local_aabb()!
 		var g_mag := inst.find_child("Mag", true, false)
-		if g_mag: g_mag.queue_free()
+		if g_mag:
+			if g_mag is Node3D: (g_mag as Node3D).visible = false
+			if g_mag.get_parent(): g_mag.get_parent().remove_child(g_mag)
+			g_mag.queue_free()
 	# Normalize preview size & center cleanly inside the 1.2m chest display envelope!
 	var aabb := _compute_local_aabb(inst)
 	var max_dim := maxf(aabb.size.x, maxf(aabb.size.y, aabb.size.z))
@@ -306,8 +441,8 @@ func get_prompt(player_points: int, player: Node = null) -> String:
 			if activated:
 				return ""
 			if player_points < cost:
-				return "[E] UNLOCK SAWMILL BREACH GATE (%d PTS NEEDED)" % cost
-			return "[E] UNLOCK SAWMILL BREACH GATE (%d PTS)" % cost
+				return "[E] UNLOCK %s (%d PTS NEEDED)" % [gate_label, cost]
+			return "[E] UNLOCK %s (%d PTS)" % [gate_label, cost]
 		Kind.UPGRADE_BENCH:
 			if not activated:
 				return "ARMORY UPGRADE BENCH [RESTORE ASYLUM POWER FIRST]"
@@ -361,7 +496,49 @@ func get_prompt(player_points: int, player: Node = null) -> String:
 					return "[E] RESUPPLY %s AMMO (%d PTS NEEDED)" % [PlayerBodycam.WEAPONS[cur]["name"], cost]
 				return "[E] RESUPPLY %s AMMO (%d PTS)" % [PlayerBodycam.WEAPONS[cur]["name"], cost]
 			return "[E] AMMO CRATE (%d PTS)" % cost
+		Kind.WALL_BUY:
+			var wname := str(PlayerBodycam.WEAPONS[weapon_index]["name"]) if (weapon_index >= 0 and weapon_index < PlayerBodycam.WEAPONS.size()) else weapon_label
+			if player != null and weapon_index >= 0 and weapon_index < player.unlocked_weapons.size() and player.unlocked_weapons[weapon_index]:
+				var max_m: int = player.get_weapon_mag_size(weapon_index) if player.has_method("get_weapon_mag_size") else int(PlayerBodycam.WEAPONS[weapon_index]["mag_size"])
+				var full_w: bool = player.ammo_in_mag[weapon_index] >= max_m and player.ammo_reserve[weapon_index] >= int(PlayerBodycam.WEAPONS[weapon_index]["reserve_max"])
+				if full_w:
+					return "%s WALL MOUNT [AMMO FULL]" % wname
+				if player_points < ammo_cost:
+					return "[E] BUY %s AMMO (%d PTS NEEDED)" % [wname, ammo_cost]
+				return "[E] BUY %s AMMO (%d PTS)" % [wname, ammo_cost]
+			var swap_note := ""
+			if player != null and player.firearm_slots.size() >= PlayerBodycam.MAX_FIREARM_SLOTS:
+				var rep_slot: int = player.firearm_slots.find(player.current_weapon)
+				if rep_slot < 0:
+					rep_slot = player.firearm_slots.size() - 1
+				var rep_name := str(PlayerBodycam.WEAPONS[player.firearm_slots[rep_slot]]["name"])
+				swap_note = " — SWAP [%d] %s" % [rep_slot + 1, rep_name]
+			if player_points < cost:
+				return "[E] BUY %s%s (%d PTS NEEDED)" % [wname, swap_note, cost]
+			return "[E] BUY %s%s (%d PTS)" % [wname, swap_note, cost]
+		Kind.TRAP:
+			if trap_state == TrapState.ACTIVE:
+				return "%s ACTIVE (%ds)" % [trap_label, ceili(trap_timer)]
+			if trap_state == TrapState.COOLDOWN:
+				return "%s RECHARGING (%ds)" % [trap_label, ceili(trap_timer)]
+			if player_points < cost:
+				return "[E] ACTIVATE %s (%d PTS NEEDED)" % [trap_label, cost]
+			return "[E] ACTIVATE %s (%d PTS)" % [trap_label, cost]
 	return prompt_text
+
+
+func _cancel_player_reload(player: Node) -> void:
+	if player == null:
+		return
+	player.is_reloading = false
+	player.reload_cancel_req = false
+	player._shotgun_fire_on_cancel = false
+	player._burst_remaining = 0
+	player._burst_timer = 0.0
+	player.reload_pos_off = Vector3.ZERO
+	player.reload_rot_off = Vector3.ZERO
+	if player.has_method("_reset_weapon_parts"):
+		player._reset_weapon_parts()
 
 
 func interact(game_manager: Node, player: Node) -> String:
@@ -411,6 +588,8 @@ func interact(game_manager: Node, player: Node) -> String:
 				var cur: int = player.current_weapon
 				player.ammo_in_mag[cur] = player.get_weapon_mag_size(cur) if player.has_method("get_weapon_mag_size") else int(PlayerBodycam.WEAPONS[cur]["mag_size"])
 				player.ammo_reserve[cur] = int(PlayerBodycam.WEAPONS[cur]["reserve_max"])
+				player.weapon_chambered[cur] = true
+				_cancel_player_reload(player)
 				_play_spatial(_sfx_reveal, 1.05)
 				return "AMMO REFILLED (-%d PTS)" % price
 			# Roll a new unowned weapon!
@@ -465,18 +644,20 @@ func interact(game_manager: Node, player: Node) -> String:
 			if activated:
 				return ""
 			if game_manager and game_manager.points < cost:
-				return "Need %d points to unlock Sawmill Gate!" % cost
+				return "Need %d points to unlock %s!" % [cost, gate_label]
 			if game_manager:
 				game_manager.add_points(-cost)
 			activated = true
 			collision_layer = 0
 			if gate_visual and is_instance_valid(gate_visual):
-				gate_visual.rotation.y = 1.65
+				gate_visual.rotation.y = gate_open_yaw
 			_play_spatial(_sfx_latch, 0.72)
 			emit_signal("gate_opened")
-			if game_manager and game_manager.has_method("on_sawmill_gate_opened"):
+			if game_manager and game_manager.has_method("on_breach_gate_opened"):
+				game_manager.on_breach_gate_opened(gate_id)
+			elif game_manager and game_manager.has_method("on_sawmill_gate_opened"):
 				game_manager.on_sawmill_gate_opened()
-			return "SAWMILL PERIMETER BREACHED — WATCHTOWER & ARMORY BENCH UNLOCKED!"
+			return "%s BREACHED — NEW WING UNLOCKED!" % gate_label
 		Kind.UPGRADE_BENCH:
 			if not activated:
 				return "Restore Asylum Generator power first!"
@@ -522,6 +703,8 @@ func interact(game_manager: Node, player: Node) -> String:
 					game_manager.add_points(-250)
 				player.ammo_in_mag[cur] = max_m
 				player.ammo_reserve[cur] = int(PlayerBodycam.WEAPONS[cur]["reserve_max"])
+				player.weapon_chambered[cur] = true
+				_cancel_player_reload(player)
 				_play_spatial(_sfx_reveal, 1.12)
 				return "MK-II AMMO REFILLED (-250 PTS)"
 			if no_refill and player.ammo_in_mag[cur] <= 0 and player.ammo_reserve[cur] <= 0:
@@ -532,6 +715,7 @@ func interact(game_manager: Node, player: Node) -> String:
 				game_manager.add_points(-cost)
 			if player.has_method("upgrade_weapon"):
 				player.upgrade_weapon(cur)
+			_cancel_player_reload(player)
 			_play_spatial(_sfx_reveal, 0.85)
 			var wname := str(PlayerBodycam.WEAPONS[cur]["name"])
 			emit_signal("weapon_upgraded", cur, wname)
@@ -555,8 +739,59 @@ func interact(game_manager: Node, player: Node) -> String:
 			player.ammo_in_mag[cur] = max_m
 			player.ammo_reserve[cur] = int(PlayerBodycam.WEAPONS[cur]["reserve_max"])
 			player.weapon_chambered[cur] = true
+			_cancel_player_reload(player)
 			_play_spatial(_sfx_reveal, 1.08)
 			return "RESUPPLIED %s AMMO (-%d PTS)" % [PlayerBodycam.WEAPONS[cur]["name"], cost]
+		Kind.WALL_BUY:
+			if player == null or weapon_index < 0 or weapon_index >= PlayerBodycam.WEAPONS.size():
+				return ""
+			var wname := str(PlayerBodycam.WEAPONS[weapon_index]["name"])
+			if player.unlocked_weapons[weapon_index]:
+				var max_m: int = player.get_weapon_mag_size(weapon_index) if player.has_method("get_weapon_mag_size") else int(PlayerBodycam.WEAPONS[weapon_index]["mag_size"])
+				if player.ammo_in_mag[weapon_index] >= max_m and player.ammo_reserve[weapon_index] >= int(PlayerBodycam.WEAPONS[weapon_index]["reserve_max"]):
+					return "%s ammo is already full." % wname
+				if game_manager and game_manager.points < ammo_cost:
+					return "Need %d points for %s ammo!" % [ammo_cost, wname]
+				if game_manager:
+					game_manager.add_points(-ammo_cost)
+				player.ammo_in_mag[weapon_index] = max_m
+				player.ammo_reserve[weapon_index] = int(PlayerBodycam.WEAPONS[weapon_index]["reserve_max"])
+				player.weapon_chambered[weapon_index] = true
+				if player.current_weapon == weapon_index:
+					_cancel_player_reload(player)
+				_play_spatial(_sfx_reveal, 1.10)
+				return "BOUGHT %s AMMO (-%d PTS)" % [wname, ammo_cost]
+			if game_manager and game_manager.points < cost:
+				return "Need %d points to buy %s!" % [cost, wname]
+			if game_manager:
+				game_manager.add_points(-cost)
+			if player.has_method("acquire_weapon"):
+				player.acquire_weapon(weapon_index, true)
+			player.fire_cd = maxf(player.fire_cd, 0.25)
+			_play_spatial(_sfx_reveal, 0.96)
+			return "PURCHASED WALL WEAPON: %s (-%d PTS)" % [wname, cost]
+		Kind.TRAP:
+			if trap_state == TrapState.ACTIVE:
+				return "%s is already active (%ds left)!" % [trap_label, ceili(trap_timer)]
+			if trap_state == TrapState.COOLDOWN:
+				return "%s recharging (%ds left)..." % [trap_label, ceili(trap_timer)]
+			if game_manager and game_manager.points < cost:
+				return "Need %d points to activate %s!" % [cost, trap_label]
+			if game_manager:
+				game_manager.add_points(-cost)
+			trap_state = TrapState.ACTIVE
+			trap_timer = trap_duration
+			_trap_tick = 0.0
+			_trap_owner_player = player
+			if trap_fx_node and is_instance_valid(trap_fx_node):
+				trap_fx_node.visible = true
+			if trap_light and is_instance_valid(trap_light):
+				trap_light.visible = true
+			if glow_light and is_instance_valid(glow_light):
+				glow_light.light_color = Color(1.0, 0.25, 0.14)
+				glow_light.light_energy = 2.0
+			_play_spatial(_sfx_latch, 1.25)
+			return "ACTIVATED %s (%ds) — CLEAR THE KILL ZONE!" % [trap_label, int(trap_duration)]
 	return ""
 
 

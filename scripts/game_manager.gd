@@ -427,8 +427,6 @@ func _on_dev_action(action: String, arg: Variant) -> void:
 		"unlock_world":
 			if not power_restored:
 				on_generator_activated()
-			if world and not world.sawmill_gate_open:
-				on_sawmill_gate_opened()
 			for inter: InteractableObject in world.interactables:
 				if inter.kind == InteractableObject.Kind.GENERATOR or inter.kind == InteractableObject.Kind.BREACH_GATE:
 					inter.activated = true
@@ -438,9 +436,10 @@ func _on_dev_action(action: String, arg: Variant) -> void:
 					if inter.kind == InteractableObject.Kind.BREACH_GATE:
 						inter.collision_layer = 0
 						if inter.gate_visual and is_instance_valid(inter.gate_visual):
-							inter.gate_visual.rotation.y = 1.65
+							inter.gate_visual.rotation.y = inter.gate_open_yaw
+						on_breach_gate_opened(inter.gate_id)
 			if hud:
-				hud.show_toast("DEV: POWER RESTORED & SAWMILL GATE OPENED")
+				hud.show_toast("DEV: POWER RESTORED & ALL 3 WING GATES UNLOCKED")
 	if hud:
 		hud.refresh_dev_menu(player)
 
@@ -628,6 +627,14 @@ func restart_game() -> void:
 		world.sawmill_gate_open = false
 		for sp: Vector3 in world.sawmill_spawn_points:
 			world.spawn_points.erase(sp)
+	if world.boiler_gate_open:
+		world.boiler_gate_open = false
+		for sp: Vector3 in world.boiler_spawn_points:
+			world.spawn_points.erase(sp)
+	if world.morgue_gate_open:
+		world.morgue_gate_open = false
+		for sp: Vector3 in world.morgue_spawn_points:
+			world.spawn_points.erase(sp)
 	for inter: InteractableObject in world.interactables:
 		if is_instance_valid(inter) and inter.has_method("reset_state"):
 			inter.reset_state()
@@ -709,8 +716,9 @@ func _pick_fair_spawn_point() -> Dictionary:
 	var ppos := player.global_position
 	var cam := player.camera
 	var space := render_vp.world_3d.direct_space_state if render_vp else get_world_3d().direct_space_state
-	var min_d := 10.5 if ppos.z > -27.0 else 14.0
-	var max_d := 36.0
+	var in_morgue := ppos.x < -18.4 and ppos.z > -56.6 and ppos.z < -40.4
+	var min_d := 10.5 if (ppos.z > -27.0 or in_morgue) else 14.0
+	var max_d := 46.0
 	var cands: Array[Dictionary] = []
 
 	for idx in range(pts.size()):
@@ -818,12 +826,33 @@ func on_generator_activated() -> void:
 
 
 func on_sawmill_gate_opened() -> void:
-	if world == null or world.sawmill_gate_open:
+	on_breach_gate_opened("sawmill")
+
+
+func on_breach_gate_opened(gate_id: String) -> void:
+	if world == null:
 		return
-	world.sawmill_gate_open = true
-	for sp: Vector3 in world.sawmill_spawn_points:
-		if not (sp in world.spawn_points):
-			world.spawn_points.append(sp)
+	if gate_id == "boiler":
+		if world.boiler_gate_open:
+			return
+		world.boiler_gate_open = true
+		for sp: Vector3 in world.boiler_spawn_points:
+			if not (sp in world.spawn_points):
+				world.spawn_points.append(sp)
+	elif gate_id == "morgue":
+		if world.morgue_gate_open:
+			return
+		world.morgue_gate_open = true
+		for sp: Vector3 in world.morgue_spawn_points:
+			if not (sp in world.spawn_points):
+				world.spawn_points.append(sp)
+	else:
+		if world.sawmill_gate_open:
+			return
+		world.sawmill_gate_open = true
+		for sp: Vector3 in world.sawmill_spawn_points:
+			if not (sp in world.spawn_points):
+				world.spawn_points.append(sp)
 
 
 func _on_hit_confirmed(is_headshot: bool, killed: bool) -> void:
@@ -1064,12 +1093,18 @@ func _run_web_shader_warmup() -> void:
 	_render_step.call("WINTER COURTYARD")
 	await tree.process_frame
 
-	# Step 10: Cabin + Frozen Sawmill + Evidence Chest & Upgrade Bench shader warmup!
+	# Step 10: Cabin + Frozen Sawmill + Evidence Chest & Active Trap FX shader warmup!
+	for inter: InteractableObject in world.interactables:
+		if inter.kind == InteractableObject.Kind.TRAP and inter.trap_fx_node and is_instance_valid(inter.trap_fx_node):
+			inter.trap_fx_node.visible = true
 	player.global_position = Vector3(8.0, 0.5, -72.0)
 	player.yaw = 0.0
 	world.update_zone_culling(player.camera)
 	_render_step.call("CABIN & SAWMILL")
 	await tree.process_frame
+	for inter: InteractableObject in world.interactables:
+		if inter.kind == InteractableObject.Kind.TRAP and inter.trap_fx_node and is_instance_valid(inter.trap_fx_node):
+			inter.trap_fx_node.visible = false
 
 	# Restore clean initial lobby state
 	clear_zombies()

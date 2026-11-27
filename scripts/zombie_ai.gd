@@ -1723,16 +1723,54 @@ func _choose_nav_dir(to_target: Vector3) -> Vector3:
 	var gp := global_position
 	var way := tp
 	var p_saw := tp.z < -66.0
-	var p_out := tp.z < -27.5 and tp.z >= -66.0
+	var p_morgue := tp.x < -18.45 and tp.x > -40.7 and tp.z < -40.45 and tp.z > -56.55
+	var p_out := tp.z < -27.5 and tp.z >= -66.0 and not p_morgue
 	var p_tun := tp.z <= -8.0 and tp.z >= -27.5
-	var p_in := tp.z > -8.0
+	var p_boiler := tp.x > 10.35 and tp.z > -6.6 and tp.z < 9.6
+	var p_in := tp.z > -8.0 and not p_boiler
 	var z_saw := gp.z < -66.0
-	var z_out := gp.z < -27.5 and gp.z >= -66.0
+	var z_morgue := gp.x < -18.45 and gp.x > -40.7 and gp.z < -40.45 and gp.z > -56.55
+	var z_out := gp.z < -27.5 and gp.z >= -66.0 and not z_morgue
 	var z_tun := gp.z <= -8.0 and gp.z >= -27.5
-	var z_in := gp.z > -8.0
+	var z_boiler := gp.x > 10.35 and gp.z > -6.6 and gp.z < 9.6
+	var z_in := gp.z > -8.0 and not z_boiler
 
-	# 1. Cross-zone bidirectional route graph (Lobby <-> Tunnel <-> Courtyard <-> Sawmill Gate <-> Watchtower!)
-	if z_in and (p_out or p_saw):
+	# 0. Prioritize elevated balcony / Watchtower descent FIRST before cross-wing horizontal routing!
+	if z_in and gp.y > 2.2 and (not p_in or tp.y < 1.8):
+		way = Vector3(-7.55, 0.0, -1.60) if (gp.z < -2.0 or gp.x > -4.8) else Vector3(-7.55, 0.0, 3.85)
+	elif z_saw and gp.y > 4.2 and (not p_saw or tp.y < 2.2):
+		if gp.z < -79.5 and gp.x > -15.6:
+			way = Vector3(-15.8, 7.0, -81.4)
+		else:
+			way = Vector3(-17.0, 3.65, -72.5)
+	elif z_saw and gp.y > 2.2 and gp.y <= 4.2 and (not p_saw or tp.y < 2.0):
+		way = Vector3(-18.2, 0.2, -82.2)
+	# 1. Cross-zone bidirectional route graph with 2-point doorway alignment (ZERO jamb snags!)
+	elif z_boiler and not p_boiler:
+		way = Vector3(11.6, 0.0, 3.25) if absf(gp.z - 3.25) > 1.1 else Vector3(9.4, 0.0, 3.25)
+	elif not z_boiler and p_boiler:
+		if z_in:
+			way = Vector3(8.6, 0.0, 3.25) if absf(gp.z - 3.25) > 0.9 else Vector3(11.4, 0.0, 3.25)
+		elif z_tun:
+			way = Vector3(0.0, 0.0, -7.2)
+		elif z_morgue:
+			way = Vector3(-17.0, 0.0, -48.5)
+		elif z_saw:
+			way = Vector3(8.0, 0.0, -64.0)
+		else:
+			way = Vector3(0.0, 0.0, -28.0)
+	elif z_morgue and not p_morgue:
+		way = Vector3(-19.8, 0.0, -48.5) if absf(gp.z + 48.5) > 1.2 else Vector3(-12.6, 0.0, -48.5)
+	elif not z_morgue and p_morgue:
+		if z_out:
+			way = Vector3(-12.8, 0.0, -48.5) if ((gp.x < -13.2 and absf(gp.z + 48.5) > 1.4) or absf(gp.z + 48.5) > 1.2) else Vector3(-19.8, 0.0, -48.5)
+		elif z_saw:
+			way = Vector3(8.0, 0.0, -64.0)
+		elif z_tun:
+			way = Vector3(0.0, 0.0, -28.5)
+		else:
+			way = Vector3(0.0, 0.0, -9.5)
+	elif z_in and (p_out or p_saw):
 		way = Vector3(0.0, 0.0, -9.5)
 	elif z_in and p_tun:
 		way = Vector3(0.0, 0.0, -8.5)
@@ -1750,32 +1788,23 @@ func _choose_nav_dir(to_target: Vector3) -> Vector3:
 		way = Vector3(8.0, 0.0, -68.5)
 	elif z_saw and p_out:
 		way = Vector3(8.0, 0.0, -63.5)
-	elif z_in and gp.y > 2.2 and tp.y < 1.8:
-		# Upstairs Asylum balcony -> oak stair flight descending to lobby
-		way = Vector3(-7.55, 0.0, -1.60) if (gp.z < -2.0 or gp.x > -4.8) else Vector3(-7.55, 0.0, 3.85)
+	elif z_saw and p_saw:
+		var z_shed := gp.x > 11.8 and gp.x < 23.2 and gp.z > -88.2 and gp.z < -75.8
+		var p_shed := tp.x > 11.8 and tp.x < 23.2 and tp.z > -88.2 and tp.z < -75.8
+		if (z_shed != p_shed) and (gp.z < -86.5 or tp.z < -86.5):
+			# Route around solid Sawmill Shed north wall via its West door (10.0, -82.0)!
+			way = Vector3(10.0, 0.0, -82.0)
+		elif gp.y < 3.0 and tp.y > 3.2 and tp.x < -7.5:
+			if gp.y < 1.4 and gp.z > -80.0 and gp.x > -16.5:
+				way = Vector3(-18.2, 0.0, -82.2)
+			elif gp.y < 3.2:
+				way = Vector3(-17.8, 3.65, -72.5)
+			else:
+				way = Vector3(-15.8, 7.0, -81.4)
+		elif gp.y >= 3.0 and tp.y > 4.8 and tp.x < -7.5 and gp.y < 6.2:
+			way = Vector3(-15.8, 7.0, -81.4)
 	elif z_in and gp.y < 1.8 and tp.y > 2.4:
-		# Ground lobby -> oak stair flight ascending to Asylum balcony
 		way = Vector3(-7.55, 0.0, 3.85) if gp.z > 2.8 else Vector3(-7.55, 0.0, -1.60)
-	elif z_saw and gp.y < 3.0 and tp.y > 3.2 and tp.x < -7.5:
-		# Ground Sawmill -> climb Watchtower 2-flight ramp (foot at (-18.2, -82.2) -> landing (-17.0, -72.5) -> deck (-15.0, -81.0))
-		if gp.y < 1.4 and gp.z > -80.0 and gp.x > -16.5:
-			way = Vector3(-18.2, 0.0, -82.2)
-		elif gp.y < 3.2:
-			way = Vector3(-17.8, 3.65, -72.5)
-		else:
-			way = Vector3(-15.8, 7.0, -81.4)
-	elif z_saw and gp.y >= 3.0 and tp.y > 4.8 and tp.x < -7.5:
-		# Mid-landing -> upper Watchtower ramp to deck
-		if gp.y < 6.2:
-			way = Vector3(-15.8, 7.0, -81.4)
-	elif z_saw and gp.y > 4.2 and tp.y < 2.2:
-		# Watchtower deck -> descend upper ramp to mid-landing -> lower ramp to snow
-		if gp.z < -79.5 and gp.x > -15.6:
-			way = Vector3(-15.8, 7.0, -81.4)
-		else:
-			way = Vector3(-17.0, 3.65, -72.5)
-	elif z_saw and gp.y > 2.2 and gp.y <= 4.2 and tp.y < 2.0:
-		way = Vector3(-18.2, 0.2, -82.2)
 
 	var d_vec := way - gp
 	d_vec.y = 0.0
