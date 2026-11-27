@@ -132,23 +132,38 @@ var title_panel: Control
 var defeat_panel: Control
 var defeat_info: Label
 var settings_panel: Control
+var _settings_hdr: Label
+var _settings_inv_btn: Button
+var _settings_rst_btn: Button
 var _settings_renderer_lbl: Label
 var _settings_res_lbl: Label
 var _settings_btns: Dictionary = {}
+var inventory_panel: Control
+var _inv_body: VBoxContainer
+var dev_panel: Control
+var _dev_god_btn: Button
 
 var toast_timer: float = 0.0
 var hud_visible_minimal: bool = true
 var _hud_text_accum: float = 0.25
 var _last_ammo_sig: int = -1
+var _last_hotbar_str: String = ""
 
 signal start_requested
 signal start_daylight_requested
 signal restart_requested
 signal graphics_action(key: String)
+signal open_settings_requested
 signal settings_closed
+signal open_inventory_requested
+signal inventory_action(action: String, arg: Variant)
+signal inventory_closed
+signal dev_action(action: String, arg: Variant)
+signal dev_closed
 
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	layer = 10
 	# Full-screen bodycam fisheye / CMOS post-processing TextureRect (zero-copy from SubViewport!)
 	post_rect = TextureRect.new()
@@ -302,7 +317,7 @@ func _build_title_overlay() -> void:
 	vb.add_child(t)
 
 	var sub := Label.new()
-	sub.text = "ASYLUM  •  CATACOMB TUNNELS  •  WINTER COURTYARD  •  FROZEN SAWMILL\nWASD Move | LMB Fire / Hold Bow | RMB Aim | V Quick Melee | R Reload | F Flashlight | E Interact / Mystery Box | 1-0 Weapons | F9 Day/Night"
+	sub.text = "ASYLUM  •  CATACOMB TUNNELS  •  WINTER COURTYARD  •  FROZEN SAWMILL\nWASD Move | LMB Fire / Bow | RMB Aim / Heavy Melee | V Quick Melee | G/Q Grenade | R Reload | E Interact\n1-3 Firearms | 4 Special | 5 Melee | I Inventory | ESC Pause | F Flashlight | F9 Day/Night"
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.add_theme_font_size_override("font_size", 14)
 	sub.add_theme_color_override("font_color", Color(0.75, 0.78, 0.76))
@@ -323,10 +338,7 @@ func _build_title_overlay() -> void:
 	var cfg_btn := Button.new()
 	cfg_btn.text = "GRAPHICS SETTINGS [ESC]"
 	cfg_btn.custom_minimum_size = Vector2(300, 36)
-	cfg_btn.pressed.connect(func():
-		if settings_panel:
-			settings_panel.visible = true
-	)
+	cfg_btn.pressed.connect(func(): emit_signal("open_settings_requested"))
 	vb.add_child(cfg_btn)
 
 	title_panel.add_child(vb)
@@ -356,12 +368,12 @@ func _build_settings_overlay() -> void:
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 8)
 
-	var hdr := Label.new()
-	hdr.text = "BODYCAM-04 // GRAPHICS SETTINGS"
-	hdr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hdr.add_theme_font_size_override("font_size", 18)
-	hdr.add_theme_color_override("font_color", Color(0.95, 0.88, 0.68))
-	vb.add_child(hdr)
+	_settings_hdr = Label.new()
+	_settings_hdr.text = "BODYCAM-04 // PAUSED & SETTINGS"
+	_settings_hdr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_settings_hdr.add_theme_font_size_override("font_size", 18)
+	_settings_hdr.add_theme_color_override("font_color", Color(0.95, 0.88, 0.68))
+	vb.add_child(_settings_hdr)
 
 	_settings_renderer_lbl = Label.new()
 	_settings_renderer_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -380,22 +392,339 @@ func _build_settings_overlay() -> void:
 	]
 	for k in opt_keys:
 		var b := Button.new()
-		b.custom_minimum_size = Vector2(460, 30)
-		b.add_theme_font_size_override("font_size", 14)
+		b.custom_minimum_size = Vector2(460, 28)
+		b.add_theme_font_size_override("font_size", 13)
 		var captured_k: String = k
 		b.pressed.connect(func(): emit_signal("graphics_action", captured_k))
 		vb.add_child(b)
 		_settings_btns[k] = b
 
+	var btn_row := HBoxContainer.new()
+	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	btn_row.add_theme_constant_override("separation", 10)
 	var close_btn := Button.new()
 	close_btn.text = "RESUME [ESC]"
-	close_btn.custom_minimum_size = Vector2(240, 36)
+	close_btn.custom_minimum_size = Vector2(150, 36)
 	close_btn.pressed.connect(func(): emit_signal("settings_closed"))
-	vb.add_child(close_btn)
+	btn_row.add_child(close_btn)
+	_settings_inv_btn = Button.new()
+	_settings_inv_btn.text = "INVENTORY [I]"
+	_settings_inv_btn.custom_minimum_size = Vector2(150, 36)
+	_settings_inv_btn.pressed.connect(func(): emit_signal("open_inventory_requested"))
+	btn_row.add_child(_settings_inv_btn)
+	_settings_rst_btn = Button.new()
+	_settings_rst_btn.text = "RESTART RUN"
+	_settings_rst_btn.custom_minimum_size = Vector2(140, 36)
+	_settings_rst_btn.pressed.connect(func(): emit_signal("restart_requested"))
+	btn_row.add_child(_settings_rst_btn)
+	vb.add_child(btn_row)
 
 	card.add_child(vb)
 	settings_panel.add_child(card)
 	add_child(settings_panel)
+	_build_inventory_overlay()
+	_build_dev_overlay()
+
+
+func set_settings_context(in_match: bool) -> void:
+	if _settings_hdr:
+		_settings_hdr.text = "BODYCAM-04 // PAUSED & SETTINGS" if in_match else "BODYCAM-04 // GRAPHICS SETTINGS"
+	if _settings_inv_btn:
+		_settings_inv_btn.visible = in_match
+	if _settings_rst_btn:
+		_settings_rst_btn.visible = in_match
+
+
+func _make_card_style(border_col := Color(0.28, 0.34, 0.36, 0.92)) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.045, 0.052, 0.062, 0.95)
+	sb.border_color = border_col
+	sb.set_border_width_all(2)
+	sb.set_content_margin_all(16)
+	sb.set_corner_radius_all(4)
+	return sb
+
+
+func _build_inventory_overlay() -> void:
+	inventory_panel = ColorRect.new()
+	inventory_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+	inventory_panel.color = Color(0.012, 0.016, 0.020, 0.80)
+	inventory_panel.visible = false
+
+	var card := PanelContainer.new()
+	card.set_anchors_preset(Control.PRESET_CENTER)
+	card.offset_left = -330
+	card.offset_top = -255
+	card.offset_right = 330
+	card.offset_bottom = 255
+	card.add_theme_stylebox_override("panel", _make_card_style(Color(0.36, 0.48, 0.44, 0.94)))
+
+	var outer := VBoxContainer.new()
+	outer.add_theme_constant_override("separation", 10)
+
+	var hdr := Label.new()
+	hdr.text = "TACTICAL LOADOUT // INVENTORY [PAUSED]"
+	hdr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hdr.add_theme_font_size_override("font_size", 18)
+	hdr.add_theme_color_override("font_color", Color(0.95, 0.88, 0.64))
+	outer.add_child(hdr)
+
+	var sub := Label.new()
+	sub.text = "Reorder firearm slots [1-3], swap active melee [V / 5], or select throwable [G / Q]."
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.add_theme_font_size_override("font_size", 12)
+	sub.add_theme_color_override("font_color", Color(0.72, 0.78, 0.76))
+	outer.add_child(sub)
+
+	_inv_body = VBoxContainer.new()
+	_inv_body.add_theme_constant_override("separation", 8)
+	_inv_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	outer.add_child(_inv_body)
+
+	var close_b := Button.new()
+	close_b.text = "RESUME [I / ESC]"
+	close_b.custom_minimum_size = Vector2(220, 36)
+	close_b.pressed.connect(func(): emit_signal("inventory_closed"))
+	outer.add_child(close_b)
+
+	card.add_child(outer)
+	inventory_panel.add_child(card)
+	add_child(inventory_panel)
+
+
+func refresh_inventory(player: PlayerBodycam) -> void:
+	if _inv_body == null or player == null:
+		return
+	for ch in _inv_body.get_children():
+		ch.queue_free()
+
+	var f_hdr := Label.new()
+	f_hdr.text = "FIREARM SLOTS (CAP %d — PICKUP ORDER)" % PlayerBodycam.MAX_FIREARM_SLOTS
+	f_hdr.add_theme_font_size_override("font_size", 13)
+	f_hdr.add_theme_color_override("font_color", Color(0.66, 0.92, 0.76))
+	_inv_body.add_child(f_hdr)
+
+	for i in range(PlayerBodycam.MAX_FIREARM_SLOTS):
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
+		var slot_lbl := Label.new()
+		slot_lbl.custom_minimum_size = Vector2(270, 28)
+		slot_lbl.add_theme_font_size_override("font_size", 14)
+		if i < player.firearm_slots.size():
+			var wi := player.firearm_slots[i]
+			var wname := str(PlayerBodycam.WEAPONS[wi]["name"])
+			if player.is_weapon_upgraded(wi):
+				wname += " MK-II"
+			var held := " [EQUIPPED]" if wi == player.current_weapon else ""
+			slot_lbl.text = "[%d] %s  (%d/%d)%s" % [i + 1, wname, player.ammo_in_mag[wi], player.ammo_reserve[wi], held]
+			slot_lbl.add_theme_color_override("font_color", Color(1.0, 0.95, 0.72) if wi == player.current_weapon else Color(0.88, 0.90, 0.88))
+			row.add_child(slot_lbl)
+
+			var b_up := Button.new()
+			b_up.text = "▲"
+			b_up.disabled = (i == 0)
+			var ci := i
+			b_up.pressed.connect(func(): emit_signal("inventory_action", "swap", [ci, ci - 1]))
+			row.add_child(b_up)
+
+			var b_dn := Button.new()
+			b_dn.text = "▼"
+			b_dn.disabled = (i >= player.firearm_slots.size() - 1)
+			b_dn.pressed.connect(func(): emit_signal("inventory_action", "swap", [ci, ci + 1]))
+			row.add_child(b_dn)
+
+			var b_eq := Button.new()
+			b_eq.text = "EQUIP"
+			b_eq.pressed.connect(func(): emit_signal("inventory_action", "equip_slot", ci))
+			row.add_child(b_eq)
+
+			var b_dr := Button.new()
+			b_dr.text = "DROP"
+			b_dr.disabled = (player.firearm_slots.size() <= 1)
+			b_dr.pressed.connect(func(): emit_signal("inventory_action", "drop_slot", ci))
+			row.add_child(b_dr)
+		else:
+			slot_lbl.text = "[%d] — EMPTY SLOT —" % (i + 1)
+			slot_lbl.add_theme_color_override("font_color", Color(0.50, 0.54, 0.56))
+			row.add_child(slot_lbl)
+		_inv_body.add_child(row)
+
+	# Special Slot [4]
+	var sp_row := HBoxContainer.new()
+	sp_row.add_theme_constant_override("separation", 6)
+	var sp_lbl := Label.new()
+	sp_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sp_lbl.add_theme_font_size_override("font_size", 13)
+	if player.special_slot >= 0:
+		var sw := player.special_slot
+		var mk2 := " MK-II" if player.is_weapon_upgraded(sw) else ""
+		var active_s := " [EQUIPPED]" if player.current_weapon == sw else ""
+		sp_lbl.text = "SPECIAL [4]: %s%s (%d/%d)%s" % [PlayerBodycam.WEAPONS[sw]["name"], mk2, player.ammo_in_mag[sw], player.ammo_reserve[sw], active_s]
+		sp_lbl.add_theme_color_override("font_color", Color(1.0, 0.78, 0.36))
+		sp_row.add_child(sp_lbl)
+		var b_sp := Button.new()
+		b_sp.text = "EQUIP"
+		b_sp.pressed.connect(func(): emit_signal("inventory_action", "equip_special", 0))
+		sp_row.add_child(b_sp)
+	else:
+		sp_lbl.text = "SPECIAL [4]: — EMPTY (COMPOUND BOW / SPECIAL) —"
+		sp_lbl.add_theme_color_override("font_color", Color(0.56, 0.60, 0.62))
+		sp_row.add_child(sp_lbl)
+	_inv_body.add_child(sp_row)
+
+	# Melee Weapon selector [V / 5]
+	var m_hdr := Label.new()
+	m_hdr.text = "MELEE WEAPON ([V] QUICK SLASH  •  [5] EQUIP FOR COMBOS + RMB HEAVY)"
+	m_hdr.add_theme_font_size_override("font_size", 13)
+	m_hdr.add_theme_color_override("font_color", Color(0.66, 0.92, 0.76))
+	_inv_body.add_child(m_hdr)
+
+	var m_row := HBoxContainer.new()
+	m_row.add_theme_constant_override("separation", 6)
+	for mid: String in player.owned_melee:
+		var m_btn := Button.new()
+		var m_nm := str(PlayerBodycam.MELEE_CATALOG[mid]["name"])
+		m_btn.text = ("★ " + m_nm) if player.equipped_melee_id == mid else m_nm
+		var cap_mid := mid
+		m_btn.pressed.connect(func(): emit_signal("inventory_action", "select_melee", cap_mid))
+		m_row.add_child(m_btn)
+	var un_btn := Button.new()
+	un_btn.text = "★ UNARMED (GUN BASH)" if player.equipped_melee_id == "" else "UNEQUIP (GUN BASH)"
+	un_btn.pressed.connect(func(): emit_signal("inventory_action", "select_melee", ""))
+	m_row.add_child(un_btn)
+	_inv_body.add_child(m_row)
+
+	# Throwables selector [G / Q]
+	var g_hdr := Label.new()
+	g_hdr.text = "THROWABLES ([G] THROW  •  [Q] CYCLE TYPE)"
+	g_hdr.add_theme_font_size_override("font_size", 13)
+	g_hdr.add_theme_color_override("font_color", Color(0.66, 0.92, 0.76))
+	_inv_body.add_child(g_hdr)
+
+	var g_row := HBoxContainer.new()
+	g_row.add_theme_constant_override("separation", 8)
+	for gt: String in PlayerBodycam.GRENADE_ORDER:
+		var gb := Button.new()
+		var cnt: int = int(player.grenade_counts.get(gt, 0))
+		var lbl := "%s x%d" % [PlayerBodycam.GRENADE_LABELS[gt], cnt]
+		gb.text = ("★ " + lbl) if player.equipped_grenade == gt else lbl
+		gb.custom_minimum_size = Vector2(150, 32)
+		var cap_gt := gt
+		gb.pressed.connect(func(): emit_signal("inventory_action", "select_grenade", cap_gt))
+		g_row.add_child(gb)
+	_inv_body.add_child(g_row)
+
+
+func _build_dev_overlay() -> void:
+	dev_panel = ColorRect.new()
+	dev_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dev_panel.color = Color(0.015, 0.012, 0.022, 0.80)
+	dev_panel.visible = false
+
+	var card := PanelContainer.new()
+	card.set_anchors_preset(Control.PRESET_CENTER)
+	card.offset_left = -360
+	card.offset_top = -270
+	card.offset_right = 360
+	card.offset_bottom = 270
+	card.add_theme_stylebox_override("panel", _make_card_style(Color(0.86, 0.56, 0.22, 0.94)))
+
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 8)
+
+	var hdr := Label.new()
+	hdr.text = "DEV DEBUG SPAWN MENU [`]  //  GAME PAUSED"
+	hdr.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hdr.add_theme_font_size_override("font_size", 18)
+	hdr.add_theme_color_override("font_color", Color(1.0, 0.76, 0.34))
+	vb.add_child(hdr)
+
+	var whdr := Label.new()
+	whdr.text = "SPAWN / GIVE ANY WEAPON (AUTO-EQUIPS INTO LOADOUT):"
+	whdr.add_theme_font_size_override("font_size", 12)
+	whdr.add_theme_color_override("font_color", Color(0.82, 0.88, 0.90))
+	vb.add_child(whdr)
+
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	for wi in range(PlayerBodycam.WEAPONS.size()):
+		if wi == 3:
+			continue
+		var wb := Button.new()
+		wb.text = str(PlayerBodycam.WEAPONS[wi]["name"])
+		wb.custom_minimum_size = Vector2(215, 28)
+		wb.add_theme_font_size_override("font_size", 12)
+		var cap_wi := wi
+		wb.pressed.connect(func(): emit_signal("dev_action", "give_weapon", cap_wi))
+		grid.add_child(wb)
+	vb.add_child(grid)
+
+	var mhdr := Label.new()
+	mhdr.text = "GIVE MELEE WEAPON:"
+	mhdr.add_theme_font_size_override("font_size", 12)
+	mhdr.add_theme_color_override("font_color", Color(0.82, 0.88, 0.90))
+	vb.add_child(mhdr)
+
+	var mrow := HBoxContainer.new()
+	mrow.add_theme_constant_override("separation", 8)
+	for mid in ["knife", "fire_axe", "machete"]:
+		var mb := Button.new()
+		mb.text = str(PlayerBodycam.MELEE_CATALOG[mid]["name"])
+		mb.custom_minimum_size = Vector2(215, 28)
+		var cap_m: String = mid
+		mb.pressed.connect(func(): emit_signal("dev_action", "give_melee", cap_m))
+		mrow.add_child(mb)
+	vb.add_child(mrow)
+
+	var chdr := Label.new()
+	chdr.text = "DEBUG CONTROLS:"
+	chdr.add_theme_font_size_override("font_size", 12)
+	chdr.add_theme_color_override("font_color", Color(0.82, 0.88, 0.90))
+	vb.add_child(chdr)
+
+	var cgrid := GridContainer.new()
+	cgrid.columns = 3
+	cgrid.add_theme_constant_override("h_separation", 6)
+	cgrid.add_theme_constant_override("v_separation", 6)
+	var dbg_specs := [
+		["+5000 POINTS", "add_points"],
+		["MAX AMMO + GRENADES", "refill_all"],
+		["GOD MODE: OFF", "toggle_god"],
+		["UPGRADE HELD MK-II", "upgrade_cur"],
+		["KILL ALL ZOMBIES", "kill_all"],
+		["SKIP TO NEXT WAVE", "next_wave"],
+		["SPAWN ZOMBIE NEAR", "spawn_zombie"],
+		["TOGGLE DAYLIGHT [F9]", "toggle_daylight"],
+		["POWER ON + OPEN GATE", "unlock_world"],
+	]
+	for sp in dbg_specs:
+		var db := Button.new()
+		db.text = sp[0]
+		db.custom_minimum_size = Vector2(215, 30)
+		db.add_theme_font_size_override("font_size", 12)
+		var cap_a: String = sp[1]
+		db.pressed.connect(func(): emit_signal("dev_action", cap_a, null))
+		if cap_a == "toggle_god":
+			_dev_god_btn = db
+		cgrid.add_child(db)
+	vb.add_child(cgrid)
+
+	var close_d := Button.new()
+	close_d.text = "CLOSE DEV MENU [` / ESC]"
+	close_d.custom_minimum_size = Vector2(240, 34)
+	close_d.pressed.connect(func(): emit_signal("dev_closed"))
+	vb.add_child(close_d)
+
+	card.add_child(vb)
+	dev_panel.add_child(card)
+	add_child(dev_panel)
+
+
+func refresh_dev_menu(player: PlayerBodycam) -> void:
+	if _dev_god_btn and player:
+		_dev_god_btn.text = "GOD MODE: ON" if player.god_mode else "GOD MODE: OFF"
 
 
 func update_settings_labels(state: Dictionary) -> void:
@@ -471,6 +800,10 @@ func set_capture_mode(clean: bool) -> void:
 	defeat_panel.visible = false
 	if settings_panel:
 		settings_panel.visible = false
+	if inventory_panel:
+		inventory_panel.visible = false
+	if dev_panel:
+		dev_panel.visible = false
 	if loading_overlay:
 		loading_overlay.visible = false
 	if perf_label:
@@ -505,8 +838,9 @@ func update_hud(delta: float, player: PlayerBodycam, wave: int, points: int, zom
 			toast_label.text = ""
 
 	var low_hp: float = clamp((45.0 - player.health) / 45.0, 0.0, 1.0) * 0.65
+	var is_paused_now := get_tree().paused
 	post_mat.set_shader_parameter("damage_vignette", clamp(max(low_hp, player.damage_flash), 0.0, 1.0))
-	post_mat.set_shader_parameter("glitch_amount", 0.75 if player.dead else player.hit_glitch)
+	post_mat.set_shader_parameter("glitch_amount", 0.0 if is_paused_now else (0.75 if player.dead else player.hit_glitch))
 	post_mat.set_shader_parameter("yaw_vel", player.yaw_vel)
 	post_mat.set_shader_parameter("hit_ca_boost", player.hit_ca_boost)
 	post_mat.set_shader_parameter("hit_dir_screen", player.hit_dir_screen)
@@ -526,26 +860,29 @@ func update_hud(delta: float, player: PlayerBodycam, wave: int, points: int, zom
 
 	var mag: int = player.ammo_in_mag[player.current_weapon]
 	var res: int = player.ammo_reserve[player.current_weapon]
+	var hotbar: String = player.get_hotbar_summary() if player.has_method("get_hotbar_summary") else ""
 	var act_sig := active_zombies if active_zombies >= 0 else zombies_left
 	var sig := player.current_weapon * 1000000 + mag * 10000 + res * 100 + int(player.health) + (1 if player.is_reloading else 0) + zombies_left * 7 + act_sig * 17 + wave * 13 + points
 	_hud_text_accum += delta
-	if sig == _last_ammo_sig and _hud_text_accum < 0.20:
+	if sig == _last_ammo_sig and hotbar == _last_hotbar_str and _hud_text_accum < 0.20:
 		return
 	_last_ammo_sig = sig
+	_last_hotbar_str = hotbar
 	_hud_text_accum = 0.0
 
 	var sec: int = int(Time.get_ticks_msec() / 1000.0)
 	var blink := "●" if (sec % 2 == 0) else " "
 	var mins: int = int(sec / 60.0)
 	var fps := Engine.get_frames_per_second()
-	rec_label.text = "REC %s  2026-11-24 23:%02d:%02d  •  %d FPS\nBODYCAM-04 // WAVE %02d" % [blink, (41 + mins) % 60, sec % 60, fps, wave]
+	var god_tag := "  [GOD]" if player.god_mode else ""
+	rec_label.text = "REC %s  2026-11-24 23:%02d:%02d  •  %d FPS%s\nBODYCAM-04 // WAVE %02d  [I] INV  [ESC] PAUSE" % [blink, (41 + mins) % 60, sec % 60, fps, god_tag, wave]
 
 	var wname: String = player.get_current_weapon_name() if player.has_method("get_current_weapon_name") else PlayerBodycam.WEAPONS[player.current_weapon]["name"]
-	var wkey: String = str(PlayerBodycam.WEAPONS[player.current_weapon].get("key", str(player.current_weapon + 1)))
+	var wkey: String = player.get_slot_key_for_weapon(player.current_weapon) if player.has_method("get_slot_key_for_weapon") else str(PlayerBodycam.WEAPONS[player.current_weapon].get("key", str(player.current_weapon + 1)))
 	var is_melee: bool = bool(PlayerBodycam.WEAPONS[player.current_weapon].get("is_melee", false))
 	var reload_tag := " [RELOADING]" if player.is_reloading else ""
 	var ammo_str := "MELEE" if is_melee else ("%02d / %03d" % [mag, res])
 	var hostile_str := ("HOSTILES %d (%d ACTIVE)" % [zombies_left, active_zombies]) if (active_zombies >= 0 and active_zombies < zombies_left) else ("HOSTILES %d" % zombies_left)
-	stats_label.text = "[%s] %s%s  %s\nHP %d%%  •  PTS %d  •  %s" % [
-		wkey, wname, reload_tag, ammo_str, int(player.health), points, hostile_str
+	stats_label.text = "[%s] %s%s  %s  •  HP %d%%  •  PTS %d  •  %s\n%s" % [
+		wkey, wname, reload_tag, ammo_str, int(player.health), points, hostile_str, hotbar
 	]

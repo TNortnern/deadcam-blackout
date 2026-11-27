@@ -1,7 +1,7 @@
 extends StaticBody3D
 class_name InteractableObject
 
-enum Kind { GENERATOR, MYSTERY_BOX, BARRICADE, MELEE_PICKUP, BREACH_GATE, UPGRADE_BENCH }
+enum Kind { GENERATOR, MYSTERY_BOX, BARRICADE, MELEE_PICKUP, BREACH_GATE, UPGRADE_BENCH, AMMO_CRATE }
 enum BoxState { IDLE, CYCLING, READY_CLAIM, CLOSING }
 
 @export var kind: Kind = Kind.GENERATOR
@@ -105,10 +105,13 @@ func _update_mystery_box(delta: float) -> void:
 			_preview_holder.rotation.y += delta * 1.8
 			_preview_holder.position.y = 0.96 + sin(Time.get_ticks_msec() * 0.004) * 0.045
 		if _box_timer <= 0.0:
-			# Auto-secure into player inventory without interrupting their active weapon so points are never wasted!
+			# Auto-secure ONLY when an open slot exists (or already owned for ammo top-off) — NEVER overwrite a capped loadout!
 			if _rolled_owner_player and is_instance_valid(_rolled_owner_player) and _rolled_weapon_idx >= 0:
-				if _rolled_owner_player.has_method("unlock_weapon_silent"):
-					_rolled_owner_player.unlock_weapon_silent(_rolled_weapon_idx)
+				var p_ref := _rolled_owner_player
+				var is_spec := bool(PlayerBodycam.WEAPONS[_rolled_weapon_idx].get("is_special", false))
+				var can_auto: bool = (is_spec and int(p_ref.special_slot) < 0) or (not is_spec and (p_ref.firearm_slots.size() < PlayerBodycam.MAX_FIREARM_SLOTS or p_ref.firearm_slots.has(_rolled_weapon_idx)))
+				if can_auto and p_ref.has_method("unlock_weapon_silent"):
+					p_ref.unlock_weapon_silent(_rolled_weapon_idx)
 			_begin_box_close()
 	elif box_state == BoxState.CLOSING:
 		lid_target = 0.0
@@ -245,9 +248,10 @@ func _get_box_action(player: Node) -> Dictionary:
 		return {"action": "busy", "price": 0, "label": "MYSTERY BOX CYCLING..."}
 	if box_state == BoxState.READY_CLAIM and _rolled_weapon_idx >= 0:
 		var wd: Dictionary = PlayerBodycam.WEAPONS[_rolled_weapon_idx]
-		var wkey := str(wd.get("key", ""))
 		var wname := str(wd.get("name", "WEAPON"))
-		return {"action": "claim", "price": 0, "label": "[E] CLAIM [%s] %s" % [wkey, wname]}
+		if player != null and player.has_method("get_claim_prompt_label"):
+			return {"action": "claim", "price": 0, "label": player.get_claim_prompt_label(_rolled_weapon_idx)}
+		return {"action": "claim", "price": 0, "label": "[E] CLAIM %s" % wname}
 	if player == null:
 		return {"action": "roll", "price": cost, "label": "[E] OPEN EVIDENCE CHEST (%d PTS)" % cost}
 	var unowned: Array[int] = []
@@ -256,7 +260,7 @@ func _get_box_action(player: Node) -> Dictionary:
 			unowned.append(idx)
 	if not unowned.is_empty():
 		return {"action": "roll", "price": cost, "unowned": unowned, "label": "[E] OPEN EVIDENCE CHEST (%d PTS)" % cost}
-	# All 9 unlocked -> offer 250 PTS ammo refill ONLY if current weapon actually needs ammo!
+	# All pool weapons owned -> offer 250 PTS ammo refill ONLY if current weapon actually needs ammo!
 	var cur: int = player.current_weapon
 	var is_melee := bool(PlayerBodycam.WEAPONS[cur].get("is_melee", false))
 	var full_mag: bool = player.ammo_in_mag[cur] >= int(PlayerBodycam.WEAPONS[cur]["mag_size"])
@@ -313,6 +317,19 @@ func get_prompt(player_points: int, player: Node = null) -> String:
 					return "[E] UPGRADE %s TO MK-II (%d PTS NEEDED)" % [PlayerBodycam.WEAPONS[cur]["name"], cost]
 				return "[E] UPGRADE %s TO MK-II (%d PTS)" % [PlayerBodycam.WEAPONS[cur]["name"], cost]
 			return "[E] ARMORY UPGRADE BENCH (%d PTS)" % cost
+		Kind.AMMO_CRATE:
+			if player != null:
+				var cur: int = player.current_weapon
+				if bool(PlayerBodycam.WEAPONS[cur].get("is_melee", false)):
+					return "EQUIP A FIREARM OR BOW TO RESUPPLY AMMO"
+				var max_m: int = player.get_weapon_mag_size(cur) if player.has_method("get_weapon_mag_size") else int(PlayerBodycam.WEAPONS[cur]["mag_size"])
+				var full_a: bool = player.ammo_in_mag[cur] >= max_m and player.ammo_reserve[cur] >= int(PlayerBodycam.WEAPONS[cur]["reserve_max"])
+				if full_a:
+					return "%s [AMMO FULL]" % PlayerBodycam.WEAPONS[cur]["name"]
+				if player_points < cost:
+					return "[E] RESUPPLY %s AMMO (%d PTS NEEDED)" % [PlayerBodycam.WEAPONS[cur]["name"], cost]
+				return "[E] RESUPPLY %s AMMO (%d PTS)" % [PlayerBodycam.WEAPONS[cur]["name"], cost]
+			return "[E] AMMO CRATE (%d PTS)" % cost
 	return prompt_text
 
 
@@ -340,11 +357,14 @@ func interact(game_manager: Node, player: Node) -> String:
 				var claimed := _rolled_weapon_idx
 				var wd: Dictionary = PlayerBodycam.WEAPONS[claimed]
 				var wname := str(wd["name"])
-				var wkey := str(wd.get("key", ""))
-				if player and player.has_method("unlock_and_equip"):
+				var slot_lbl := ""
+				if player and player.has_method("acquire_weapon"):
+					var info: Dictionary = player.acquire_weapon(claimed, true)
+					slot_lbl = str(info.get("slot_key", ""))
+				elif player and player.has_method("unlock_and_equip"):
 					player.unlock_and_equip(claimed)
 				_begin_box_close()
-				return "CLAIMED: [%s] %s" % [wkey, wname]
+				return "CLAIMED: [%s] %s" % [slot_lbl, wname] if slot_lbl != "" else ("CLAIMED: %s" % wname)
 			var price := int(act["price"])
 			if game_manager and game_manager.points < price:
 				return "Need %d points!" % price
@@ -367,16 +387,12 @@ func interact(game_manager: Node, player: Node) -> String:
 			_rolled_owner_player = player
 			var w_dict: Dictionary = PlayerBodycam.WEAPONS[roll]
 			var wname: String = str(w_dict["name"])
-			var wkey: String = str(w_dict.get("key", ""))
 			box_state = BoxState.CYCLING
 			_box_timer = BOX_CYCLE_DUR
 			_cycle_tick = 0.0
 			_play_spatial(_sfx_latch, 1.05)
 			emit_signal("mystery_box_rolled", roll, wname)
-			# Unlock silently right away if in headless/automated test, or let player press [E] to claim & equip after reveal!
-			if player and player.has_method("unlock_weapon_silent"):
-				player.unlock_weapon_silent(roll)
-			return "MYSTERY BOX ROLLING: [%s] %s (%d/%d) — PRESS [E] TO CLAIM!" % [wkey, wname, 9 - unowned.size() + 1, 9]
+			return "MYSTERY BOX ROLLING: %s — PRESS [E] TO CLAIM!" % wname
 		Kind.BARRICADE:
 			if plank_count >= max_planks:
 				return "Barricade fully reinforced."
@@ -442,6 +458,24 @@ func interact(game_manager: Node, player: Node) -> String:
 			var wname := str(PlayerBodycam.WEAPONS[cur]["name"])
 			emit_signal("weapon_upgraded", cur, wname)
 			return "UPGRADED: %s MK-II (+45%% DMG & EXTENDED MAG!)" % wname
+		Kind.AMMO_CRATE:
+			if player == null:
+				return ""
+			var cur: int = player.current_weapon
+			if bool(PlayerBodycam.WEAPONS[cur].get("is_melee", false)):
+				return "Equip a firearm or bow to resupply ammo!"
+			var max_m: int = player.get_weapon_mag_size(cur) if player.has_method("get_weapon_mag_size") else int(PlayerBodycam.WEAPONS[cur]["mag_size"])
+			if player.ammo_in_mag[cur] >= max_m and player.ammo_reserve[cur] >= int(PlayerBodycam.WEAPONS[cur]["reserve_max"]):
+				return "Ammo is already full."
+			if game_manager and game_manager.points < cost:
+				return "Need %d points for ammo resupply!" % cost
+			if game_manager:
+				game_manager.add_points(-cost)
+			player.ammo_in_mag[cur] = max_m
+			player.ammo_reserve[cur] = int(PlayerBodycam.WEAPONS[cur]["reserve_max"])
+			player.weapon_chambered[cur] = true
+			_play_spatial(_sfx_reveal, 1.08)
+			return "RESUPPLIED %s AMMO (-%d PTS)" % [PlayerBodycam.WEAPONS[cur]["name"], cost]
 	return ""
 
 

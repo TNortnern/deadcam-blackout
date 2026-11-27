@@ -42,8 +42,10 @@ static var _spawn_cue_streams: Array[AudioStream] = []
 
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	render_vp = SubViewport.new()
 	render_vp.name = "WorldViewport"
+	render_vp.process_mode = Node.PROCESS_MODE_PAUSABLE
 	render_vp.own_world_3d = true
 	render_vp.world_3d = World3D.new()
 	render_vp.handle_input_locally = false
@@ -72,7 +74,13 @@ func _ready() -> void:
 		hud.start_daylight_requested.connect(start_game_daylight)
 		hud.restart_requested.connect(restart_game)
 		hud.graphics_action.connect(_on_hud_graphics_action)
+		hud.open_settings_requested.connect(func(): _open_overlay("settings"))
 		hud.settings_closed.connect(_on_settings_closed)
+		hud.open_inventory_requested.connect(_open_inventory)
+		hud.inventory_action.connect(_on_inventory_action)
+		hud.inventory_closed.connect(_close_all_overlays)
+		hud.dev_action.connect(_on_dev_action)
+		hud.dev_closed.connect(_close_all_overlays)
 		if hud.loading_overlay:
 			hud.loading_overlay.visible = true
 			hud.set_loading_status("BODYCAM-04 // INITIALIZING WEBGL2 OPTICS...")
@@ -110,7 +118,13 @@ func _ready() -> void:
 	hud.start_daylight_requested.connect(start_game_daylight)
 	hud.restart_requested.connect(restart_game)
 	hud.graphics_action.connect(_on_hud_graphics_action)
+	hud.open_settings_requested.connect(func(): _open_overlay("settings"))
 	hud.settings_closed.connect(_on_settings_closed)
+	hud.open_inventory_requested.connect(_open_inventory)
+	hud.inventory_action.connect(_on_inventory_action)
+	hud.inventory_closed.connect(_close_all_overlays)
+	hud.dev_action.connect(_on_dev_action)
+	hud.dev_closed.connect(_close_all_overlays)
 
 	player.player_died.connect(_on_player_died)
 	player.hit_confirmed.connect(_on_hit_confirmed)
@@ -227,12 +241,165 @@ func _on_hud_graphics_action(key: String) -> void:
 	_sync_hud_graphics_state()
 
 
-func _on_settings_closed() -> void:
-	if hud and hud.settings_panel:
-		hud.settings_panel.visible = false
-	if game_active and player and not player.dead and not hud.title_panel.visible:
+func _is_any_overlay_open() -> bool:
+	if hud == null:
+		return false
+	return (hud.settings_panel != null and hud.settings_panel.visible) or (hud.inventory_panel != null and hud.inventory_panel.visible) or (hud.dev_panel != null and hud.dev_panel.visible)
+
+
+func _open_overlay(which: String) -> void:
+	if hud == null:
+		return
+	if hud.settings_panel:
+		hud.settings_panel.visible = (which == "settings")
+	if hud.inventory_panel:
+		hud.inventory_panel.visible = (which == "inventory")
+	if hud.dev_panel:
+		hud.dev_panel.visible = (which == "dev")
+	if which == "settings":
+		_sync_hud_graphics_state()
+		hud.set_settings_context(game_active and player != null and not player.dead)
+	elif which == "inventory" and player:
+		hud.refresh_inventory(player)
+	elif which == "dev" and player:
+		hud.refresh_dev_menu(player)
+	if game_active:
+		get_tree().paused = true
+	if player:
+		player.input_enabled = false
+		if player.has_method("cancel_bow_draw"):
+			player.cancel_bow_draw(true)
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+
+
+func _open_inventory() -> void:
+	if not game_active or player == null or player.dead:
+		return
+	_open_overlay("inventory")
+
+
+func _close_all_overlays() -> void:
+	if hud:
+		if hud.settings_panel:
+			hud.settings_panel.visible = false
+		if hud.inventory_panel:
+			hud.inventory_panel.visible = false
+		if hud.dev_panel:
+			hud.dev_panel.visible = false
+	get_tree().paused = false
+	if game_active and player and not player.dead and (hud == null or not hud.title_panel.visible):
 		player.input_enabled = true
 		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+
+
+func _on_settings_closed() -> void:
+	_close_all_overlays()
+
+
+func _on_inventory_action(action: String, arg: Variant) -> void:
+	if player == null:
+		return
+	match action:
+		"swap":
+			var pair: Array = arg
+			if pair.size() == 2:
+				player.swap_firearm_slots(int(pair[0]), int(pair[1]))
+		"equip_slot":
+			player.equip_firearm_slot(int(arg))
+		"equip_special":
+			player.equip_special_slot()
+		"drop_slot":
+			player.drop_firearm_slot(int(arg))
+		"select_melee":
+			player.select_melee_weapon(str(arg))
+		"select_grenade":
+			player.select_grenade(str(arg))
+	if hud:
+		hud.refresh_inventory(player)
+
+
+func _on_dev_action(action: String, arg: Variant) -> void:
+	if player == null:
+		return
+	match action:
+		"give_weapon":
+			var wi := int(arg)
+			var res := player.acquire_weapon(wi, true)
+			if hud:
+				hud.show_toast("DEV: SPAWNED [%s] %s" % [str(res.get("slot_key", "?")), PlayerBodycam.WEAPONS[wi]["name"]])
+		"give_melee":
+			var mid := str(arg)
+			player.acquire_melee_weapon(mid)
+			player.equip_melee_slot()
+			if hud:
+				hud.show_toast("DEV: EQUIPPED %s" % PlayerBodycam.MELEE_CATALOG[mid]["name"])
+		"add_points":
+			points += 5000
+			if hud:
+				hud.show_toast("DEV: +5000 PTS (TOTAL %d)" % points)
+		"refill_all":
+			player.dev_give_all_ammo_and_grenades()
+			if hud:
+				hud.show_toast("DEV: AMMO & GRENADES MAXED")
+		"toggle_god":
+			player.god_mode = not player.god_mode
+			if player.god_mode:
+				player.health = player.max_health
+			if hud:
+				hud.show_toast("DEV: GOD MODE %s" % ("ON" if player.god_mode else "OFF"))
+		"upgrade_cur":
+			if not bool(PlayerBodycam.WEAPONS[player.current_weapon].get("is_melee", false)):
+				player.is_reloading = false
+				player.reload_pos_off = Vector3.ZERO
+				player.reload_rot_off = Vector3.ZERO
+				player.upgrade_weapon(player.current_weapon)
+				player._reset_weapon_parts()
+				if hud:
+					hud.show_toast("DEV: UPGRADED %s TO MK-II" % PlayerBodycam.WEAPONS[player.current_weapon]["name"])
+		"kill_all":
+			for z in zombies_root.get_children():
+				if z is ZombieAI and not z.dead:
+					(z as ZombieAI).apply_shot([{"zone": "HEAD", "pos": (z as Node3D).global_position + Vector3(0, 1.5, 0), "dir": Vector3.FORWARD, "dmg": 9999.0, "dist": 2.0}], 1)
+			if hud:
+				hud.show_toast("DEV: CLEARED ACTIVE ZOMBIES")
+		"next_wave":
+			zombies_to_spawn = 0
+			wave_pause_timer = 0.0
+			for z in zombies_root.get_children():
+				z.queue_free()
+			_active_attackers.clear()
+			_start_wave(wave + 1)
+			if hud:
+				hud.show_toast("DEV: SKIPPED TO WAVE %02d" % wave)
+		"spawn_zombie":
+			var fwd := -player.global_transform.basis.z
+			var spos := player.global_position + fwd * 8.0
+			spos.y = player.global_position.y
+			spawn_zombie_at(spos, ZombieAI.Variant.TACTICAL_SOLDIER, player.yaw + PI, true)
+			if hud:
+				hud.show_toast("DEV: SPAWNED ZOMBIE AHEAD")
+		"toggle_daylight":
+			if world:
+				world.set_daylight_mode(not world.daylight_mode)
+		"unlock_world":
+			if not power_restored:
+				on_generator_activated()
+			if world and not world.sawmill_gate_open:
+				on_sawmill_gate_opened()
+			for inter: InteractableObject in world.interactables:
+				if inter.kind == InteractableObject.Kind.GENERATOR or inter.kind == InteractableObject.Kind.BREACH_GATE:
+					inter.activated = true
+					if inter.kind == InteractableObject.Kind.GENERATOR and inter.glow_light:
+						inter.glow_light.light_color = Color(0.35, 1.0, 0.45)
+						inter.glow_light.light_energy = 1.8
+					if inter.kind == InteractableObject.Kind.BREACH_GATE:
+						inter.collision_layer = 0
+						if inter.gate_visual and is_instance_valid(inter.gate_visual):
+							inter.gate_visual.rotation.y = 1.65
+			if hud:
+				hud.show_toast("DEV: POWER RESTORED & SAWMILL GATE OPENED")
+	if hud:
+		hud.refresh_dev_menu(player)
 
 
 func _apply_viewport_perf() -> void:
@@ -350,6 +517,7 @@ func release_attack_token(z: ZombieAI) -> void:
 
 
 func start_game() -> void:
+	get_tree().paused = false
 	game_active = true
 	if world and world.daylight_mode:
 		world.set_daylight_mode(false)
@@ -357,13 +525,17 @@ func start_game() -> void:
 		ambient_audio.play()
 	hud.title_panel.visible = false
 	hud.defeat_panel.visible = false
+	if hud.settings_panel: hud.settings_panel.visible = false
+	if hud.inventory_panel: hud.inventory_panel.visible = false
+	if hud.dev_panel: hud.dev_panel.visible = false
 	player.input_enabled = true
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	_start_wave(1)
-	hud.show_toast("WAVE 01 — SURVIVE THE BLACKOUT")
+	hud.show_toast("WAVE 01 — SURVIVE THE BLACKOUT  ([I] INV  [G] GRENADE  [ESC] PAUSE)")
 
 
 func start_game_daylight() -> void:
+	get_tree().paused = false
 	game_active = true
 	if world:
 		world.set_daylight_mode(true)
@@ -381,6 +553,9 @@ func start_game_daylight() -> void:
 		ambient_audio.play()
 	hud.title_panel.visible = false
 	hud.defeat_panel.visible = false
+	if hud.settings_panel: hud.settings_panel.visible = false
+	if hud.inventory_panel: hud.inventory_panel.visible = false
+	if hud.dev_panel: hud.dev_panel.visible = false
 	player.input_enabled = true
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	_start_wave(1)
@@ -388,6 +563,10 @@ func start_game_daylight() -> void:
 
 
 func restart_game() -> void:
+	if zombies_root == null or player == null or world == null:
+		return
+	var keep_daylight := world.daylight_mode
+	get_tree().paused = false
 	for c in zombies_root.get_children():
 		c.queue_free()
 	_active_attackers.clear()
@@ -409,13 +588,20 @@ func restart_game() -> void:
 	for inter: InteractableObject in world.interactables:
 		if is_instance_valid(inter) and inter.has_method("reset_state"):
 			inter.reset_state()
-	start_game()
+	if keep_daylight:
+		start_game_daylight()
+	else:
+		start_game()
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if deterministic_mode:
 		return
-	var settings_open := (hud != null and hud.settings_panel != null and hud.settings_panel.visible)
+	if world == null or player == null or (hud != null and hud.loading_overlay != null and hud.loading_overlay.visible):
+		return
+	var any_overlay := _is_any_overlay_open()
+	var inv_open := (hud != null and hud.inventory_panel != null and hud.inventory_panel.visible)
+	var dev_open := (hud != null and hud.dev_panel != null and hud.dev_panel.visible)
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_F3 and hud and hud.perf_label and render_vp:
 			hud.perf_label.visible = not hud.perf_label.visible
@@ -432,25 +618,31 @@ func _unhandled_input(event: InputEvent) -> void:
 			world.set_daylight_mode(not world.daylight_mode)
 			if hud:
 				hud.show_toast("LIGHTING: %s [F9]" % ("WINTER DAYLIGHT" if world.daylight_mode else "BLACKOUT NIGHT"))
-	if event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE:
-		if settings_open:
-			_on_settings_closed()
+		elif event.physical_keycode == KEY_I and game_active and player and not player.dead:
+			if inv_open:
+				_close_all_overlays()
+			else:
+				_open_overlay("inventory")
 			return
-		elif hud and hud.settings_panel:
-			_sync_hud_graphics_state()
-			hud.settings_panel.visible = true
-			if player:
-				player.input_enabled = false
-				if player.has_method("cancel_bow_draw"):
-					player.cancel_bow_draw(true)
-			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		elif event.physical_keycode == KEY_QUOTELEFT and game_active and player and not player.dead:
+			if dev_open:
+				_close_all_overlays()
+			else:
+				_open_overlay("dev")
 			return
+		elif event.physical_keycode == KEY_ESCAPE:
+			if any_overlay:
+				_close_all_overlays()
+				return
+			elif hud and hud.settings_panel:
+				_open_overlay("settings")
+				return
 	elif event is InputEventMouseButton and event.pressed and game_active and not player.dead:
-		if settings_open or (hud and hud.title_panel.visible):
+		if any_overlay or (hud and hud.title_panel.visible):
 			return
 		if Input.get_mouse_mode() != Input.MOUSE_MODE_CAPTURED:
 			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
-	if not settings_open and player and is_instance_valid(player):
+	if not any_overlay and not get_tree().paused and player and is_instance_valid(player):
 		player._unhandled_input(event)
 
 
@@ -630,7 +822,7 @@ func _process(delta: float) -> void:
 			hud.perf_label.text = "%d FPS | GPU %.1fms | CPU %.1fms\n3D %dx%d -> VP %dx%d | %s [F8]" % [
 				Engine.get_frames_per_second(), gpu_ms, cpu_ms, iw, ih, render_vp.size.x, render_vp.size.y, QUALITY_NAMES[quality_preset]
 			]
-	if deterministic_mode:
+	if deterministic_mode or get_tree().paused:
 		return
 
 	# Outdoor-gated moon & distant lightning (STRICTLY skipped during live daylight_mode so sun_energy=2.45 is never overwritten!)
@@ -681,7 +873,10 @@ func _process(delta: float) -> void:
 				spawn_timer = 0.45
 	elif get_living_zombies() == 0:
 		if wave_pause_timer == 0.0:
-			hud.show_toast("WAVE %02d CLEARED — RELOAD & REGROUP" % wave)
+			var g_pick: String = PlayerBodycam.GRENADE_ORDER[wave % PlayerBodycam.GRENADE_ORDER.size()]
+			if player and player.has_method("add_grenade"):
+				player.add_grenade(g_pick, 1)
+			hud.show_toast("WAVE %02d CLEARED — +1 %s GRENADE • RELOAD & REGROUP" % [wave, PlayerBodycam.GRENADE_LABELS[g_pick]])
 		wave_pause_timer += delta
 		if wave_pause_timer >= wave_intermission_dur:
 			wave_pause_timer = 0.0

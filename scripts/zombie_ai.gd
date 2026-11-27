@@ -34,6 +34,12 @@ var _frozen_rest_rot: Dictionary = {} # bone_idx -> Quaternion
 var crippled_side: int = 0 # -1 left, +1 right, 0 none
 var disabled_arm_side: int = 0 # -1 left, +1 right
 var disabled_arm_timer: float = 0.0
+var burn_timer: float = 0.0
+var burn_dps: float = 26.0
+var _burn_tick: float = 0.0
+var shock_timer: float = 0.0
+var _shock_tick: float = 0.0
+var _status_light: OmniLight3D = null
 
 # Melee telegraph state
 var attack_side: int = 1 # -1 left arm, +1 right arm
@@ -1377,6 +1383,90 @@ func _request_token() -> bool:
 	return true
 
 
+func apply_burn(dur: float, dps: float = 26.0) -> void:
+	if dead:
+		return
+	burn_timer = maxf(burn_timer, dur)
+	burn_dps = maxf(burn_dps, dps)
+	_ensure_status_light()
+
+
+func apply_shock(dur: float) -> void:
+	if dead:
+		return
+	shock_timer = maxf(shock_timer, dur)
+	if state == State.CHASE or state == State.WINDUP:
+		_release_token()
+		state = State.STAGGER
+		state_timer = maxf(state_timer, 0.35)
+	_ensure_status_light()
+
+
+func _ensure_status_light() -> void:
+	if OS.has_feature("web"):
+		return
+	if _status_light == null or not is_instance_valid(_status_light):
+		_status_light = OmniLight3D.new()
+		_status_light.position = Vector3(0.0, 1.15, 0.0)
+		_status_light.omni_range = 2.6
+		_status_light.shadow_enabled = false
+		_status_light.light_cull_mask = 0xFFFFD
+		_status_light.light_volumetric_fog_energy = 0.0
+		add_child(_status_light)
+
+
+func apply_status_damage(dmg: float) -> void:
+	if dead or dmg <= 0.0:
+		return
+	health -= dmg
+	if health <= 0.0:
+		if _status_light and is_instance_valid(_status_light):
+			_status_light.visible = false
+		burn_timer = 0.0
+		shock_timer = 0.0
+		dead = true
+		_release_token()
+		if target and is_instance_valid(target) and target.has_signal("hit_confirmed"):
+			target.emit_signal("hit_confirmed", false, true)
+		emit_signal("died", self, false)
+		_enter_ragdoll(Vector3(0.0, 0.15, -1.0).normalized(), dmg, "CHEST", 2.0, 1)
+
+
+func _tick_status_effects(delta: float) -> void:
+	if dead:
+		if _status_light and is_instance_valid(_status_light):
+			_status_light.visible = false
+		return
+	var any_fx := false
+	if burn_timer > 0.0:
+		any_fx = true
+		burn_timer = maxf(0.0, burn_timer - delta)
+		_burn_tick += delta
+		if _burn_tick >= 0.35:
+			_burn_tick = 0.0
+			apply_status_damage(burn_dps * 0.35)
+			if dead:
+				return
+	if shock_timer > 0.0:
+		any_fx = true
+		shock_timer = maxf(0.0, shock_timer - delta)
+		_shock_tick += delta
+		if _shock_tick >= 0.45:
+			_shock_tick = 0.0
+			apply_status_damage(12.0)
+			if dead:
+				return
+	if _status_light and is_instance_valid(_status_light):
+		_status_light.visible = any_fx and not dead
+		if any_fx and not dead:
+			if shock_timer > 0.0:
+				_status_light.light_color = Color(0.28, 0.78, 1.0)
+				_status_light.light_energy = 1.6 + 0.8 * sin(Time.get_ticks_msec() * 0.045)
+			else:
+				_status_light.light_color = Color(1.0, 0.42, 0.10)
+				_status_light.light_energy = 1.5 + 0.6 * sin(Time.get_ticks_msec() * 0.030)
+
+
 func get_bone_for_zone(zone: String) -> int:
 	match zone:
 		"HEAD": return head_bone if head_bone >= 0 else spine2_bone
@@ -1620,6 +1710,8 @@ func _freeze_ragdoll_to_static() -> void:
 	if anim_player and is_instance_valid(anim_player):
 		anim_player.queue_free()
 	anim_player = null
+	if _status_light and is_instance_valid(_status_light):
+		_status_light.visible = false
 	_set_shadow_casting(false)
 	death_settled = true
 	set_physics_process(false)
@@ -1740,6 +1832,7 @@ func _physics_process(delta: float) -> void:
 		disabled_arm_timer -= delta
 		if disabled_arm_timer <= 0.0:
 			disabled_arm_side = 0
+	_tick_status_effects(delta)
 
 	if dead:
 		dead_age += delta
@@ -1888,7 +1981,8 @@ func _physics_process(delta: float) -> void:
 			var steer_yaw := atan2(steer_dir.x, steer_dir.z)
 			rotation.y = lerp_angle(rotation.y, desired_yaw if dist < 4.0 else steer_yaw, delta * 6.5)
 
-			var effective_speed := move_speed * (0.34 if crippled_side != 0 else 1.0)
+			var shock_mult := 0.22 if shock_timer > 0.0 else 1.0
+			var effective_speed := move_speed * (0.34 if crippled_side != 0 else 1.0) * shock_mult
 			if anim_player and not deterministic_pose:
 				anim_player.speed_scale = clampf(effective_speed / 2.15, 0.45, 1.85)
 			# Runner approach telegraph snarl when closing inside 7.5m

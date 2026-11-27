@@ -2,19 +2,19 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://qlokgubfle2"
-path="res://.godot/imported/weapon_mp5_metal_tactical_normal.jpg-b623ba3b079d006b5dfc41494246d26c.ctex"
+uid="uid://5qww407fmgjg"
+path="res://.godot/imported/weapon_grenade_shock_Image_2.jpg-52e3f0b067c124d4ef20c1c411f79b64.ctex"
 metadata={
 "vram_texture": false
 }
 generator_parameters={
-"md5": "acfcd8c98f5d8ef3b05dce12c4fe9481"
+"md5": "ac575cef5615de49916ff69239b5e8c6"
 }
 
 [deps]
 
-source_file="res://assets/models/weapon_mp5_metal_tactical_normal.jpg"
-dest_files=["res://.godot/imported/weapon_mp5_metal_tactical_normal.jpg-b623ba3b079d006b5dfc41494246d26c.ctex"]
+source_file="res://assets/models/weapon_grenade_shock_Image_2.jpg"
+dest_files=["res://.godot/imported/weapon_grenade_shock_Image_2.jpg-52e3f0b067c124d4ef20c1c411f79b64.ctex"]
 
 [params]
 

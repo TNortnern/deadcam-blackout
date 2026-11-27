@@ -2627,6 +2627,35 @@ func _build_interactables() -> void:
 	_spawn_melee_pickup("FireAxePickup", "fire_axe", "FIRE AXE", Vector3(-1.95, 0.0, -3.25), Vector3(0.0, 0.55, 0.0), lobby_group)
 	_spawn_melee_pickup("MachetePickup", "machete", "TACTICAL MACHETE", Vector3(-2.45, 0.0, -49.6), Vector3(0.0, -0.40, 0.0), courtyard_group)
 
+	# Dedicated Lobby Ammo Resupply Crate (250 PTS) — reachable even under 3-firearm cap!
+	var ac := InteractableObject.new()
+	ac.name = "AmmoCrate"
+	ac.kind = InteractableObject.Kind.AMMO_CRATE
+	ac.cost = 250
+	ac.collision_layer = 16 | 1
+	ac.position = Vector3(3.15, 0.0, 2.55)
+	ac.rotation.y = -0.35
+	(lobby_group if lobby_group != null else self).add_child(ac)
+	var acol := CollisionShape3D.new()
+	var ash := BoxShape3D.new(); ash.size = Vector3(0.95, 0.72, 0.58)
+	acol.shape = ash; acol.position = Vector3(0.0, 0.36, 0.0)
+	ac.add_child(acol)
+	var ac_mat := StandardMaterial3D.new()
+	ac_mat.albedo_color = Color(0.20, 0.24, 0.17)
+	ac_mat.roughness = 0.72; ac_mat.metallic = 0.35
+	_add_box(ac, Vector3(0.0, 0.28, 0.0), Vector3(0.86, 0.44, 0.46), ac_mat)
+	_add_box(ac, Vector3(0.0, 0.52, 0.0), Vector3(0.90, 0.08, 0.50), mats["metal"])
+	var ac_light := OmniLight3D.new()
+	ac_light.light_color = Color(0.88, 0.94, 0.52)
+	ac_light.light_energy = 0.65
+	ac_light.omni_range = 2.8
+	ac_light.shadow_enabled = false
+	ac_light.light_cull_mask = 0xFFFFD
+	ac_light.light_volumetric_fog_energy = 0.0
+	ac_light.position = Vector3(0.0, 0.82, 0.0)
+	ac.add_child(ac_light)
+	interactables.append(ac)
+
 
 func _spawn_melee_pickup(node_name: String, m_id: String, label: String, pos: Vector3, rot: Vector3, parent_grp: Node3D) -> void:
 	var pk := InteractableObject.new()
@@ -2646,48 +2675,29 @@ func _spawn_melee_pickup(node_name: String, m_id: String, label: String, pos: Ve
 	col.position = Vector3(0.0, 0.55, 0.0)
 	pk.add_child(col)
 
-	var steel := StandardMaterial3D.new()
-	steel.albedo_color = Color(0.28, 0.30, 0.33)
-	steel.metallic = 0.85
-	steel.roughness = 0.32
-	var edge := StandardMaterial3D.new()
-	edge.albedo_color = Color(0.72, 0.74, 0.76)
-	edge.metallic = 0.92
-	edge.roughness = 0.20
-	var wood := StandardMaterial3D.new()
-	wood.albedo_color = Color(0.36, 0.22, 0.13)
-	wood.roughness = 0.78
-
 	var vis := Node3D.new()
 	vis.position = Vector3(0.0, 0.42, 0.0)
 	vis.rotation = Vector3(0.22, 0.0, 0.18)
 	pk.add_child(vis)
-	if m_id == "fire_axe":
-		var hdl := MeshInstance3D.new()
-		var hm := CylinderMesh.new(); hm.top_radius = 0.018; hm.bottom_radius = 0.022; hm.height = 0.82; hm.material = wood
-		hdl.mesh = hm; vis.add_child(hdl)
-		var head := MeshInstance3D.new()
-		var bm := BoxMesh.new(); bm.size = Vector3(0.18, 0.11, 0.030); bm.material = steel
-		head.mesh = bm; head.position = Vector3(0.06, 0.34, 0.0); vis.add_child(head)
-		var bit := MeshInstance3D.new()
-		var em := BoxMesh.new(); em.size = Vector3(0.04, 0.13, 0.012); em.material = edge
-		bit.mesh = em; bit.position = Vector3(0.16, 0.34, 0.0); vis.add_child(bit)
-	else:
-		var grip := MeshInstance3D.new()
-		var gm := CylinderMesh.new(); gm.top_radius = 0.016; gm.bottom_radius = 0.018; gm.height = 0.16; gm.material = wood
-		grip.mesh = gm; grip.position = Vector3(0.0, -0.18, 0.0); vis.add_child(grip)
-		var blade := MeshInstance3D.new()
-		var bm := BoxMesh.new(); bm.size = Vector3(0.055, 0.48, 0.008); bm.material = steel
-		blade.mesh = bm; blade.position = Vector3(0.0, 0.14, 0.0); vis.add_child(blade)
-		var b_edge := MeshInstance3D.new()
-		var em := BoxMesh.new(); em.size = Vector3(0.014, 0.46, 0.005); em.material = edge
-		b_edge.mesh = em; b_edge.position = Vector3(0.032, 0.14, 0.0); vis.add_child(b_edge)
+	var m_glb := "res://assets/models/weapon_melee_axe.glb" if m_id == "fire_axe" else "res://assets/models/weapon_melee_machete.glb"
+	if ResourceLoader.exists(m_glb):
+		var m_pk: PackedScene = load(m_glb)
+		if m_pk:
+			var m_inst := m_pk.instantiate() as Node3D
+			m_inst.scale = Vector3.ONE * (1.25 if m_id == "fire_axe" else 1.30)
+			for mn in m_inst.find_children("*", "MeshInstance3D", true, false):
+				var mi := mn as MeshInstance3D
+				mi.layers = 1
+				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			vis.add_child(m_inst)
 
 	var glint := OmniLight3D.new()
 	glint.light_color = Color(0.95, 0.82, 0.58)
 	glint.light_energy = 0.55
 	glint.omni_range = 2.6
 	glint.shadow_enabled = false
+	glint.light_cull_mask = 0xFFFFD
+	glint.light_volumetric_fog_energy = 0.0
 	glint.position = Vector3(0.0, 0.65, 0.15)
 	pk.add_child(glint)
 	interactables.append(pk)

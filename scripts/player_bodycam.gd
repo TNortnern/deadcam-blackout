@@ -104,11 +104,12 @@ const WEAPONS := [
 	},
 	{
 		"name": "COMPOUND BOW",
-		"key": "5",
+		"key": "4",
 		"glb": "res://assets/models/weapon_bow.glb",
 		"arm_src": 1,
 		"audio": "res://assets/audio/bow_release.wav",
 		"is_bow": true,
+		"is_special": true,
 		"mag_size": 1,
 		"reserve_max": 24,
 		"damage": 165.0,
@@ -130,12 +131,12 @@ const WEAPONS := [
 		"holo_pos": Vector3.ZERO,
 	},
 	{
-		"name": "MP5A3 SUPPRESSED",
+		"name": "MP5A3 9MM",
 		"key": "6",
 		"glb": "res://assets/models/weapon_mp5.glb",
 		"arm_src": 1,
-		"audio": "res://assets/audio/gun_mp5_sd.wav",
-		"audio_b": "res://assets/audio/gun_mp5_sd_b.wav",
+		"audio": "res://assets/audio/gun_pistol.wav",
+		"audio_b": "res://assets/audio/gun_pistol_b.wav",
 		"mag_size": 30,
 		"reserve_max": 180,
 		"damage": 24.0,
@@ -145,15 +146,15 @@ const WEAPONS := [
 		"spread": 0.014,
 		"recoil_pitch": 0.022,
 		"recoil_kick": 0.020,
-		"flash_scale": 0.22,
+		"flash_scale": 0.78,
 		"hip_pos": Vector3(0.125, -0.175, -0.30),
 		"hip_rot": Vector3(0.02, 0.09, -0.05),
-		"ads_pos": Vector3(0.0, -0.078, -0.26),
+		"ads_pos": Vector3(0.0, -0.020, -0.22),
 		"ads_rot": Vector3(0.0, 0.0, 0.0),
-		"muzzle": Vector3(0.0, 0.025, -0.58),
+		"muzzle": Vector3(0.0, 0.016, -0.40),
 		"ejection": Vector3(0.036, 0.032, -0.09),
-		"has_holo": true,
-		"holo_pos": Vector3(0.0, 0.078, -0.088),
+		"has_holo": false,
+		"holo_pos": Vector3.ZERO,
 	},
 	{
 		"name": ".44 MAGNUM",
@@ -376,8 +377,16 @@ var _was_on_floor: bool = true
 var _pre_land_vy: float = 0.0
 var _land_dip: float = 0.0
 
+const MAX_FIREARM_SLOTS := 3
+const GRENADE_ORDER := ["frag", "molotov", "shock"]
+const GRENADE_LABELS := {"frag": "FRAG", "molotov": "MOLOTOV", "shock": "SHOCK"}
+
 var current_weapon: int = 0
-# Player starts with G17 (0) + Quick Melee Knife (3); all 9 other ranged weapons unlock via Mystery Box!
+# Dynamic pickup-order loadout cap: 3 firearms [1-3], 1 special [4], 1 active melee [5 / V], + throwables [G/Q]!
+var firearm_slots: Array[int] = [0]
+var special_slot: int = -1
+var owned_melee: Array[String] = ["knife"]
+var god_mode: bool = false
 var unlocked_weapons: Array[bool] = [true, false, false, true, false, false, false, false, false, false, false]
 var upgraded_weapons: Array[bool] = [false, false, false, false, false, false, false, false, false, false, false]
 var weapon_chambered: Array[bool] = [true, true, true, true, true, true, true, true, true, true, true]
@@ -387,7 +396,19 @@ var equipped_melee_id: String = "knife"
 var _melee_timer: float = 0.0
 var _melee_dur: float = 0.42
 var _melee_hit_done: bool = false
+var _quick_melee_active: bool = false
+var _melee_is_heavy: bool = false
+var _melee_is_gun_bash: bool = false
+var _melee_combo_idx: int = 0
+var _melee_combo_reset: float = 0.0
 var _melee_nodes: Dictionary = {} # melee_id -> Node3D
+
+# Throwables state (Frag, Molotov, Shock)
+var grenade_counts: Dictionary = {"frag": 2, "molotov": 1, "shock": 1}
+var equipped_grenade: String = "frag"
+var _grenade_cd: float = 0.0
+var _grenades: Array[Dictionary] = []
+var _hazards: Array[Dictionary] = []
 
 # Bow, Revolver & CoD-Style Sniper Scope Transition state
 var _bow_drawing: bool = false
@@ -968,6 +989,9 @@ func _prep_viewmodel_node(n: Node) -> void:
 				cloth.metallic_specular = 0.05
 				cloth.rim_enabled = false
 				n.set_surface_override_material(i, cloth)
+			elif (source.roughness_texture != null or source.metallic_texture != null) and not ("m16" in mname or "remington" in mname or "shotgun" in mname or "glock" in mname or mname == "material" or "magazine_m16a2" in n.name.to_lower()):
+				# Preserve real Objaverse PBR textures & metallic/roughness maps (MP5A3, Melee, Grenades, new firearms)!
+				continue
 			else:
 				var gun := source.duplicate() as StandardMaterial3D
 				var nname := n.name.to_lower()
@@ -1897,7 +1921,7 @@ func _apply_idle_bolt_and_cover() -> void:
 		_pose_part("dust_cover", Vector3.ZERO, Vector3.ZERO if (_m16_dust_open or locked_ar > 0.5) else Vector3(0.0, 0.0, 1.48), PIVOT_AR_DUST)
 	elif current_weapon == 5:
 		var locked_mp5 := 1.0 if (ammo_in_mag[5] <= 0 or not weapon_chambered[5]) else 0.0
-		_pose_part("charge", Vector3(0.0, 0.0, maxf(bolt_blowback * 0.025, locked_mp5 * 0.068)), Vector3(0.0, 0.0, locked_mp5 * 0.52))
+		_pose_part("charge", Vector3(0.0, 0.0, locked_mp5 * 0.068), Vector3(0.0, 0.0, -locked_mp5 * 0.52))
 	elif current_weapon == 6:
 		_pose_part("speed_loader", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, false)
 	elif current_weapon == 7:
@@ -1926,13 +1950,15 @@ func _equip_weapon(idx: int, force_preview: bool = false) -> void:
 		return
 	if not force_preview and not unlocked_weapons[idx]:
 		return
-	# Pressing the already-equipped weapon's key never cancels an active reload!
-	if not force_preview and idx == current_weapon and not _weapon_rigs.is_empty() and is_instance_valid(_weapon_rigs[idx]) and _weapon_rigs[idx].visible:
+	# Pressing the already-equipped weapon's key never cancels an active reload or quick-melee!
+	if not force_preview and idx == current_weapon and not _weapon_rigs.is_empty() and is_instance_valid(_weapon_rigs[idx]) and (_weapon_rigs[idx].visible or _quick_melee_active):
 		return
 	if current_weapon == 4:
 		cancel_bow_draw(false)
 	current_weapon = idx
 	is_reloading = false
+	_quick_melee_active = false
+	_melee_timer = 0.0
 	reload_cancel_req = false
 	_shotgun_fire_on_cancel = false
 	_fire_buffer_timer = 0.0
@@ -1968,6 +1994,13 @@ func _equip_weapon(idx: int, force_preview: bool = false) -> void:
 
 	holo_quad.visible = w["has_holo"]
 	holo_quad.position = w["holo_pos"]
+	if is_instance_valid(weapon_pivot) and get_tree() and get_tree().paused:
+		weapon_pivot.position = w["hip_pos"]
+		weapon_pivot.rotation = w["hip_rot"]
+		is_ads = false
+		_ads_blend = 0.0
+		if camera:
+			camera.fov = 94.0
 	muzzle_light.position = w["muzzle"]
 	muzzle_vm_light.position = w["muzzle"]
 	muzzle_flash_rig.position = w["muzzle"]
@@ -2182,31 +2215,207 @@ func upgrade_weapon(idx: int) -> void:
 	weapon_chambered[idx] = true
 
 
+func _sync_unlocked_from_loadout() -> void:
+	for i in range(unlocked_weapons.size()):
+		unlocked_weapons[i] = false
+	for idx: int in firearm_slots:
+		if idx >= 0 and idx < unlocked_weapons.size():
+			unlocked_weapons[idx] = true
+	if special_slot >= 0 and special_slot < unlocked_weapons.size():
+		unlocked_weapons[special_slot] = true
+	unlocked_weapons[3] = (equipped_melee_id != "")
+
+
+func get_slot_key_for_weapon(idx: int) -> String:
+	if idx == 3:
+		return "5"
+	if idx == special_slot and special_slot >= 0:
+		return "4"
+	var pos := firearm_slots.find(idx)
+	if pos >= 0:
+		return str(pos + 1)
+	return str(WEAPONS[idx].get("key", "?"))
+
+
+func get_claim_prompt_label(idx: int) -> String:
+	if idx < 0 or idx >= WEAPONS.size():
+		return "[E] CLAIM WEAPON"
+	var wname := str(WEAPONS[idx]["name"])
+	if bool(WEAPONS[idx].get("is_special", false)):
+		if special_slot >= 0 and special_slot != idx:
+			return "[E] SWAP [4] %s -> %s" % [WEAPONS[special_slot]["name"], wname]
+		return "[E] CLAIM [4] %s (SPECIAL)" % wname
+	if firearm_slots.has(idx):
+		return "[E] REFILL [%d] %s" % [firearm_slots.find(idx) + 1, wname]
+	if firearm_slots.size() < MAX_FIREARM_SLOTS:
+		return "[E] CLAIM [%d] %s" % [firearm_slots.size() + 1, wname]
+	var rep_slot := firearm_slots.find(current_weapon)
+	if rep_slot < 0:
+		rep_slot = MAX_FIREARM_SLOTS - 1
+	var old_idx := firearm_slots[rep_slot]
+	return "[E] SWAP [%d] %s -> %s" % [rep_slot + 1, WEAPONS[old_idx]["name"], wname]
+
+
+func acquire_weapon(idx: int, equip_now: bool = true) -> Dictionary:
+	if idx < 0 or idx >= WEAPONS.size() or idx == 3:
+		return {"ok": false}
+	var is_spec := bool(WEAPONS[idx].get("is_special", false))
+	var slot_key := ""
+	var replaced := -1
+	if is_spec:
+		if special_slot >= 0 and special_slot != idx:
+			replaced = special_slot
+		special_slot = idx
+		slot_key = "4"
+	else:
+		var existing := firearm_slots.find(idx)
+		if existing >= 0:
+			slot_key = str(existing + 1)
+		elif firearm_slots.size() < MAX_FIREARM_SLOTS:
+			firearm_slots.append(idx)
+			slot_key = str(firearm_slots.size())
+		else:
+			var rep_slot := firearm_slots.find(current_weapon)
+			if rep_slot < 0:
+				rep_slot = MAX_FIREARM_SLOTS - 1
+			replaced = firearm_slots[rep_slot]
+			firearm_slots[rep_slot] = idx
+			slot_key = str(rep_slot + 1)
+	if replaced >= 0 and replaced < upgraded_weapons.size():
+		upgraded_weapons[replaced] = false
+	_sync_unlocked_from_loadout()
+	ammo_in_mag[idx] = get_weapon_mag_size(idx)
+	ammo_reserve[idx] = int(WEAPONS[idx]["reserve_max"])
+	weapon_chambered[idx] = true
+	if equip_now or replaced == current_weapon:
+		_equip_weapon(idx, true)
+	return {"ok": true, "slot_key": slot_key, "replaced": replaced}
+
+
+func swap_firearm_slots(a: int, b: int) -> bool:
+	if a < 0 or b < 0 or a >= firearm_slots.size() or b >= firearm_slots.size() or a == b:
+		return false
+	var tmp := firearm_slots[a]
+	firearm_slots[a] = firearm_slots[b]
+	firearm_slots[b] = tmp
+	return true
+
+
+func drop_firearm_slot(slot_idx: int) -> bool:
+	if firearm_slots.size() <= 1 or slot_idx < 0 or slot_idx >= firearm_slots.size():
+		return false
+	var removed := firearm_slots[slot_idx]
+	firearm_slots.remove_at(slot_idx)
+	if removed >= 0 and removed < upgraded_weapons.size():
+		upgraded_weapons[removed] = false
+	_sync_unlocked_from_loadout()
+	if current_weapon == removed and not firearm_slots.is_empty():
+		_equip_weapon(firearm_slots[0], true)
+	return true
+
+
+func equip_firearm_slot(slot_idx: int) -> void:
+	if slot_idx >= 0 and slot_idx < firearm_slots.size():
+		_equip_weapon(firearm_slots[slot_idx], false)
+
+
+func equip_special_slot() -> void:
+	if special_slot >= 0:
+		_equip_weapon(special_slot, false)
+
+
+func equip_melee_slot() -> void:
+	if equipped_melee_id != "":
+		_equip_weapon(3, false)
+
+
 func unlock_weapon_silent(idx: int) -> void:
-	if idx >= 0 and idx < WEAPONS.size():
-		unlocked_weapons[idx] = true
-		ammo_in_mag[idx] = get_weapon_mag_size(idx)
-		ammo_reserve[idx] = int(WEAPONS[idx]["reserve_max"])
-		weapon_chambered[idx] = true
+	acquire_weapon(idx, false)
 
 
 func acquire_melee_weapon(m_id: String) -> void:
 	if not MELEE_CATALOG.has(m_id):
 		return
+	if not owned_melee.has(m_id):
+		owned_melee.append(m_id)
+	select_melee_weapon(m_id)
+
+
+func select_melee_weapon(m_id: String) -> void:
+	if m_id == "":
+		equipped_melee_id = ""
+		_sync_unlocked_from_loadout()
+		if current_weapon == 3 and not firearm_slots.is_empty():
+			_equip_weapon(firearm_slots[0], true)
+		return
+	if not MELEE_CATALOG.has(m_id):
+		return
+	if not owned_melee.has(m_id):
+		owned_melee.append(m_id)
 	equipped_melee_id = m_id
 	for k in _melee_nodes.keys():
 		if is_instance_valid(_melee_nodes[k]):
 			(_melee_nodes[k] as Node3D).visible = (str(k) == m_id)
-	unlocked_weapons[3] = true
+	_sync_unlocked_from_loadout()
 
 
 func unlock_and_equip(idx: int) -> void:
-	if idx >= 0 and idx < WEAPONS.size():
-		unlocked_weapons[idx] = true
+	acquire_weapon(idx, true)
+
+
+func dev_give_all_ammo_and_grenades() -> void:
+	for idx: int in firearm_slots:
 		ammo_in_mag[idx] = get_weapon_mag_size(idx)
 		ammo_reserve[idx] = int(WEAPONS[idx]["reserve_max"])
 		weapon_chambered[idx] = true
-		_equip_weapon(idx)
+	if special_slot >= 0:
+		ammo_in_mag[special_slot] = get_weapon_mag_size(special_slot)
+		ammo_reserve[special_slot] = int(WEAPONS[special_slot]["reserve_max"])
+		weapon_chambered[special_slot] = true
+	grenade_counts["frag"] = maxi(int(grenade_counts.get("frag", 0)), 4)
+	grenade_counts["molotov"] = maxi(int(grenade_counts.get("molotov", 0)), 3)
+	grenade_counts["shock"] = maxi(int(grenade_counts.get("shock", 0)), 3)
+
+
+func get_hotbar_summary() -> String:
+	var parts: Array[String] = []
+	for i in range(MAX_FIREARM_SLOTS):
+		if i < firearm_slots.size():
+			var wi := firearm_slots[i]
+			var short_nm := str(WEAPONS[wi]["name"]).split(" ")[0]
+			var mark := "*" if wi == current_weapon else ""
+			parts.append("[%d]%s%s" % [i + 1, mark, short_nm])
+		else:
+			parts.append("[%d]---" % (i + 1))
+	if special_slot >= 0:
+		var snm := str(WEAPONS[special_slot]["name"]).split(" ")[0]
+		parts.append("[4]%s%s" % ["*" if special_slot == current_weapon else "", snm])
+	var m_lbl := str(MELEE_CATALOG[equipped_melee_id]["name"]).split(" ")[-1] if (equipped_melee_id != "" and MELEE_CATALOG.has(equipped_melee_id)) else "BASH"
+	parts.append("[V]%s" % m_lbl)
+	var g_lbl: String = str(GRENADE_LABELS.get(equipped_grenade, "FRAG"))
+	var g_cnt: int = int(grenade_counts.get(equipped_grenade, 0))
+	parts.append("[G]%s:%d" % [g_lbl, g_cnt])
+	return "  ".join(parts)
+
+
+func cycle_grenade() -> void:
+	var idx := GRENADE_ORDER.find(equipped_grenade)
+	for step in range(1, GRENADE_ORDER.size() + 1):
+		var cand: String = GRENADE_ORDER[(idx + step) % GRENADE_ORDER.size()]
+		if int(grenade_counts.get(cand, 0)) > 0 or step == GRENADE_ORDER.size():
+			equipped_grenade = cand
+			emit_signal("status_message", "THROWABLE: %s (%d) [G TO THROW]" % [GRENADE_LABELS[cand], int(grenade_counts.get(cand, 0))])
+			return
+
+
+func select_grenade(g_type: String) -> void:
+	if GRENADE_LABELS.has(g_type):
+		equipped_grenade = g_type
+
+
+func add_grenade(g_type: String, count: int = 1) -> void:
+	if GRENADE_LABELS.has(g_type):
+		grenade_counts[g_type] = mini(6, int(grenade_counts.get(g_type, 0)) + count)
 
 
 func cancel_bow_draw(require_repull: bool = false) -> void:
@@ -2234,11 +2443,13 @@ func _finish_reload() -> void:
 
 
 func _cycle_owned_weapon(dir: int) -> void:
-	var order := [0, 1, 2, 7, 4, 5, 6, 8, 9, 10]
 	var owned: Array[int] = []
-	for idx: int in order:
-		if idx < unlocked_weapons.size() and unlocked_weapons[idx]:
-			owned.append(idx)
+	for idx: int in firearm_slots:
+		owned.append(idx)
+	if special_slot >= 0:
+		owned.append(special_slot)
+	if equipped_melee_id != "":
+		owned.append(3)
 	if owned.size() <= 1:
 		return
 	var pos := owned.find(current_weapon)
@@ -2261,16 +2472,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		sway_offset.y = clamp(sway_offset.y + dy * 2.5, -0.055, 0.055)
 	elif event is InputEventKey and event.pressed and not event.echo:
 		match event.physical_keycode:
-			KEY_1: _equip_weapon(0)
-			KEY_2: _equip_weapon(1)
-			KEY_3: _equip_weapon(2)
-			KEY_4: _equip_weapon(7) # Springfield M1903
-			KEY_5: _equip_weapon(4) # Compound Bow
-			KEY_6: _equip_weapon(5) # MP5A3 Suppressed
-			KEY_7: _equip_weapon(6) # .44 Magnum
-			KEY_8: _equip_weapon(8) # AK-74M
-			KEY_9: _equip_weapon(9) # Benelli M4
-			KEY_0: _equip_weapon(10) # M249 SAW
+			KEY_1: equip_firearm_slot(0)
+			KEY_2: equip_firearm_slot(1)
+			KEY_3: equip_firearm_slot(2)
+			KEY_4: equip_special_slot()
+			KEY_5: equip_melee_slot()
+			KEY_G: throw_grenade()
+			KEY_Q: cycle_grenade()
 	elif event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_cycle_owned_weapon(1)
@@ -2459,13 +2667,22 @@ func _play_surface_footstep(is_land := false) -> void:
 func _physics_process(delta: float) -> void:
 	_update_casings(delta)
 	_update_arrows(delta)
+	_update_grenades(delta)
+	_update_hazards(delta)
+	if _grenade_cd > 0.0:
+		_grenade_cd = maxf(0.0, _grenade_cd - delta)
+	if _melee_combo_reset > 0.0:
+		_melee_combo_reset = maxf(0.0, _melee_combo_reset - delta)
+		if _melee_combo_reset <= 0.0:
+			_melee_combo_idx = 0
 	if deterministic_camera or dead or not input_enabled:
 		return
 
 	is_crouching = Input.is_action_pressed("crouch")
 	if ads_lockout > 0.0:
 		ads_lockout -= delta
-	is_ads = Input.is_action_pressed("aim") and not is_reloading and ads_lockout <= 0.0
+	var can_ads := not bool(WEAPONS[current_weapon].get("is_melee", false)) and not _quick_melee_active
+	is_ads = can_ads and Input.is_action_pressed("aim") and not is_reloading and ads_lockout <= 0.0
 	is_sprinting = Input.is_action_pressed("sprint") and not is_crouching and not is_ads and not is_reloading and Input.get_vector("move_left", "move_right", "move_forward", "move_backward").length() > 0.1
 	if is_sprinting and _bow_drawing:
 		cancel_bow_draw(true)
@@ -2507,9 +2724,15 @@ func _physics_process(delta: float) -> void:
 	if _melee_timer > 0.0:
 		_melee_timer = maxf(0.0, _melee_timer - delta)
 		var m_elapsed := _melee_dur - _melee_timer
-		if not _melee_hit_done and m_elapsed >= 0.11:
+		var hit_t := 0.16 if _melee_is_heavy else 0.11
+		if not _melee_hit_done and m_elapsed >= hit_t:
 			_melee_hit_done = true
 			_perform_melee_hit()
+		if _melee_timer <= 0.0 and _quick_melee_active:
+			_quick_melee_active = false
+			for ri in range(_weapon_rigs.size()):
+				if is_instance_valid(_weapon_rigs[ri]):
+					_weapon_rigs[ri].visible = (ri == current_weapon)
 
 	# Single authoritative simulation clock for reloads + firing + shell-cancel!
 	if is_reloading:
@@ -2526,10 +2749,13 @@ func _physics_process(delta: float) -> void:
 	if just_fire and not is_auto and not bool(w.get("is_bow", false)):
 		_fire_buffer_timer = 0.22
 	var wants_fire := Input.is_action_pressed("fire") if is_auto else (just_fire or _fire_buffer_timer > 0.0)
-	if bool(w.get("is_melee", false)) and wants_fire:
-		trigger_melee()
-		_fire_buffer_timer = 0.0
-		wants_fire = false
+	if bool(w.get("is_melee", false)):
+		if wants_fire:
+			trigger_melee(false)
+			_fire_buffer_timer = 0.0
+			wants_fire = false
+		elif Input.is_action_just_pressed("aim"):
+			trigger_melee(true)
 	if bool(w.get("is_bow", false)):
 		_update_bow_input(delta)
 		wants_fire = false
@@ -2539,7 +2765,7 @@ func _physics_process(delta: float) -> void:
 		reload_cancel_req = true
 		_shotgun_fire_on_cancel = true
 		_fire_buffer_timer = 0.30
-	if wants_fire and fire_cd <= 0.0 and not is_reloading:
+	if wants_fire and fire_cd <= 0.0 and not is_reloading and _melee_timer <= 0.0:
 		# If weapon had an interrupted empty reload and is still unchambered, finish reload/chambering instead of firing!
 		if not weapon_chambered[current_weapon] and ammo_in_mag[current_weapon] > 0:
 			start_reload()
@@ -2712,28 +2938,58 @@ func _process(delta: float) -> void:
 	if _melee_timer > 0.0:
 		var mu := clampf(1.0 - _melee_timer / maxf(_melee_dur, 0.01), 0.0, 1.0)
 		var wind := sin(smoothstep(0.0, 0.24, mu) * PI * 0.5) * (1.0 - smoothstep(0.24, 0.44, mu))
-		var slash := sin(smoothstep(0.20, 0.65, mu) * PI)
-		melee_p = Vector3(0.09 * wind - 0.26 * slash, 0.07 * wind - 0.05 * slash, 0.06 * wind - 0.18 * slash)
-		melee_r = Vector3(0.32 * wind - 0.65 * slash, -0.45 * wind + 1.15 * slash, -0.35 * wind + 0.72 * slash)
+		var slash := sin(smoothstep(0.20, 0.68, mu) * PI)
+		if _melee_is_gun_bash:
+			# Weapon-specific gun-butt / forend bash when unarmed (no melee weapon equipped!)
+			if current_weapon == 0 or current_weapon == 6:
+				# Pistol whip arc
+				melee_p = Vector3(0.08 * wind - 0.18 * slash, 0.06 * wind - 0.04 * slash, 0.05 * wind - 0.16 * slash)
+				melee_r = Vector3(0.24 * wind - 0.48 * slash, -0.35 * wind + 0.85 * slash, -0.40 * wind + 0.78 * slash)
+			else:
+				# Rifle / shotgun forward buttstroke & muzzle jab
+				melee_p = Vector3(-0.04 * wind + 0.03 * slash, -0.03 * wind + 0.04 * slash, 0.09 * wind - 0.22 * slash)
+				melee_r = Vector3(-0.18 * wind + 0.26 * slash, 0.45 * wind - 0.55 * slash, 0.52 * wind + 0.32 * slash)
+		elif _melee_is_heavy:
+			# Heavy overhead cleave / alternate power attack (RMB)
+			melee_p = Vector3(0.04 * wind - 0.10 * slash, 0.18 * wind - 0.18 * slash, 0.10 * wind - 0.24 * slash)
+			melee_r = Vector3(0.72 * wind - 1.25 * slash, -0.20 * wind + 0.32 * slash, -0.22 * wind + 0.35 * slash)
+		elif _melee_combo_idx == 1:
+			# Backhand left-to-right slash
+			melee_p = Vector3(-0.16 * wind + 0.22 * slash, 0.04 * wind - 0.03 * slash, 0.05 * wind - 0.18 * slash)
+			melee_r = Vector3(0.18 * wind - 0.42 * slash, 0.55 * wind - 1.05 * slash, 0.48 * wind - 0.68 * slash)
+		elif _melee_combo_idx == 2:
+			# Crisp forward lunge stab / thrust
+			melee_p = Vector3(0.02 * wind - 0.04 * slash, -0.02 * wind + 0.02 * slash, 0.12 * wind - 0.30 * slash)
+			melee_r = Vector3(-0.15 * wind - 0.65 * slash, -0.10 * wind + 0.15 * slash, -0.12 * wind + 0.18 * slash)
+		else:
+			# Classic right-to-left diagonal slash (also used for quick-melee knife whip-out!)
+			melee_p = Vector3(0.10 * wind - 0.26 * slash, 0.07 * wind - 0.05 * slash, 0.06 * wind - 0.20 * slash)
+			melee_r = Vector3(0.32 * wind - 0.65 * slash, -0.45 * wind + 1.15 * slash, -0.35 * wind + 0.72 * slash)
+	if _quick_melee_active and _melee_timer > 0.0:
+		# Anchor quick-melee knife rig neatly to melee hip pose during slash!
+		var mw: Dictionary = WEAPONS[3]
+		target_pos = (mw["hip_pos"] as Vector3)
+		target_rot = (mw["hip_rot"] as Vector3)
 	weapon_pivot.position = weapon_pivot.position.lerp(target_pos + melee_p, 1.0 - exp(-delta * (28.0 if _melee_timer > 0.0 else 18.0)))
 	weapon_pivot.rotation = weapon_pivot.rotation.lerp(target_rot + melee_r, 1.0 - exp(-delta * (26.0 if _melee_timer > 0.0 else 16.0)))
 
 	var ads_fov_val := float(w.get("ads_fov", 60.5))
 	if current_weapon == 7:
-		# CoD-style reversible sniper scope-in transition (0.34s in / 0.24s out, drops out during bolt throw!)
-		var want_scope := is_ads and not is_reloading and not dead and _hunting_bolt_timer <= 0.15
+		# CoD-style reversible sniper scope-in transition (0.34s in / 0.24s out, drops out during bolt throw or quick-melee!)
+		var want_scope := is_ads and not is_reloading and not dead and _hunting_bolt_timer <= 0.15 and not _quick_melee_active
 		var spd_s := (1.0 / 0.34) if want_scope else (1.0 / 0.24)
 		_sniper_ads_raw = move_toward(_sniper_ads_raw, 1.0 if want_scope else 0.0, delta * spd_s)
 		var s := _sniper_ads_raw * _sniper_ads_raw * (3.0 - 2.0 * _sniper_ads_raw)
 		var fov_s := pow(s, 1.55)
 		camera.fov = lerpf(94.0, ads_fov_val, fov_s) + _sprint_blend * 5.5 + recoil_fov
-		# Snap weapon_pivot cleanly along exact eye-relief path into ocular center
-		weapon_pivot.position = (w["hip_pos"] as Vector3).lerp(w["ads_pos"] as Vector3, s) + reload_pos_off + melee_p + Vector3(0.0, 0.0, recoil_z)
-		weapon_pivot.rotation = (w["hip_rot"] as Vector3).lerp(w["ads_rot"] as Vector3, s) + reload_rot_off + melee_r + Vector3(recoil_vel.y * 1.4, 0.0, 0.0)
-		sniper_scope_alpha = smoothstep(0.74, 0.88, s)
+		if not (_quick_melee_active and _melee_timer > 0.0):
+			# Snap weapon_pivot cleanly along exact eye-relief path into ocular center
+			weapon_pivot.position = (w["hip_pos"] as Vector3).lerp(w["ads_pos"] as Vector3, s) + reload_pos_off + melee_p + Vector3(0.0, 0.0, recoil_z)
+			weapon_pivot.rotation = (w["hip_rot"] as Vector3).lerp(w["ads_rot"] as Vector3, s) + reload_rot_off + melee_r + Vector3(recoil_vel.y * 1.4, 0.0, 0.0)
+		sniper_scope_alpha = 0.0 if _quick_melee_active else smoothstep(0.74, 0.88, s)
 		sniper_iris_scale = lerpf(0.76, 1.0, smoothstep(0.72, 0.94, s))
 		if weapon_rig_holder:
-			weapon_rig_holder.visible = sniper_scope_alpha < 0.92
+			weapon_rig_holder.visible = _quick_melee_active or sniper_scope_alpha < 0.92
 	else:
 		_sniper_ads_raw = 0.0
 		sniper_scope_alpha = 0.0
@@ -2849,7 +3105,7 @@ func _update_weapon_mechanics(delta: float) -> void:
 	if is_reloading:
 		return
 
-	if current_weapon == 0 or current_weapon == 1:
+	if current_weapon == 0 or current_weapon == 1 or current_weapon == 5:
 		_apply_idle_bolt_and_cover()
 	elif current_weapon == 2:
 		var pump_pull := 0.0
@@ -2863,8 +3119,6 @@ func _update_weapon_mechanics(delta: float) -> void:
 		_pose_part("lifter", Vector3.ZERO)
 	elif current_weapon == 4:
 		_pose_bow_rig()
-	elif current_weapon == 5:
-		_pose_part("charge", Vector3(0, 0, bolt_blowback * 0.025))
 	elif current_weapon == 6:
 		_pose_part("crane", Vector3.ZERO)
 		_pose_part("cylinder", Vector3.ZERO, Vector3(0.0, 0.0, _revolver_cyl_angle))
@@ -2933,6 +3187,8 @@ func _commit_mag_ammo() -> void:
 
 
 func start_reload() -> bool:
+	if _melee_timer > 0.0 or _quick_melee_active:
+		return false
 	var w: Dictionary = WEAPONS[current_weapon]
 	if bool(w.get("is_melee", false)) or bool(w.get("is_bow", false)):
 		return false
@@ -3040,10 +3296,10 @@ func _update_reload_mp5() -> void:
 		_play_reload_sfx(_sfx_bolt, 1.18)
 		trauma = minf(1.0, trauma + 0.12)
 
-	# Charging handle stays locked rearward until palm strikes at 1.56s!
+	# Charging handle stays locked rearward & upward in HK notch until palm strikes at 1.56s!
 	if reload_was_empty:
 		var ch_u := 1.0 if t < 1.56 else (1.0 - smoothstep(1.56, 1.62, t))
-		_pose_part("charge", Vector3(0.0, 0.0, 0.068 * ch_u), Vector3(0.0, 0.0, 0.52 * ch_u))
+		_pose_part("charge", Vector3(0.0, 0.0, 0.068 * ch_u), Vector3(0.0, 0.0, -0.52 * ch_u))
 	else:
 		_pose_part("charge", Vector3.ZERO)
 
@@ -4084,7 +4340,7 @@ func _update_bow_input(delta: float) -> void:
 		_play_reload_sfx(_sfx_mag_out, 1.55)
 		return
 
-	if holding and not _bow_drawing and ammo_in_mag[4] > 0 and _bow_nock_timer <= 0.0 and fire_cd <= 0.0 and not is_sprinting:
+	if holding and not _bow_drawing and ammo_in_mag[4] > 0 and _bow_nock_timer <= 0.0 and fire_cd <= 0.0 and _melee_timer <= 0.0 and not is_sprinting:
 		_bow_drawing = true
 		_bow_draw = 0.0
 		_bow_hold_time = 0.0
@@ -4383,7 +4639,7 @@ func _eject_brass_casing(w: Dictionary, is_hull := false, override_world_pos := 
 	})
 
 
-func trigger_melee() -> bool:
+func trigger_melee(heavy: bool = false) -> bool:
 	if _melee_timer > 0.08 or dead:
 		return false
 	if _bow_drawing:
@@ -4395,16 +4651,47 @@ func trigger_melee() -> bool:
 		reload_pos_off = Vector3.ZERO
 		reload_rot_off = Vector3.ZERO
 		_reset_weapon_parts()
+	_melee_is_heavy = heavy and current_weapon == 3
+	if current_weapon != 3 and equipped_melee_id != "":
+		# Quick melee while holding a firearm: whip out actual photoreal knife/melee weapon for a fast slash!
+		_quick_melee_active = true
+		_melee_is_gun_bash = false
+		_melee_combo_idx = 0
+		if sniper_scope_alpha > 0.35 and is_instance_valid(weapon_pivot):
+			sniper_scope_alpha = 0.0
+			_sniper_ads_raw = 0.0
+			weapon_pivot.position = WEAPONS[3]["hip_pos"]
+			weapon_pivot.rotation = WEAPONS[3]["hip_rot"]
+		for ri in range(_weapon_rigs.size()):
+			if is_instance_valid(_weapon_rigs[ri]):
+				_weapon_rigs[ri].visible = (ri == 3)
+	elif current_weapon != 3:
+		# No melee weapon equipped -> weapon-specific gun-butt bash!
+		_quick_melee_active = false
+		_melee_is_gun_bash = true
+		_melee_combo_idx = 0
+	else:
+		# Holding melee weapon directly -> cycle 3-hit directional combo or heavy cleave!
+		_quick_melee_active = false
+		_melee_is_gun_bash = false
+		if not _melee_is_heavy:
+			_melee_combo_idx = (_melee_combo_idx + 1) % 3 if _melee_combo_reset > 0.0 else 0
+			_melee_combo_reset = 0.95
 	var m: Dictionary = MELEE_CATALOG.get(equipped_melee_id, MELEE_CATALOG["knife"])
-	_melee_dur = float(m["dur"]) if current_weapon == 3 else minf(0.42, float(m["dur"]))
+	if _melee_is_gun_bash:
+		_melee_dur = 0.38
+	elif _melee_is_heavy:
+		_melee_dur = float(m["dur"]) * 1.32
+	else:
+		_melee_dur = float(m["dur"]) if current_weapon == 3 else minf(0.38, float(m["dur"]))
 	_melee_timer = _melee_dur
 	_melee_hit_done = false
-	fire_cd = maxf(fire_cd, _melee_dur * 0.85)
-	recoil_roll += -0.055
-	trauma = minf(1.0, trauma + 0.08)
+	fire_cd = maxf(fire_cd, _melee_dur)
+	recoil_roll += (-0.075 if _melee_is_heavy else -0.055) * (-1.0 if _melee_combo_idx == 1 else 1.0)
+	trauma = minf(1.0, trauma + (0.12 if _melee_is_heavy else 0.08))
 	if sfx_misc and _sfx_melee_swing:
 		sfx_misc.stream = _sfx_melee_swing
-		sfx_misc.pitch_scale = randf_range(0.92, 1.08)
+		sfx_misc.pitch_scale = randf_range(0.76, 0.86) if _melee_is_heavy else randf_range(0.92, 1.08)
 		sfx_misc.play()
 	return true
 
@@ -4414,11 +4701,21 @@ func _perform_melee_hit() -> void:
 	if space == null:
 		return
 	var m: Dictionary = MELEE_CATALOG.get(equipped_melee_id, MELEE_CATALOG["knife"])
-	var reach: float = float(m["reach"])
-	var dmg: float = float(m["damage"])
+	var reach: float = 1.85 if _melee_is_gun_bash else (float(m["reach"]) * (1.12 if _melee_is_heavy else 1.0))
+	var dmg: float = 34.0 if _melee_is_gun_bash else (float(m["damage"]) * (1.55 if _melee_is_heavy else 1.0))
 	var origin := camera.global_position
 	var fwd := -camera.global_transform.basis.z
 	var right := camera.global_transform.basis.x
+	var up := camera.global_transform.basis.y
+	# Directional melee swing vector for authentic zombie hit reactions & ragdoll knock-direction!
+	var swing_dir := fwd
+	if _melee_is_heavy:
+		swing_dir = (fwd * 0.72 - up * 0.65).normalized()
+	elif not _melee_is_gun_bash:
+		if _melee_combo_idx == 0:
+			swing_dir = (fwd * 0.62 - right * 0.76).normalized()
+		elif _melee_combo_idx == 1:
+			swing_dir = (fwd * 0.62 + right * 0.76).normalized()
 	var z_hits := {}
 
 	for ang_deg: float in [0.0, -7.0, 7.0, -14.0, 14.0]:
@@ -4435,7 +4732,7 @@ func _perform_melee_hit() -> void:
 				z_hits[z] = [{
 					"zone": str(zh["zone"]),
 					"pos": zh["pos"],
-					"dir": dir,
+					"dir": swing_dir,
 					"dmg": dmg,
 					"dist": float(zh["dist"]),
 				}]
@@ -4445,6 +4742,7 @@ func _perform_melee_hit() -> void:
 
 	var any_live := false
 	var any_live_hs := false
+	var kb := 6.8 if _melee_is_heavy else (5.2 if _melee_is_gun_bash else 4.2)
 	for z_key in z_hits.keys():
 		var z := z_key as ZombieAI
 		# Use weapon_idx = 3 (dedicated MELEE class — NOT M870 shotgun class 2!)
@@ -4456,17 +4754,311 @@ func _perform_melee_hit() -> void:
 			any_live_hs = any_live_hs or is_hs
 			emit_signal("hit_confirmed", is_hs, killed)
 			if not z.dead:
-				z.velocity += fwd * 4.2
+				z.velocity += fwd * kb
+				if _melee_is_heavy or _melee_is_gun_bash:
+					z.poise += 45.0
+	if any_live:
+		if sfx_hit:
+			sfx_hit.stream = _sfx_melee_cleave if _sfx_melee_cleave else (_sfx_hit_flesh[0] if not _sfx_hit_flesh.is_empty() else null)
+			if sfx_hit.stream:
+				sfx_hit.pitch_scale = randf_range(0.78, 0.90) if _melee_is_heavy else randf_range(0.92, 1.08)
+				sfx_hit.play()
+		if sfx_hit_tick and _sfx_hit_confirm:
+			sfx_hit_tick.stream = _sfx_hit_confirm
+			sfx_hit_tick.pitch_scale = 1.16 if any_live_hs else 0.94
+			sfx_hit_tick.play()
 
-	trauma = minf(1.0, trauma + 0.14)
-	if sfx_hit and _sfx_melee_cleave:
-		sfx_hit.stream = _sfx_melee_cleave
-		sfx_hit.pitch_scale = randf_range(0.90, 1.08)
-		sfx_hit.play()
-	if any_live and sfx_hit_tick and _sfx_hit_confirm:
-		sfx_hit_tick.stream = _sfx_hit_confirm
-		sfx_hit_tick.pitch_scale = 1.18 if any_live_hs else 0.96
-		sfx_hit_tick.play()
+
+static var _grenade_scene_cache: Dictionary = {}
+
+func _instantiate_grenade_visual(g_type: String) -> Node3D:
+	var glb_map := {
+		"frag": "res://assets/models/weapon_grenade_frag.glb",
+		"molotov": "res://assets/models/weapon_grenade_molotov.glb",
+		"shock": "res://assets/models/weapon_grenade_shock.glb",
+	}
+	var glb_path := str(glb_map.get(g_type, glb_map["frag"]))
+	var holder := Node3D.new()
+	if ResourceLoader.exists(glb_path):
+		if not _grenade_scene_cache.has(glb_path):
+			_grenade_scene_cache[glb_path] = load(glb_path)
+		var pk := _grenade_scene_cache[glb_path] as PackedScene
+		if pk:
+			var inst := pk.instantiate() as Node3D
+			for mn in inst.find_children("*", "MeshInstance3D", true, false):
+				var mi := mn as MeshInstance3D
+				mi.layers = 1
+				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			holder.add_child(inst)
+	if g_type == "molotov" or g_type == "shock":
+		var glow := OmniLight3D.new()
+		glow.position = Vector3(0.0, 0.14 if g_type == "molotov" else 0.06, 0.0)
+		glow.light_color = Color(1.0, 0.48, 0.10) if g_type == "molotov" else Color(0.22, 0.82, 1.0)
+		glow.light_energy = 1.4
+		glow.omni_range = 2.4
+		glow.shadow_enabled = false
+		glow.light_cull_mask = 0xFFFFD
+		glow.light_volumetric_fog_energy = 0.0
+		holder.add_child(glow)
+	return holder
+
+
+func throw_grenade() -> bool:
+	if dead or _grenade_cd > 0.0 or _melee_timer > 0.0 or is_reloading:
+		return false
+	if _bow_drawing:
+		cancel_bow_draw(true)
+	var g_type := equipped_grenade
+	var cnt: int = int(grenade_counts.get(g_type, 0))
+	if cnt <= 0:
+		# Auto-switch to any remaining grenade type if current is empty
+		for cand: String in GRENADE_ORDER:
+			if int(grenade_counts.get(cand, 0)) > 0:
+				equipped_grenade = cand
+				g_type = cand
+				cnt = int(grenade_counts[cand])
+				break
+	if cnt <= 0:
+		emit_signal("status_message", "NO GRENADES LEFT")
+		return false
+	grenade_counts[g_type] = cnt - 1
+	_grenade_cd = 0.65
+	var node := _instantiate_grenade_visual(g_type)
+	_fx_parent().add_child(node)
+	var fwd := -camera.global_transform.basis.z
+	var right := camera.global_transform.basis.x
+	var up := camera.global_transform.basis.y
+	var desired_spawn := camera.global_position + fwd * 0.45 + right * 0.14 - up * 0.08
+	var space := get_world_3d().direct_space_state
+	if space:
+		var sq := PhysicsRayQueryParameters3D.create(camera.global_position, desired_spawn, 1)
+		sq.exclude = [get_rid()]
+		var shit := space.intersect_ray(sq)
+		if not shit.is_empty():
+			desired_spawn = (shit["position"] as Vector3) + (shit["normal"] as Vector3) * 0.08
+	node.global_position = desired_spawn
+	var vel := fwd * 13.8 + up * 3.4 + velocity * 0.35
+	_grenades.append({
+		"node": node,
+		"type": g_type,
+		"vel": vel,
+		"fuse": 1.55 if g_type == "frag" else (0.90 if g_type == "shock" else 4.0),
+		"age": 0.0,
+	})
+	recoil_vel.y += 0.06
+	trauma = minf(1.0, trauma + 0.08)
+	if sfx_misc and _sfx_melee_swing:
+		sfx_misc.stream = _sfx_melee_swing
+		sfx_misc.pitch_scale = 1.18
+		sfx_misc.play()
+	return true
+
+
+func _project_to_floor(pos: Vector3) -> Vector3:
+	var space := get_world_3d().direct_space_state
+	if space:
+		var q := PhysicsRayQueryParameters3D.create(pos + Vector3(0.0, 0.25, 0.0), pos - Vector3(0.0, 8.0, 0.0), 1)
+		q.exclude = [get_rid()]
+		var h := space.intersect_ray(q)
+		if not h.is_empty():
+			return h["position"] as Vector3
+	return pos
+
+
+func _has_aoe_los(origin: Vector3, target_pos: Vector3) -> bool:
+	var space := get_world_3d().direct_space_state
+	if space == null:
+		return true
+	var q := PhysicsRayQueryParameters3D.create(origin + Vector3(0.0, 0.35, 0.0), target_pos + Vector3(0.0, 0.95, 0.0), 1)
+	q.exclude = [get_rid()]
+	return space.intersect_ray(q).is_empty()
+
+
+func _update_grenades(delta: float) -> void:
+	if _grenades.is_empty():
+		return
+	var space := get_world_3d().direct_space_state
+	var i := _grenades.size() - 1
+	while i >= 0:
+		var g: Dictionary = _grenades[i]
+		var node: Node3D = g["node"]
+		if not is_instance_valid(node):
+			_grenades.remove_at(i)
+			i -= 1
+			continue
+		g["age"] = float(g["age"]) + delta
+		var vel: Vector3 = g["vel"]
+		vel.y -= 18.0 * delta
+		var p0 := node.global_position
+		var p1 := p0 + vel * delta
+		var step_v := p1 - p0
+		var step_d := step_v.length()
+		var g_type := str(g["type"])
+		var hit := {}
+		if space and step_d > 0.001:
+			var q := PhysicsRayQueryParameters3D.create(p0, p1, 1)
+			q.exclude = [get_rid()]
+			hit = space.intersect_ray(q)
+		# Direct zombie shatter check for Molotovs!
+		if g_type == "molotov" and step_d > 0.001:
+			var max_zd := p0.distance_to(hit["position"]) if not hit.is_empty() else step_d
+			var zh := ZombieAI.raycast_all_zombies(p0, step_v / step_d, max_zd)
+			if not zh.is_empty():
+				node.global_position = _project_to_floor(zh["pos"] as Vector3)
+				_detonate_grenade(g)
+				node.queue_free()
+				_grenades.remove_at(i)
+				i -= 1
+				continue
+		if not hit.is_empty():
+			var hpos: Vector3 = hit["position"]
+			var hnrm: Vector3 = hit["normal"]
+			node.global_position = hpos + hnrm * 0.05
+			if g_type == "molotov":
+				if hnrm.y < 0.5:
+					node.global_position = _project_to_floor(hpos + hnrm * 0.22)
+				_detonate_grenade(g)
+				node.queue_free()
+				_grenades.remove_at(i)
+				i -= 1
+				continue
+			vel = vel.bounce(hnrm) * 0.44
+			if vel.length() < 0.8:
+				vel = Vector3.ZERO
+			elif sfx_casing and not _sfx_shell_clink.is_empty():
+				sfx_casing.stream = _sfx_shell_clink[0]
+				sfx_casing.pitch_scale = 0.62
+				sfx_casing.play()
+		else:
+			node.global_position = p1
+		node.rotation += Vector3(6.5, 4.2, -5.0) * delta
+		g["vel"] = vel
+		if float(g["age"]) >= float(g["fuse"]):
+			if g_type == "molotov":
+				node.global_position = _project_to_floor(node.global_position)
+			_detonate_grenade(g)
+			node.queue_free()
+			_grenades.remove_at(i)
+		i -= 1
+
+
+func _detonate_grenade(g: Dictionary) -> void:
+	var g_type := str(g["type"])
+	var pos: Vector3 = (g["node"] as Node3D).global_position
+	var dist_p := global_position.distance_to(pos)
+	trauma = minf(1.0, trauma + clampf(1.0 - dist_p / 14.0, 0.15, 0.85))
+	if sfx_gun and _weapon_audio.size() > 2 and _weapon_audio[2]:
+		_play_gun_sfx(_weapon_audio[2], 0.56 if g_type == "frag" else (1.35 if g_type == "shock" else 0.78))
+	if g_type == "frag":
+		var radius := 6.5
+		for z_raw in ZombieAI._all_zombies.duplicate():
+			var z := z_raw as ZombieAI
+			if not is_instance_valid(z) or z.dead:
+				continue
+			var d := z.global_position.distance_to(pos)
+			if d <= radius and absf(z.global_position.y - pos.y) <= 2.8 and _has_aoe_los(pos, z.global_position):
+				var falloff := clampf(1.0 - (d / radius) * 0.72, 0.28, 1.0)
+				var dir := (z.global_position + Vector3(0, 1.0, 0) - pos).normalized()
+				var res := z.apply_shot([{"zone": "CHEST", "pos": z.global_position + Vector3(0, 1.0, 0), "dir": dir, "dmg": 265.0 * falloff, "dist": d}], 2)
+				if not bool(res.get("corpse_hit", false)):
+					emit_signal("hit_confirmed", bool(res.get("headshot", false)), bool(res.get("killed", false)))
+				if not z.dead:
+					z.velocity += dir * (8.5 * falloff)
+		# Realistic Frag self-damage if player stands right on their own grenade (respects god_mode)
+		if dist_p <= 4.5 and absf(global_position.y - pos.y) <= 2.8 and _has_aoe_los(pos, global_position):
+			var self_dmg := clampf(48.0 * (1.0 - dist_p / 4.5), 10.0, 48.0)
+			take_damage(self_dmg, pos)
+		_spawn_hazard_pool("frag_flash", pos, 0.35, 3.0)
+	elif g_type == "molotov":
+		_spawn_hazard_pool("fire", _project_to_floor(pos), 7.0, 3.6)
+	elif g_type == "shock":
+		_spawn_hazard_pool("shock", _project_to_floor(pos), 5.5, 4.8)
+
+
+func _spawn_hazard_pool(kind: String, pos: Vector3, dur: float, radius: float) -> void:
+	var root_n := Node3D.new()
+	root_n.position = pos + Vector3(0.0, 0.08, 0.0)
+	var light := OmniLight3D.new()
+	light.position = Vector3(0.0, 0.65, 0.0)
+	light.shadow_enabled = false
+	light.light_cull_mask = 0xFFFFD
+	light.light_volumetric_fog_energy = 0.0
+	light.omni_range = radius * 2.0
+	if kind == "shock":
+		light.light_color = Color(0.25, 0.82, 1.0)
+		light.light_energy = 5.5
+	elif kind == "frag_flash":
+		light.light_color = Color(1.0, 0.58, 0.18)
+		light.light_energy = 12.0
+	else:
+		light.light_color = Color(1.0, 0.42, 0.08)
+		light.light_energy = 5.0
+	root_n.add_child(light)
+	if kind == "fire" or kind == "shock":
+		var disc := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = radius * 0.78; cm.bottom_radius = radius * 0.85; cm.height = 0.04; cm.radial_segments = 20
+		var mat := StandardMaterial3D.new()
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.albedo_color = Color(1.0, 0.36, 0.06, 0.42) if kind == "fire" else Color(0.20, 0.78, 1.0, 0.34)
+		cm.material = mat
+		disc.mesh = cm
+		disc.layers = 1
+		disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root_n.add_child(disc)
+	_fx_parent().add_child(root_n)
+	_hazards.append({
+		"node": root_n,
+		"light": light,
+		"kind": kind,
+		"pos": pos,
+		"radius": radius,
+		"age": 0.0,
+		"dur": dur,
+		"tick": 0.0,
+	})
+
+
+func _update_hazards(delta: float) -> void:
+	if _hazards.is_empty():
+		return
+	var i := _hazards.size() - 1
+	while i >= 0:
+		var h: Dictionary = _hazards[i]
+		var node: Node3D = h["node"]
+		h["age"] = float(h["age"]) + delta
+		var dur: float = float(h["dur"])
+		if not is_instance_valid(node) or float(h["age"]) >= dur:
+			if is_instance_valid(node):
+				node.queue_free()
+			_hazards.remove_at(i)
+			i -= 1
+			continue
+		var fade := clampf(1.0 - maxf(0.0, (float(h["age"]) - dur * 0.7) / maxf(dur * 0.3, 0.05)), 0.0, 1.0)
+		var light: OmniLight3D = h["light"]
+		var kind := str(h["kind"])
+		if is_instance_valid(light):
+			var flicker := 0.8 + 0.35 * sin(float(h["age"]) * (38.0 if kind == "shock" else 22.0))
+			light.light_energy = (12.0 if kind == "frag_flash" else 5.2) * fade * flicker
+		if kind == "fire" or kind == "shock":
+			h["tick"] = float(h["tick"]) + delta
+			if float(h["tick"]) >= 0.30:
+				h["tick"] = 0.0
+				var pos: Vector3 = h["pos"]
+				var rad: float = float(h["radius"])
+				for z_raw in ZombieAI._all_zombies.duplicate():
+					var z := z_raw as ZombieAI
+					if not is_instance_valid(z) or z.dead:
+						continue
+					if z.global_position.distance_to(pos) <= rad and absf(z.global_position.y - pos.y) <= 2.4 and _has_aoe_los(pos, z.global_position):
+						if kind == "fire":
+							z.apply_burn(3.5, 32.0)
+						else:
+							z.apply_shock(2.2)
+				if kind == "fire" and not dead and global_position.distance_to(pos) <= rad * 0.82 and absf(global_position.y - pos.y) <= 1.8:
+					take_damage(10.0, pos)
+		i -= 1
 
 
 func fire_weapon() -> bool:
@@ -4669,7 +5261,7 @@ func try_interact() -> String:
 
 
 func take_damage(amount: float, from_pos: Vector3 = Vector3.ZERO) -> void:
-	if dead or damage_invuln > 0.0:
+	if dead or damage_invuln > 0.0 or god_mode:
 		return
 	damage_invuln = 0.35
 	if _bow_drawing:
@@ -4704,12 +5296,23 @@ func take_damage(amount: float, from_pos: Vector3 = Vector3.ZERO) -> void:
 
 	if health <= 0.0:
 		dead = true
+		if _quick_melee_active:
+			_quick_melee_active = false
+			_melee_timer = 0.0
+			for ri in range(_weapon_rigs.size()):
+				if is_instance_valid(_weapon_rigs[ri]):
+					_weapon_rigs[ri].visible = (ri == current_weapon)
 		emit_signal("player_died")
 
 
 func heal_full(reset_unlocks: bool = false) -> void:
 	health = max_health
 	dead = false
+	velocity = Vector3.ZERO
+	is_ads = false
+	_ads_blend = 0.0
+	recoil_vel = Vector2.ZERO
+	trauma = 0.0
 	damage_flash = 0.0
 	damage_invuln = 0.0
 	hit_glitch = 0.0
@@ -4722,8 +5325,24 @@ func heal_full(reset_unlocks: bool = false) -> void:
 		if is_instance_valid(a.get("node")):
 			(a["node"] as Node).queue_free()
 	_arrows.clear()
+	for g: Dictionary in _grenades:
+		if is_instance_valid(g.get("node")):
+			(g["node"] as Node).queue_free()
+	_grenades.clear()
+	for h: Dictionary in _hazards:
+		if is_instance_valid(h.get("node")):
+			(h["node"] as Node).queue_free()
+	_hazards.clear()
+	_quick_melee_active = false
+	_melee_timer = 0.0
 	if reset_unlocks:
-		unlocked_weapons = [true, false, false, true, false, false, false, false, false, false, false]
+		firearm_slots = [0]
+		special_slot = -1
+		owned_melee = ["knife"]
+		select_melee_weapon("knife")
+		grenade_counts = {"frag": 2, "molotov": 1, "shock": 1}
+		equipped_grenade = "frag"
+		_sync_unlocked_from_loadout()
 		upgraded_weapons = [false, false, false, false, false, false, false, false, false, false, false]
 		weapon_chambered = [true, true, true, true, true, true, true, true, true, true, true]
 		equipped_melee_id = "knife"
