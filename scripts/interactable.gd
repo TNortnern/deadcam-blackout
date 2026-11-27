@@ -25,6 +25,7 @@ var _box_timer: float = 0.0
 var _cycle_tick: float = 0.0
 var _preview_holder: Node3D = null
 var _rolled_weapon_idx: int = -1
+var _rolled_lucky_mod: String = ""
 var _rolled_owner_player: Node = null
 var _box_audio: AudioStreamPlayer3D = null
 
@@ -33,7 +34,7 @@ static var _sfx_cycle: AudioStream = null
 static var _sfx_reveal: AudioStream = null
 static var _preview_scene_cache: Dictionary = {}
 
-const BOX_POOL := [1, 2, 7, 4, 5, 6, 8, 9, 10]
+const BOX_POOL := [1, 2, 7, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
 const BOX_CYCLE_DUR := 1.45
 const BOX_CLAIM_DUR := 6.50
 const BOX_CLOSE_DUR := 0.55
@@ -106,12 +107,14 @@ func _update_mystery_box(delta: float) -> void:
 			_preview_holder.position.y = 0.96 + sin(Time.get_ticks_msec() * 0.004) * 0.045
 		if _box_timer <= 0.0:
 			# Auto-secure ONLY when an open slot exists (or already owned for ammo top-off) — NEVER overwrite a capped loadout!
-			if _rolled_owner_player and is_instance_valid(_rolled_owner_player) and _rolled_weapon_idx >= 0:
+			if _rolled_owner_player and is_instance_valid(_rolled_owner_player) and not _rolled_owner_player.dead and _rolled_weapon_idx >= 0:
 				var p_ref := _rolled_owner_player
 				var is_spec := bool(PlayerBodycam.WEAPONS[_rolled_weapon_idx].get("is_special", false))
 				var can_auto: bool = (is_spec and int(p_ref.special_slot) < 0) or (not is_spec and (p_ref.firearm_slots.size() < PlayerBodycam.MAX_FIREARM_SLOTS or p_ref.firearm_slots.has(_rolled_weapon_idx)))
 				if can_auto and p_ref.has_method("unlock_weapon_silent"):
 					p_ref.unlock_weapon_silent(_rolled_weapon_idx)
+					if _rolled_lucky_mod != "" and p_ref.has_method("add_attachment"):
+						p_ref.add_attachment(_rolled_weapon_idx, _rolled_lucky_mod)
 			_begin_box_close()
 	elif box_state == BoxState.CLOSING:
 		lid_target = 0.0
@@ -137,6 +140,7 @@ func _update_mystery_box(delta: float) -> void:
 func _begin_box_close() -> void:
 	box_state = BoxState.CLOSING
 	_box_timer = BOX_CLOSE_DUR
+	_rolled_lucky_mod = ""
 	_play_spatial(_sfx_latch, 0.78)
 
 
@@ -146,6 +150,7 @@ func reset_state() -> void:
 	box_state = BoxState.IDLE
 	_box_timer = 0.0
 	_rolled_weapon_idx = -1
+	_rolled_lucky_mod = ""
 	_rolled_owner_player = null
 	if _preview_holder and is_instance_valid(_preview_holder):
 		_preview_holder.queue_free()
@@ -173,7 +178,7 @@ func reset_state() -> void:
 
 func _strip_preview_arms(n: Node) -> void:
 	var nl := n.name.to_lower()
-	if "arm" in nl or "hand" in nl or "glove" in nl or "sleeve" in nl or "skeleton" in nl:
+	if "arm" in nl or "hand" in nl or "glove" in nl or "sleeve" in nl or "skeleton" in nl or nl == "feedround" or nl == "speedloader" or nl == "bullet_pack":
 		n.queue_free()
 		return
 	if n is MeshInstance3D:
@@ -229,6 +234,10 @@ func _set_box_preview(weapon_idx: int, target_y: float) -> void:
 	_preview_holder.rotation.y = prev_yaw
 	var inst := packed.instantiate() as Node3D
 	_strip_preview_arms(inst)
+	if weapon_idx == 13:
+		# Hide M1 Garand's reload-only en-bloc clip in Mystery Box display!
+		var g_mag := inst.find_child("Mag", true, false)
+		if g_mag: g_mag.queue_free()
 	# Normalize preview size & center cleanly inside the 1.2m chest display envelope!
 	var aabb := _compute_local_aabb(inst)
 	var max_dim := maxf(aabb.size.x, maxf(aabb.size.y, aabb.size.z))
@@ -263,10 +272,12 @@ func _get_box_action(player: Node) -> Dictionary:
 	# All pool weapons owned -> offer 250 PTS ammo refill ONLY if current weapon actually needs ammo!
 	var cur: int = player.current_weapon
 	var is_melee := bool(PlayerBodycam.WEAPONS[cur].get("is_melee", false))
-	var full_mag: bool = player.ammo_in_mag[cur] >= int(PlayerBodycam.WEAPONS[cur]["mag_size"])
+	var no_refill: bool = player.has_method("is_no_refill_weapon") and player.is_no_refill_weapon(cur)
+	var max_m: int = player.get_weapon_mag_size(cur) if player.has_method("get_weapon_mag_size") else int(PlayerBodycam.WEAPONS[cur]["mag_size"])
+	var full_mag: bool = player.ammo_in_mag[cur] >= max_m
 	var full_res: bool = player.ammo_reserve[cur] >= int(PlayerBodycam.WEAPONS[cur]["reserve_max"])
-	if is_melee or (full_mag and full_res):
-		return {"action": "full", "price": 0, "label": "ARSENAL COMPLETE — AMMO FULL"}
+	if is_melee or no_refill or (full_mag and full_res):
+		return {"action": "full", "price": 0, "label": "SPECIAL AMMO CANNOT BE REFILLED" if no_refill else "ARSENAL COMPLETE — AMMO FULL"}
 	var refill_cost := mini(cost, 250)
 	return {"action": "refill", "price": refill_cost, "label": "[E] REFILL AMMO (%d PTS)" % refill_cost}
 
@@ -310,13 +321,27 @@ func get_prompt(player_points: int, player: Node = null) -> String:
 						return "[E] DRIVE SPIKES INTO BASEBALL BAT (750 PTS — +40% DMG & BLEED)"
 					return "EQUIP A FIREARM, BOW, OR BASEBALL BAT TO UPGRADE"
 				var already_up: bool = player.has_method("is_weapon_upgraded") and player.is_weapon_upgraded(cur)
+				var no_refill: bool = player.has_method("is_no_refill_weapon") and player.is_no_refill_weapon(cur)
+				var is_spec := bool(PlayerBodycam.WEAPONS[cur].get("is_special", false))
 				if already_up:
+					if not is_spec and cur != 7 and not bool(PlayerBodycam.WEAPONS[cur].get("has_holo", false)) and not player.has_attachment(cur, "optic"):
+						if player_points < 500:
+							return "[E] INSTALL TACTICAL RED-DOT OPTIC (500 PTS NEEDED)"
+						return "[E] INSTALL TACTICAL RED-DOT OPTIC (500 PTS)"
+					if not is_spec and not bool(PlayerBodycam.WEAPONS[cur].get("is_crossbow", false)) and cur != 6 and not player.has_attachment(cur, "suppressor"):
+						if player_points < 600:
+							return "[E] INSTALL SUPPRESSOR (600 PTS NEEDED)"
+						return "[E] INSTALL SUPPRESSOR (600 PTS — -35% RECOIL)"
+					if no_refill:
+						return "%s MK-II [LIMITED SPECIAL AMMO — NO REFILL]" % PlayerBodycam.WEAPONS[cur]["name"]
 					var full_a: bool = player.ammo_in_mag[cur] >= player.get_weapon_mag_size(cur) and player.ammo_reserve[cur] >= int(PlayerBodycam.WEAPONS[cur]["reserve_max"])
 					if full_a:
 						return "%s MK-II [AMMO FULL]" % PlayerBodycam.WEAPONS[cur]["name"]
 					if player_points < 250:
 						return "[E] REFILL MK-II AMMO (250 PTS NEEDED)"
 					return "[E] REFILL MK-II AMMO (250 PTS)"
+				if no_refill and player.ammo_in_mag[cur] <= 0 and player.ammo_reserve[cur] <= 0:
+					return "%s DEPLETED (NO AMMO LEFT TO UPGRADE)" % PlayerBodycam.WEAPONS[cur]["name"]
 				if player_points < cost:
 					return "[E] UPGRADE %s TO MK-II (%d PTS NEEDED)" % [PlayerBodycam.WEAPONS[cur]["name"], cost]
 				return "[E] UPGRADE %s TO MK-II (%d PTS)" % [PlayerBodycam.WEAPONS[cur]["name"], cost]
@@ -326,6 +351,8 @@ func get_prompt(player_points: int, player: Node = null) -> String:
 				var cur: int = player.current_weapon
 				if bool(PlayerBodycam.WEAPONS[cur].get("is_melee", false)):
 					return "EQUIP A FIREARM OR BOW TO RESUPPLY AMMO"
+				if player.has_method("is_no_refill_weapon") and player.is_no_refill_weapon(cur):
+					return "%s — SPECIAL WEAPON (NO NORMAL AMMO REFILL)" % PlayerBodycam.WEAPONS[cur]["name"]
 				var max_m: int = player.get_weapon_mag_size(cur) if player.has_method("get_weapon_mag_size") else int(PlayerBodycam.WEAPONS[cur]["mag_size"])
 				var full_a: bool = player.ammo_in_mag[cur] >= max_m and player.ammo_reserve[cur] >= int(PlayerBodycam.WEAPONS[cur]["reserve_max"])
 				if full_a:
@@ -359,16 +386,22 @@ func interact(game_manager: Node, player: Node) -> String:
 				return "Ammo is already full."
 			if mode == "claim":
 				var claimed := _rolled_weapon_idx
+				var lucky := _rolled_lucky_mod
 				var wd: Dictionary = PlayerBodycam.WEAPONS[claimed]
 				var wname := str(wd["name"])
 				var slot_lbl := ""
 				if player and player.has_method("acquire_weapon"):
 					var info: Dictionary = player.acquire_weapon(claimed, true)
 					slot_lbl = str(info.get("slot_key", ""))
+					if lucky != "" and player.has_method("add_attachment"):
+						player.add_attachment(claimed, lucky)
 				elif player and player.has_method("unlock_and_equip"):
 					player.unlock_and_equip(claimed)
+				_rolled_lucky_mod = ""
 				_begin_box_close()
-				return "CLAIMED: [%s] %s" % [slot_lbl, wname] if slot_lbl != "" else ("CLAIMED: %s" % wname)
+				var lucky_lbl := lucky.replace("_", " ").to_upper()
+				var lucky_tag := (" [LUCKY PRE-MOD: %s!]" % lucky_lbl) if lucky != "" else ""
+				return ("CLAIMED: [%s] %s%s" % [slot_lbl, wname, lucky_tag]) if slot_lbl != "" else ("CLAIMED: %s%s" % [wname, lucky_tag])
 			var price := int(act["price"])
 			if game_manager and game_manager.points < price:
 				return "Need %d points!" % price
@@ -390,13 +423,26 @@ func interact(game_manager: Node, player: Node) -> String:
 			_rolled_weapon_idx = roll
 			_rolled_owner_player = player
 			var w_dict: Dictionary = PlayerBodycam.WEAPONS[roll]
+			# 25% Lucky Pre-Modded Mystery Box roll on standard firearms (only valid mods for this weapon!)
+			_rolled_lucky_mod = ""
+			if not bool(w_dict.get("is_special", false)) and randf() < 0.25:
+				var mods: Array[String] = []
+				if roll != 7 and not bool(w_dict.get("has_holo", false)):
+					mods.append("optic")
+				if roll != 6 and not bool(w_dict.get("is_crossbow", false)):
+					mods.append("suppressor")
+				if roll != 6 and roll != 11 and not bool(w_dict.get("is_crossbow", false)):
+					mods.append("ext_mag")
+				if not mods.is_empty():
+					_rolled_lucky_mod = mods[randi() % mods.size()]
 			var wname: String = str(w_dict["name"])
 			box_state = BoxState.CYCLING
 			_box_timer = BOX_CYCLE_DUR
 			_cycle_tick = 0.0
 			_play_spatial(_sfx_latch, 1.05)
 			emit_signal("mystery_box_rolled", roll, wname)
-			return "MYSTERY BOX ROLLING: %s — PRESS [E] TO CLAIM!" % wname
+			var mod_note := (" (LUCKY %s SPEC!)" % _rolled_lucky_mod.replace("_", " ").to_upper()) if _rolled_lucky_mod != "" else ""
+			return "MYSTERY BOX ROLLING: %s%s — PRESS [E] TO CLAIM!" % [wname, mod_note]
 		Kind.BARRICADE:
 			if plank_count >= max_planks:
 				return "Barricade fully reinforced."
@@ -448,7 +494,25 @@ func interact(game_manager: Node, player: Node) -> String:
 					return "UPGRADED: SPIKED BASEBALL BAT (+40% DMG & BLEED DOT!)"
 				return "Equip a firearm, bow, or Baseball Bat to upgrade!"
 			var already_up: bool = player.has_method("is_weapon_upgraded") and player.is_weapon_upgraded(cur)
+			var is_spec := bool(PlayerBodycam.WEAPONS[cur].get("is_special", false))
+			var no_refill: bool = player.has_method("is_no_refill_weapon") and player.is_no_refill_weapon(cur)
 			if already_up:
+				if not is_spec and cur != 7 and not bool(PlayerBodycam.WEAPONS[cur].get("has_holo", false)) and not player.has_attachment(cur, "optic"):
+					if game_manager and game_manager.points < 500:
+						return "Need 500 points for Tactical Red-Dot Optic!"
+					if game_manager: game_manager.add_points(-500)
+					player.add_attachment(cur, "optic")
+					_play_spatial(_sfx_reveal, 1.15)
+					return "INSTALLED TACTICAL RED-DOT OPTIC (-500 PTS)"
+				if not is_spec and not bool(PlayerBodycam.WEAPONS[cur].get("is_crossbow", false)) and cur != 6 and not player.has_attachment(cur, "suppressor"):
+					if game_manager and game_manager.points < 600:
+						return "Need 600 points for Suppressor!"
+					if game_manager: game_manager.add_points(-600)
+					player.add_attachment(cur, "suppressor")
+					_play_spatial(_sfx_reveal, 1.10)
+					return "INSTALLED SUPPRESSOR (-600 PTS, -35%% RECOIL)"
+				if no_refill:
+					return "Special weapons have limited ammo — no normal refills!"
 				var max_m: int = player.get_weapon_mag_size(cur) if player.has_method("get_weapon_mag_size") else int(PlayerBodycam.WEAPONS[cur]["mag_size"])
 				if player.ammo_in_mag[cur] >= max_m and player.ammo_reserve[cur] >= int(PlayerBodycam.WEAPONS[cur]["reserve_max"]):
 					return "MK-II ammo is already full."
@@ -460,6 +524,8 @@ func interact(game_manager: Node, player: Node) -> String:
 				player.ammo_reserve[cur] = int(PlayerBodycam.WEAPONS[cur]["reserve_max"])
 				_play_spatial(_sfx_reveal, 1.12)
 				return "MK-II AMMO REFILLED (-250 PTS)"
+			if no_refill and player.ammo_in_mag[cur] <= 0 and player.ammo_reserve[cur] <= 0:
+				return "Special weapon depleted — no ammo left to upgrade!"
 			if game_manager and game_manager.points < cost:
 				return "Need %d points to upgrade!" % cost
 			if game_manager:
@@ -469,13 +535,16 @@ func interact(game_manager: Node, player: Node) -> String:
 			_play_spatial(_sfx_reveal, 0.85)
 			var wname := str(PlayerBodycam.WEAPONS[cur]["name"])
 			emit_signal("weapon_upgraded", cur, wname)
-			return "UPGRADED: %s MK-II (+45%% DMG & EXTENDED MAG!)" % wname
+			var has_ext_m: bool = player.has_method("get_weapon_mag_size") and player.get_weapon_mag_size(cur) > int(PlayerBodycam.WEAPONS[cur]["mag_size"])
+			return ("UPGRADED: %s MK-II (+45%% DMG & EXTENDED MAG!)" % wname) if has_ext_m else ("UPGRADED: %s MK-II (+45%% DAMAGE!)" % wname)
 		Kind.AMMO_CRATE:
 			if player == null:
 				return ""
 			var cur: int = player.current_weapon
 			if bool(PlayerBodycam.WEAPONS[cur].get("is_melee", false)):
 				return "Equip a firearm or bow to resupply ammo!"
+			if player.has_method("is_no_refill_weapon") and player.is_no_refill_weapon(cur):
+				return "Special weapon — limited ammo (cannot buy ammo refills!)"
 			var max_m: int = player.get_weapon_mag_size(cur) if player.has_method("get_weapon_mag_size") else int(PlayerBodycam.WEAPONS[cur]["mag_size"])
 			if player.ammo_in_mag[cur] >= max_m and player.ammo_reserve[cur] >= int(PlayerBodycam.WEAPONS[cur]["reserve_max"]):
 				return "Ammo is already full."

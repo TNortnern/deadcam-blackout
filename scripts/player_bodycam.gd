@@ -286,6 +286,197 @@ const WEAPONS := [
 		"ejection": Vector3(0.048, 0.026, -0.16),
 		"has_holo": false,
 		"holo_pos": Vector3.ZERO,
+	},
+	{
+		"name": "SAWED-OFF DB 12GA",
+		"key": "1",
+		"glb": "res://assets/models/weapon_sawed_off.glb",
+		"arm_src": 1,
+		"audio": "res://assets/audio/gun_shotgun.wav",
+		"audio_b": "res://assets/audio/gun_shotgun_b.wav",
+		"mag_size": 2,
+		"reserve_max": 32,
+		"damage": 22.0,
+		"fire_rate": 0.28,
+		"auto": false,
+		"pellets": 12,
+		"spread": 0.095,
+		"recoil_pitch": 0.165,
+		"recoil_kick": 0.105,
+		"flash_scale": 1.65,
+		"hip_pos": Vector3(0.115, -0.165, -0.27),
+		"hip_rot": Vector3(0.01, 0.07, -0.04),
+		"ads_pos": Vector3(0.0, -0.062, -0.22),
+		"ads_rot": Vector3(0.0, 0.0, 0.0),
+		"muzzle": Vector3(0.0, 0.022, -0.40),
+		"ejection": Vector3(0.0, 0.020, -0.06),
+		"has_holo": false,
+		"holo_pos": Vector3(0.0, 0.068, -0.10),
+	},
+	{
+		"name": "FAMAS F1 5.56",
+		"key": "2",
+		"glb": "res://assets/models/weapon_famas.glb",
+		"arm_src": 1,
+		"audio": "res://assets/audio/gun_rifle.wav",
+		"audio_b": "res://assets/audio/gun_rifle_b.wav",
+		"mag_size": 30,
+		"reserve_max": 180,
+		"damage": 34.0,
+		"fire_rate": 0.24,
+		"burst_count": 3,
+		"burst_interval": 0.058,
+		"auto": false,
+		"pellets": 1,
+		"spread": 0.008,
+		"recoil_pitch": 0.024,
+		"recoil_kick": 0.024,
+		"flash_scale": 0.92,
+		"hip_pos": Vector3(0.125, -0.175, -0.29),
+		"hip_rot": Vector3(0.02, 0.08, -0.04),
+		"ads_pos": Vector3(0.0, -0.106, -0.22),
+		"ads_rot": Vector3(0.0, 0.0, 0.0),
+		"muzzle": Vector3(0.0, 0.018, -0.48),
+		"ejection": Vector3(0.036, 0.025, -0.14),
+		"has_holo": false,
+		"holo_pos": Vector3(0.0, 0.095, -0.12),
+	},
+	{
+		"name": "M1 GARAND .30-06",
+		"key": "3",
+		"glb": "res://assets/models/weapon_garand.glb",
+		"arm_src": 1,
+		"audio": "res://assets/audio/gun_hunting.wav",
+		"audio_b": "res://assets/audio/gun_hunting_b.wav",
+		"mag_size": 8,
+		"reserve_max": 64,
+		"damage": 88.0,
+		"fire_rate": 0.22,
+		"auto": false,
+		"pellets": 1,
+		"spread": 0.006,
+		"recoil_pitch": 0.068,
+		"recoil_kick": 0.056,
+		"flash_scale": 1.15,
+		"hip_pos": Vector3(0.120, -0.180, -0.29),
+		"hip_rot": Vector3(0.02, 0.08, -0.04),
+		"ads_pos": Vector3(0.0, -0.056, -0.22),
+		"ads_rot": Vector3(0.0, 0.0, 0.0),
+		"muzzle": Vector3(0.0, 0.018, -0.72),
+		"ejection": Vector3(0.032, 0.032, -0.08),
+		"has_holo": false,
+		"holo_pos": Vector3(0.0, 0.072, -0.12),
+	},
+	{
+		"name": "KAR98K MAUSER",
+		"key": "3",
+		"glb": "res://assets/models/weapon_kar98k.glb",
+		"arm_src": 1,
+		"audio": "res://assets/audio/gun_hunting.wav",
+		"audio_b": "res://assets/audio/gun_hunting_b.wav",
+		"mag_size": 5,
+		"reserve_max": 40,
+		"damage": 195.0,
+		"fire_rate": 0.96,
+		"auto": false,
+		"pellets": 1,
+		"spread": 0.003,
+		"recoil_pitch": 0.115,
+		"recoil_kick": 0.082,
+		"flash_scale": 1.25,
+		"ads_fov": 52.0,
+		"hip_pos": Vector3(0.122, -0.182, -0.29),
+		"hip_rot": Vector3(0.02, 0.08, -0.04),
+		"ads_pos": Vector3(0.0, -0.056, -0.22),
+		"ads_rot": Vector3(0.0, 0.0, 0.0),
+		"muzzle": Vector3(0.0, 0.016, -0.74),
+		"ejection": Vector3(0.036, 0.026, -0.08),
+		"has_holo": false,
+		"holo_pos": Vector3(0.0, 0.072, -0.12),
+	},
+	{
+		"name": "HEAVY CROSSBOW",
+		"key": "3",
+		"glb": "res://assets/models/weapon_crossbow.glb",
+		"arm_src": 1,
+		"audio": "res://assets/audio/bow_release.wav",
+		"is_crossbow": true,
+		"mag_size": 1,
+		"reserve_max": 24,
+		"damage": 188.0,
+		"fire_rate": 0.42,
+		"auto": false,
+		"pellets": 1,
+		"spread": 0.002,
+		"recoil_pitch": 0.032,
+		"recoil_kick": 0.028,
+		"flash_scale": 0.0,
+		"ads_fov": 64.0,
+		"hip_pos": Vector3(0.125, -0.185, -0.32),
+		"hip_rot": Vector3(0.01, 0.06, -0.03),
+		"ads_pos": Vector3(0.0, -0.072, -0.26),
+		"ads_rot": Vector3(0.0, 0.0, 0.0),
+		"muzzle": Vector3(0.0, 0.020, -0.52),
+		"ejection": Vector3.ZERO,
+		"has_holo": false,
+		"holo_pos": Vector3(0.0, 0.078, -0.14),
+	},
+	{
+		"name": "M2 FLAMETHROWER",
+		"key": "4",
+		"glb": "res://assets/models/weapon_flamethrower.glb",
+		"arm_src": 1,
+		"audio": "res://assets/audio/gun_shotgun.wav",
+		"is_special": true,
+		"is_flamethrower": true,
+		"no_ammo_refill": true,
+		"mag_size": 60,
+		"reserve_max": 0,
+		"damage": 18.0,
+		"fire_rate": 0.095,
+		"auto": true,
+		"pellets": 1,
+		"spread": 0.06,
+		"recoil_pitch": 0.010,
+		"recoil_kick": 0.012,
+		"flash_scale": 1.45,
+		"hip_pos": Vector3(0.140, -0.205, -0.30),
+		"hip_rot": Vector3(0.01, 0.06, -0.03),
+		"ads_pos": Vector3(0.060, -0.135, -0.26),
+		"ads_rot": Vector3(0.0, 0.03, 0.0),
+		"muzzle": Vector3(0.0, 0.028, -0.68),
+		"ejection": Vector3.ZERO,
+		"has_holo": false,
+		"holo_pos": Vector3.ZERO,
+	},
+	{
+		"name": "RPG-7 LAUNCHER",
+		"key": "4",
+		"glb": "res://assets/models/weapon_rpg7.glb",
+		"arm_src": 1,
+		"audio": "res://assets/audio/gun_shotgun.wav",
+		"is_special": true,
+		"is_rpg": true,
+		"no_ammo_refill": true,
+		"mag_size": 1,
+		"reserve_max": 4,
+		"damage": 420.0,
+		"fire_rate": 0.85,
+		"auto": false,
+		"pellets": 1,
+		"spread": 0.004,
+		"recoil_pitch": 0.185,
+		"recoil_kick": 0.140,
+		"flash_scale": 1.85,
+		"ads_fov": 68.0,
+		"hip_pos": Vector3(0.145, -0.185, -0.14),
+		"hip_rot": Vector3(0.01, 0.05, -0.02),
+		"ads_pos": Vector3(0.026, -0.094, -0.14),
+		"ads_rot": Vector3(0.0, 0.0, 0.0),
+		"muzzle": Vector3(0.0, 0.040, -0.78),
+		"ejection": Vector3.ZERO,
+		"has_holo": false,
+		"holo_pos": Vector3.ZERO,
 	}
 ]
 
@@ -390,11 +581,16 @@ var firearm_slots: Array[int] = [0]
 var special_slot: int = -1
 var owned_melee: Array[String] = ["knife"]
 var god_mode: bool = false
-var unlocked_weapons: Array[bool] = [true, false, false, true, false, false, false, false, false, false, false]
-var upgraded_weapons: Array[bool] = [false, false, false, false, false, false, false, false, false, false, false]
-var weapon_chambered: Array[bool] = [true, true, true, true, true, true, true, true, true, true, true]
-var ammo_in_mag: Array[int] = [15, 30, 8, 1, 1, 30, 6, 5, 30, 7, 100]
-var ammo_reserve: Array[int] = [90, 180, 48, 0, 24, 180, 42, 35, 180, 42, 300]
+var unlocked_weapons: Array[bool] = [true, false, false, true, false, false, false, false, false, false, false, false, false, false, false, false, false, false]
+var upgraded_weapons: Array[bool] = [false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false]
+var weapon_chambered: Array[bool] = [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]
+var ammo_in_mag: Array[int] = [15, 30, 8, 1, 1, 30, 6, 5, 30, 7, 100, 2, 30, 8, 5, 1, 60, 1]
+var ammo_reserve: Array[int] = [90, 180, 48, 0, 24, 180, 42, 35, 180, 42, 300, 32, 180, 64, 40, 24, 0, 4]
+var weapon_attachments: Dictionary = {} # weapon_idx -> {"optic": bool, "suppressor": bool, "ext_mag": bool}
+var _burst_remaining: int = 0
+var _burst_timer: float = 0.0
+var _rockets: Array[Dictionary] = []
+var _flame_pool_cd: float = 0.0
 var equipped_melee_id: String = "knife"
 var _melee_timer: float = 0.0
 var _melee_dur: float = 0.42
@@ -667,6 +863,20 @@ func _build_rig() -> void:
 	holo_quad.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	holo_quad.layers = 2
 	weapon_pivot.add_child(holo_quad)
+
+	# Modular Tactical Red-Dot Sight aluminum housing frame (shown ONLY when an aftermarket "optic" attachment is installed!)
+	var optic_hood := Node3D.new()
+	optic_hood.name = "ModularOpticHood"
+	optic_hood.visible = false
+	var h_metal := _make_vm_mat(Color(0.09, 0.10, 0.11), 0.36, 0.82, 0.55)
+	var base_b := BoxMesh.new(); base_b.size = Vector3(0.028, 0.008, 0.052); base_b.material = h_metal
+	var side_b := BoxMesh.new(); side_b.size = Vector3(0.0032, 0.022, 0.040); side_b.material = h_metal
+	var top_b := BoxMesh.new(); top_b.size = Vector3(0.028, 0.0032, 0.040); top_b.material = h_metal
+	_add_vm_mesh(optic_hood, base_b, Vector3(0.0, -0.014, 0.0))
+	_add_vm_mesh(optic_hood, side_b, Vector3(-0.0125, 0.0, 0.0))
+	_add_vm_mesh(optic_hood, side_b, Vector3(0.0125, 0.0, 0.0))
+	_add_vm_mesh(optic_hood, top_b, Vector3(0.0, 0.012, 0.0))
+	holo_quad.add_child(optic_hood)
 
 	flashlight = SpotLight3D.new()
 	flashlight.light_color = Color(0.96, 0.98, 1.0)
@@ -1335,6 +1545,10 @@ func _collect_weapon_parts(n: Node, target_parts: Dictionary = _w_parts) -> void
 			grp = "lifter"
 		elif nl == "quiver":
 			grp = "quiver"
+		elif nl == "barrel":
+			grp = "barrel"
+		elif nl == "warhead":
+			grp = "warhead"
 		elif nl.begins_with("chargebar_"):
 			grp = "charge_bars"
 		if grp != "":
@@ -1551,8 +1765,8 @@ func _clone_tactical_arms(src_idx: int, holder: Node3D, parts: Dictionary,
 		var dup := MeshInstance3D.new()
 		dup.name = src_mi.name
 		dup.mesh = src_mi.mesh
-		# When cloning G17's ArmRight solo for melee, strip the stray inner-seam island (< 900 verts) that juts out left of the wrist!
-		if src_idx == 0 and grp == "arm_right" and not include_left and src_mi.mesh.get_surface_count() > 0:
+		# Strip stray inner-seam/cuff islands (< 900 verts) on cloned ArmRight so NO white cuff shard juts into camera FOV!
+		if (src_idx == 0 or src_idx == 1) and grp == "arm_right" and src_mi.mesh.get_surface_count() > 0:
 			var arr0 := src_mi.mesh.surface_get_arrays(0)
 			var sv0: PackedVector3Array = arr0[Mesh.ARRAY_VERTEX]
 			var si0: PackedInt32Array = arr0[Mesh.ARRAY_INDEX]
@@ -1878,6 +2092,20 @@ func _build_single_weapon_rig(i: int) -> void:
 					_setup_bow_rig_refs(parts)
 				elif i == 6:
 					_clone_tactical_arms(0, holder, parts, Vector3(0.0, -0.02, 0.08), Vector3.ZERO, Vector3(0.0, -0.02, 0.08), Vector3.ZERO)
+				elif i == 11:
+					_clone_tactical_arms(1, holder, parts, Vector3(0.01, -0.028, 0.05), Vector3.ZERO, Vector3(0.0, -0.010, 0.04), Vector3.ZERO)
+				elif i == 12:
+					_clone_tactical_arms(1, holder, parts, Vector3(0.01, -0.036, 0.02), Vector3.ZERO, Vector3(0.0, -0.010, 0.02), Vector3.ZERO)
+				elif i == 13:
+					_clone_tactical_arms(1, holder, parts, Vector3(0.01, -0.040, 0.03), Vector3.ZERO, Vector3(0.0, -0.014, 0.03), Vector3.ZERO)
+				elif i == 14:
+					_clone_tactical_arms(1, holder, parts, Vector3(0.015, -0.064, 0.04), Vector3.ZERO, Vector3(0.0, -0.016, 0.03), Vector3.ZERO)
+				elif i == 15:
+					_clone_tactical_arms(1, holder, parts, Vector3(0.01, -0.052, 0.04), Vector3.ZERO, Vector3(0.0, -0.018, 0.04), Vector3.ZERO)
+				elif i == 16:
+					_clone_tactical_arms(1, holder, parts, Vector3(0.02, -0.036, 0.02), Vector3.ZERO, Vector3(0.0, -0.014, 0.02), Vector3.ZERO)
+				elif i == 17:
+					_clone_tactical_arms(1, holder, parts, Vector3(0.01, -0.046, 0.06), Vector3.ZERO, Vector3(0.0, -0.020, 0.06), Vector3.ZERO)
 				else:
 					_clone_tactical_arms(1, holder, parts, Vector3(0.0, 0.02, 0.02), Vector3.ZERO, Vector3(0.0, 0.02, 0.02), Vector3.ZERO)
 	if i == 2:
@@ -1959,8 +2187,14 @@ func _apply_idle_bolt_and_cover() -> void:
 		_pose_part("charge", Vector3(0.0, 0.0, locked_mp5 * 0.068), Vector3(0.0, 0.0, -locked_mp5 * 0.52))
 	elif current_weapon == 6:
 		_pose_part("speed_loader", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, false)
-	elif current_weapon == 7:
+	elif current_weapon == 7 or current_weapon == 14:
 		_pose_part("feed_round", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, false)
+	elif current_weapon == 13:
+		_pose_part("mag", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, false)
+	elif current_weapon == 15:
+		_pose_part("bow_arrow", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, ammo_in_mag[15] > 0)
+	elif current_weapon == 17:
+		_pose_part("warhead", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, ammo_in_mag[17] > 0)
 
 
 func _reset_weapon_parts() -> void:
@@ -1992,6 +2226,8 @@ func _equip_weapon(idx: int, force_preview: bool = false) -> void:
 		cancel_bow_draw(false)
 	current_weapon = idx
 	is_reloading = false
+	_burst_remaining = 0
+	_burst_timer = 0.0
 	_quick_melee_active = false
 	_melee_timer = 0.0
 	_melee_hitstop_timer = 0.0
@@ -2028,8 +2264,15 @@ func _equip_weapon(idx: int, force_preview: bool = false) -> void:
 	if idx == 4:
 		_pose_bow_rig()
 
-	holo_quad.visible = w["has_holo"]
-	holo_quad.position = w["holo_pos"]
+	var use_holo := bool(w["has_holo"]) or has_attachment(idx, "optic")
+	holo_quad.visible = use_holo
+	var hood := holo_quad.get_node_or_null("ModularOpticHood") as Node3D
+	if hood:
+		hood.visible = has_attachment(idx, "optic") and not bool(w["has_holo"])
+	var hpos: Vector3 = w.get("holo_pos", Vector3.ZERO)
+	if hpos == Vector3.ZERO:
+		hpos = Vector3(0.0, 0.072, -0.12)
+	holo_quad.position = hpos
 	if is_instance_valid(weapon_pivot) and get_tree() and get_tree().paused:
 		weapon_pivot.position = w["hip_pos"]
 		weapon_pivot.rotation = w["hip_rot"]
@@ -2226,15 +2469,57 @@ func get_current_weapon_name() -> String:
 		var m: Dictionary = MELEE_CATALOG.get(equipped_melee_id, MELEE_CATALOG["knife"])
 		return str(m["name"])
 	var base := str(WEAPONS[current_weapon]["name"])
-	return (base + " MK-II") if is_weapon_upgraded(current_weapon) else base
+	var tags: Array[String] = []
+	if is_weapon_upgraded(current_weapon):
+		tags.append("MK-II")
+	if has_attachment(current_weapon, "optic"):
+		tags.append("RDS")
+	if has_attachment(current_weapon, "suppressor"):
+		tags.append("SD")
+	if has_attachment(current_weapon, "ext_mag") and not is_weapon_upgraded(current_weapon):
+		tags.append("EXT")
+	return base if tags.is_empty() else ("%s [%s]" % [base, "+".join(tags)])
+
+
+func has_attachment(idx: int, mod_key: String) -> bool:
+	if not weapon_attachments.has(idx):
+		return false
+	return bool((weapon_attachments[idx] as Dictionary).get(mod_key, false))
+
+
+func add_attachment(idx: int, mod_key: String) -> void:
+	if idx < 0 or idx >= WEAPONS.size():
+		return
+	if not weapon_attachments.has(idx):
+		weapon_attachments[idx] = {}
+	(weapon_attachments[idx] as Dictionary)[mod_key] = true
+	if mod_key == "ext_mag":
+		ammo_in_mag[idx] = get_weapon_mag_size(idx)
+	if idx == current_weapon:
+		var w: Dictionary = WEAPONS[idx]
+		var use_holo := bool(w["has_holo"]) or has_attachment(idx, "optic")
+		holo_quad.visible = use_holo
+		var hood := holo_quad.get_node_or_null("ModularOpticHood") as Node3D
+		if hood:
+			hood.visible = has_attachment(idx, "optic") and not bool(w["has_holo"])
+		var hpos: Vector3 = w.get("holo_pos", Vector3.ZERO)
+		holo_quad.position = hpos if hpos != Vector3.ZERO else Vector3(0.0, 0.072, -0.12)
+
+
+func is_no_refill_weapon(idx: int) -> bool:
+	if idx < 0 or idx >= WEAPONS.size():
+		return false
+	return bool(WEAPONS[idx].get("no_ammo_refill", false))
 
 
 func get_weapon_mag_size(idx: int) -> int:
 	if idx < 0 or idx >= WEAPONS.size():
 		return 1
 	var base := int(WEAPONS[idx]["mag_size"])
-	if is_weapon_upgraded(idx) and not bool(WEAPONS[idx].get("is_bow", false)) and not bool(WEAPONS[idx].get("is_melee", false)):
-		return maxi(base + 1, int(round(float(base) * 1.35)))
+	if bool(WEAPONS[idx].get("is_bow", false)) or bool(WEAPONS[idx].get("is_melee", false)) or bool(WEAPONS[idx].get("is_crossbow", false)) or bool(WEAPONS[idx].get("is_rpg", false)) or bool(WEAPONS[idx].get("is_flamethrower", false)) or idx == 6 or idx == 11:
+		return base
+	if is_weapon_upgraded(idx) or has_attachment(idx, "ext_mag"):
+		return maxi(base + 2, int(round(float(base) * 1.45)))
 	return base
 
 
@@ -2246,9 +2531,10 @@ func upgrade_weapon(idx: int) -> void:
 	if idx < 0 or idx >= WEAPONS.size():
 		return
 	upgraded_weapons[idx] = true
-	ammo_in_mag[idx] = get_weapon_mag_size(idx)
-	ammo_reserve[idx] = int(WEAPONS[idx]["reserve_max"])
-	weapon_chambered[idx] = true
+	if not is_no_refill_weapon(idx):
+		ammo_in_mag[idx] = get_weapon_mag_size(idx)
+		ammo_reserve[idx] = int(WEAPONS[idx]["reserve_max"])
+		weapon_chambered[idx] = true
 
 
 func _sync_unlocked_from_loadout() -> void:
@@ -2319,6 +2605,7 @@ func acquire_weapon(idx: int, equip_now: bool = true) -> Dictionary:
 			slot_key = str(rep_slot + 1)
 	if replaced >= 0 and replaced < upgraded_weapons.size():
 		upgraded_weapons[replaced] = false
+		weapon_attachments.erase(replaced)
 	_sync_unlocked_from_loadout()
 	ammo_in_mag[idx] = get_weapon_mag_size(idx)
 	ammo_reserve[idx] = int(WEAPONS[idx]["reserve_max"])
@@ -2344,6 +2631,7 @@ func drop_firearm_slot(slot_idx: int) -> bool:
 	firearm_slots.remove_at(slot_idx)
 	if removed >= 0 and removed < upgraded_weapons.size():
 		upgraded_weapons[removed] = false
+		weapon_attachments.erase(removed)
 	_sync_unlocked_from_loadout()
 	if current_weapon == removed and not firearm_slots.is_empty():
 		_equip_weapon(firearm_slots[0], true)
@@ -2423,18 +2711,27 @@ func dev_give_all_ammo_and_grenades() -> void:
 	grenade_counts["shock"] = maxi(int(grenade_counts.get("shock", 0)), 3)
 
 
+func _weapon_short_label(wi: int) -> String:
+	const SHORT_MAP := {
+		0: "G17", 1: "M16A2", 2: "M870", 3: "MELEE", 4: "BOW", 5: "MP5",
+		6: ".44", 7: "M1903", 8: "AK-74", 9: "BENELLI", 10: "M249",
+		11: "SAWED", 12: "FAMAS", 13: "GARAND", 14: "KAR98K", 15: "XBOW", 16: "FLAMER", 17: "RPG-7",
+	}
+	return str(SHORT_MAP.get(wi, str(WEAPONS[wi]["name"]).split(" ")[0]))
+
+
 func get_hotbar_summary() -> String:
 	var parts: Array[String] = []
 	for i in range(MAX_FIREARM_SLOTS):
 		if i < firearm_slots.size():
 			var wi := firearm_slots[i]
-			var short_nm := str(WEAPONS[wi]["name"]).split(" ")[0]
+			var short_nm := _weapon_short_label(wi)
 			var mark := "*" if wi == current_weapon else ""
 			parts.append("[%d]%s%s" % [i + 1, mark, short_nm])
 		else:
 			parts.append("[%d]---" % (i + 1))
 	if special_slot >= 0:
-		var snm := str(WEAPONS[special_slot]["name"]).split(" ")[0]
+		var snm := _weapon_short_label(special_slot)
 		parts.append("[4]%s%s" % ["*" if special_slot == current_weapon else "", snm])
 	var m_lbl := "SPIKED" if equipped_melee_id == "bat_spiked" else (str(MELEE_CATALOG[equipped_melee_id]["name"]).split(" ")[-1] if (equipped_melee_id != "" and MELEE_CATALOG.has(equipped_melee_id)) else "BASH")
 	parts.append("[V]%s" % m_lbl)
@@ -2715,6 +3012,9 @@ func _physics_process(delta: float) -> void:
 	_update_arrows(delta)
 	_update_grenades(delta)
 	_update_hazards(delta)
+	_update_rockets(delta)
+	if _flame_pool_cd > 0.0:
+		_flame_pool_cd = maxf(0.0, _flame_pool_cd - delta)
 	if _grenade_cd > 0.0:
 		_grenade_cd = maxf(0.0, _grenade_cd - delta)
 	if _melee_combo_reset > 0.0:
@@ -2729,7 +3029,7 @@ func _physics_process(delta: float) -> void:
 		ads_lockout -= delta
 	var can_ads := not bool(WEAPONS[current_weapon].get("is_melee", false)) and not _quick_melee_active
 	is_ads = can_ads and Input.is_action_pressed("aim") and not is_reloading and ads_lockout <= 0.0
-	is_sprinting = Input.is_action_pressed("sprint") and not is_crouching and not is_ads and not is_reloading and Input.get_vector("move_left", "move_right", "move_forward", "move_backward").length() > 0.1
+	is_sprinting = Input.is_action_pressed("sprint") and not is_crouching and not is_ads and not is_reloading and _burst_remaining <= 0 and Input.get_vector("move_left", "move_right", "move_forward", "move_backward").length() > 0.1
 	if is_sprinting and _bow_drawing:
 		cancel_bow_draw(true)
 
@@ -2786,6 +3086,16 @@ func _physics_process(delta: float) -> void:
 	if is_reloading:
 		_update_reload(delta)
 
+	if _burst_remaining > 0 and not is_reloading and not dead and _melee_timer <= 0.0:
+		_burst_timer -= delta
+		if _burst_timer <= 0.0:
+			_burst_remaining -= 1
+			if ammo_in_mag[current_weapon] > 0:
+				fire_weapon(true)
+				if _burst_remaining > 0:
+					_burst_timer = float(WEAPONS[current_weapon].get("burst_interval", 0.058))
+			else:
+				_burst_remaining = 0
 	if fire_cd > 0.0:
 		fire_cd -= delta
 	if _fire_buffer_timer > 0.0:
@@ -2948,7 +3258,7 @@ func _process(delta: float) -> void:
 
 	_update_weapon_mechanics(delta)
 
-	var want_sprint := is_sprinting and not is_reloading and _sprint_out_timer <= 0.0
+	var want_sprint := is_sprinting and not is_reloading and _burst_remaining <= 0 and _sprint_out_timer <= 0.0
 	_sprint_blend = lerpf(_sprint_blend, 1.0 if want_sprint else 0.0, 1.0 - exp(-delta * 11.0))
 
 	sway_offset = sway_offset.lerp(Vector2.ZERO, 1.0 - exp(-delta * 9.0))
@@ -2956,8 +3266,16 @@ func _process(delta: float) -> void:
 	recoil_z = lerpf(recoil_z, 0.0, 1.0 - exp(-delta * 15.0))
 
 	var w: Dictionary = WEAPONS[current_weapon]
-	var base_pos: Vector3 = (w["hip_pos"] as Vector3).lerp(w["ads_pos"] as Vector3, _ads_blend)
+	var ads_p_eff: Vector3 = w["ads_pos"] as Vector3
+	var has_added_optic := has_attachment(current_weapon, "optic") and not bool(w["has_holo"])
+	if has_added_optic and is_instance_valid(holo_quad):
+		# Zero aftermarket Red-Dot Optic dead-center to camera aim ray (ads_pos.y + holo_pos.y == 0.0)!
+		ads_p_eff = Vector3(-holo_quad.position.x, -holo_quad.position.y, ads_p_eff.z)
+	var base_pos: Vector3 = (w["hip_pos"] as Vector3).lerp(ads_p_eff, _ads_blend)
 	var base_rot: Vector3 = (w["hip_rot"] as Vector3).lerp(w["ads_rot"] as Vector3, _ads_blend)
+	if is_instance_valid(holo_quad):
+		var want_holo := (bool(w["has_holo"]) or has_attachment(current_weapon, "optic")) and not bool(w.get("is_melee", false)) and not _quick_melee_active and not is_reloading and sniper_scope_alpha < 0.92
+		holo_quad.visible = want_holo
 
 	var sway_scale := lerpf(1.0, 0.18, _ads_blend)
 	var low_ready_pos := Vector3(-0.048, -0.062, 0.038) * _sprint_blend
@@ -3143,7 +3461,7 @@ func _update_weapon_mechanics(delta: float) -> void:
 		_hunting_bolt_timer = maxf(0.0, _hunting_bolt_timer - delta)
 		if not _hunting_bolt_did_sfx and _hunting_bolt_timer < 0.50:
 			_hunting_bolt_did_sfx = true
-			_eject_brass_casing(WEAPONS[7], false)
+			_eject_brass_casing(WEAPONS[current_weapon], false)
 			if sfx_reload and _sfx_bolt:
 				sfx_reload.stream = _sfx_bolt
 				sfx_reload.pitch_scale = 0.76
@@ -3153,7 +3471,7 @@ func _update_weapon_mechanics(delta: float) -> void:
 	if is_reloading:
 		return
 
-	if current_weapon == 0 or current_weapon == 1 or current_weapon == 5:
+	if current_weapon == 0 or current_weapon == 1 or current_weapon == 5 or current_weapon == 13 or current_weapon == 17:
 		_apply_idle_bolt_and_cover()
 	elif current_weapon == 2:
 		var pump_pull := 0.0
@@ -3171,7 +3489,7 @@ func _update_weapon_mechanics(delta: float) -> void:
 		_pose_part("crane", Vector3.ZERO)
 		_pose_part("cylinder", Vector3.ZERO, Vector3(0.0, 0.0, _revolver_cyl_angle))
 		_pose_part("hammer", Vector3.ZERO, Vector3(0.55 * _revolver_hammer, 0.0, 0.0))
-	elif current_weapon == 7:
+	elif current_weapon == 7 or current_weapon == 14:
 		if _hunting_bolt_timer > 0.0:
 			var u := clampf(1.0 - _hunting_bolt_timer / 0.78, 0.0, 1.0)
 			var lift := sin(smoothstep(0.0, 0.25, u) * PI * 0.5) * (1.0 - smoothstep(0.75, 1.0, u))
@@ -3238,7 +3556,7 @@ func start_reload() -> bool:
 	if _melee_timer > 0.0 or _quick_melee_active:
 		return false
 	var w: Dictionary = WEAPONS[current_weapon]
-	if bool(w.get("is_melee", false)) or bool(w.get("is_bow", false)):
+	if bool(w.get("is_melee", false)) or bool(w.get("is_bow", false)) or bool(w.get("is_flamethrower", false)):
 		return false
 	var mag_cap := get_weapon_mag_size(current_weapon)
 	var needs_chamber_only := (not weapon_chambered[current_weapon] and ammo_in_mag[current_weapon] > 0)
@@ -3247,6 +3565,8 @@ func start_reload() -> bool:
 	if not needs_chamber_only and (ammo_in_mag[current_weapon] >= mag_cap or ammo_reserve[current_weapon] <= 0):
 		return false
 	is_reloading = true
+	_burst_remaining = 0
+	_burst_timer = 0.0
 	reload_elapsed = 0.0
 	_reload_prev_t = -0.001
 	reload_flags = 0
@@ -3260,9 +3580,9 @@ func start_reload() -> bool:
 	_shotgun_exit_arm_p = Vector3.ZERO
 	_shotgun_exit_arm_r = Vector3.ZERO
 	shotgun_pump_timer = 0.0
-	_sniper_pending_eject = (current_weapon == 7 and _hunting_bolt_timer > 0.0 and not _hunting_bolt_did_sfx)
+	_sniper_pending_eject = ((current_weapon == 7 or current_weapon == 14) and _hunting_bolt_timer > 0.0 and not _hunting_bolt_did_sfx)
 	_hunting_bolt_timer = 0.0
-	_magnum_spent_count = clampi(mag_cap - ammo_in_mag[6], 1, 6) if current_weapon == 6 else 0
+	_magnum_spent_count = clampi(mag_cap - ammo_in_mag[6], 1, 6) if current_weapon == 6 else (clampi(2 - ammo_in_mag[11], 1, 2) if current_weapon == 11 else 0)
 
 	if current_weapon == 0:
 		reload_dur = 1.66 if reload_was_empty else 1.28
@@ -3280,6 +3600,18 @@ func start_reload() -> bool:
 		reload_dur = 1.2 # Managed by interruptible shell loop phases
 	elif current_weapon == 10:
 		reload_dur = 3.40
+	elif current_weapon == 11:
+		reload_dur = 1.95
+	elif current_weapon == 12:
+		reload_dur = 2.25 if reload_was_empty else 1.78
+	elif current_weapon == 13:
+		reload_dur = 1.90
+	elif current_weapon == 14:
+		reload_dur = 2.20
+	elif current_weapon == 15:
+		reload_dur = 1.38
+	elif current_weapon == 17:
+		reload_dur = 2.35
 	else:
 		reload_dur = 1.2 # Managed by shell loop phases
 	return true
@@ -3304,8 +3636,216 @@ func _update_reload(delta: float) -> void:
 		_update_reload_benelli(delta)
 	elif current_weapon == 10:
 		_update_reload_m249()
+	elif current_weapon == 11:
+		_update_reload_sawed_off()
+	elif current_weapon == 12:
+		_update_reload_famas()
+	elif current_weapon == 13:
+		_update_reload_garand()
+	elif current_weapon == 14:
+		_update_reload_kar98k()
+	elif current_weapon == 15:
+		_update_reload_crossbow()
+	elif current_weapon == 17:
+		_update_reload_rpg7()
 	else:
 		_update_reload_shotgun(delta)
+
+
+func _update_reload_sawed_off() -> void:
+	# Break-action double-barrel shotgun: hinge barrel down, eject spent hulls, push fresh shells along hinged axis, snap shut!
+	var t := reload_elapsed
+	var cant_p := Vector3(-0.045, 0.085, -0.045)
+	var cant_r := Vector3(0.24, 0.36, -0.34)
+	if _reload_event(0.24, 1):
+		weapon_chambered[11] = false
+		_play_reload_sfx(_sfx_bolt, 0.84)
+		for _hi in range(maxi(1, _magnum_spent_count)):
+			_eject_brass_casing(WEAPONS[11], true)
+	if _reload_event(0.95, 2):
+		_play_reload_sfx(_sfx_shell_in, 0.96)
+	if _reload_event(1.25, 4):
+		_play_reload_sfx(_sfx_shell_in, 1.04)
+		_commit_mag_ammo()
+	if _reload_event(1.62, 8):
+		weapon_chambered[11] = true
+		_play_reload_sfx(_sfx_bolt, 1.12)
+		trauma = minf(1.0, trauma + 0.14)
+	var hinge := smoothstep(0.18, 0.42, t) * (1.0 - smoothstep(1.50, 1.66, t))
+	reload_pos_off = cant_p * smoothstep(0.0, 0.22, t) * (1.0 - smoothstep(1.65, reload_dur, t))
+	reload_rot_off = cant_r * smoothstep(0.0, 0.22, t) * (1.0 - smoothstep(1.65, reload_dur, t))
+	var hinge_piv := Vector3(0.0, 0.004, -0.032)
+	var hinge_rot := Vector3(-0.62 * hinge, 0.0, 0.0)
+	_pose_part("barrel", Vector3.ZERO, hinge_rot, hinge_piv)
+	var shell_vis := t < 0.42 or t >= 0.85
+	var shell_slide := lerpf(0.09, 0.0, smoothstep(0.85, 1.32, t)) if t >= 0.85 else (0.11 * smoothstep(0.24, 0.42, t))
+	var aligned_slide := Basis.from_euler(hinge_rot) * Vector3(0.0, 0.0, shell_slide)
+	_pose_part("mag", aligned_slide, hinge_rot, hinge_piv, shell_vis)
+	var lh_in := sin(smoothstep(0.75, 1.45, t) * PI)
+	_pose_part("arm_left", Vector3(0.02 * lh_in, -0.04 * lh_in, 0.10 * lh_in), Vector3(-0.35 * lh_in, 0.25 * lh_in, 0.22 * lh_in), PIVOT_AR_HAND)
+	if t >= reload_dur:
+		is_reloading = false
+		_reset_weapon_parts()
+
+
+func _update_reload_famas() -> void:
+	# Bullpup rear magazine swap (scale=1.0 unparented GLB: extract -> empty magwell -> seat fresh mag -> cock!)
+	var t := reload_elapsed
+	var cant_p := Vector3(-0.045, 0.068, -0.18)
+	var cant_r := Vector3(0.22, 0.62, -0.42)
+	var eject_dir := Vector3(0.0, -0.95, 0.30).normalized()
+	if _reload_event(0.24, 1):
+		_play_reload_sfx(_sfx_mag_out, 1.06)
+	if _reload_event(0.56, 32):
+		_spawn_dropped_mag(12)
+	if _reload_event(1.16, 2):
+		_play_reload_sfx(_sfx_mag_in, 1.06)
+	if _reload_event(1.26, 4):
+		_commit_mag_ammo()
+		if not reload_was_empty:
+			weapon_chambered[12] = true
+		trauma = minf(1.0, trauma + 0.09)
+	if reload_was_empty and _reload_event(1.68, 8):
+		weapon_chambered[12] = true
+		_play_reload_sfx(_sfx_bolt, 1.08)
+		trauma = minf(1.0, trauma + 0.11)
+	var env_u := smoothstep(0.0, 0.22, t) * (1.0 - smoothstep(reload_dur - 0.35, reload_dur, t))
+	reload_pos_off = cant_p * env_u
+	reload_rot_off = cant_r * env_u
+	var hand_mag_p := Vector3(0.015, -0.085, 0.14)
+	var hand_mag_r := Vector3(-0.46, 0.24, 0.36)
+	if t < 0.62:
+		var u := smoothstep(0.22, 0.56, t)
+		var mp := eject_dir * (0.24 * u)
+		_pose_part("mag", mp, Vector3(0.18 * u, 0.0, 0.0), Vector3.ZERO, t < 0.56)
+		_pose_part("arm_left", hand_mag_p + mp, hand_mag_r, PIVOT_AR_HAND)
+	elif t < 0.90:
+		_pose_part("mag", eject_dir * 0.24, Vector3.ZERO, Vector3.ZERO, false)
+		_pose_part("arm_left", hand_mag_p + eject_dir * 0.28, hand_mag_r + Vector3(-0.12, 0.06, 0.08), PIVOT_AR_HAND)
+	elif t < 1.38:
+		var u := smoothstep(0.90, 1.26, t)
+		var mp := eject_dir * lerpf(0.24, 0.0, u)
+		_pose_part("mag", mp, Vector3(lerpf(0.18, 0.0, u), 0.0, 0.0), Vector3.ZERO, true)
+		_pose_part("arm_left", hand_mag_p + mp, hand_mag_r, PIVOT_AR_HAND)
+	else:
+		_pose_part("mag", Vector3.ZERO)
+		var ret := smoothstep(1.38, reload_dur, t)
+		_pose_part("arm_left", hand_mag_p.lerp(Vector3.ZERO, ret), hand_mag_r.lerp(Vector3.ZERO, ret), PIVOT_AR_HAND)
+	if t >= reload_dur:
+		is_reloading = false
+		_reset_weapon_parts()
+
+
+func _update_reload_garand() -> void:
+	# M1 Garand top en-bloc 8-round clip push into breech with right thumb + bolt snap!
+	var t := reload_elapsed
+	var cant_p := Vector3(-0.042, 0.095, -0.055)
+	var cant_r := Vector3(0.24, 0.34, -0.32)
+	if _reload_event(0.22, 1):
+		weapon_chambered[13] = false
+		_play_reload_sfx(_sfx_bolt, 0.95)
+	if _reload_event(0.88, 2):
+		_play_reload_sfx(_sfx_mag_in, 1.18)
+	if _reload_event(1.18, 4):
+		_commit_mag_ammo()
+		weapon_chambered[13] = true
+		_play_reload_sfx(_sfx_bolt, 1.06)
+		trauma = minf(1.0, trauma + 0.12)
+	var env_u := smoothstep(0.0, 0.24, t) * (1.0 - smoothstep(1.48, reload_dur, t))
+	reload_pos_off = cant_p * env_u
+	reload_rot_off = cant_r * env_u
+	var clip_vis := t >= 0.42 and t < 1.24
+	var press_u := smoothstep(0.45, 1.16, t)
+	var clip_drop := lerpf(0.085, -0.015, press_u)
+	_pose_part("mag", Vector3(0.0, clip_drop, 0.0), Vector3.ZERO, Vector3.ZERO, clip_vis)
+	var rh := sin(smoothstep(0.26, 1.42, t) * PI)
+	_pose_part("arm_right", Vector3(0.025 * rh, (0.145 - 0.085 * press_u) * rh, -0.075 * rh), Vector3(0.28 * rh, -0.22 * rh, -0.32 * rh))
+	if t >= reload_dur:
+		is_reloading = false
+		_reset_weapon_parts()
+
+
+func _update_reload_kar98k() -> void:
+	# Kar98k Mauser: lift & pull Bolt open -> press 5-round stripper clip (`FeedRound`) down into breech -> close Bolt!
+	var t := reload_elapsed
+	var cant_p := Vector3(-0.046, 0.105, -0.058)
+	var cant_r := Vector3(0.26, 0.38, -0.36)
+	if _reload_event(0.24, 1):
+		weapon_chambered[14] = false
+		if _sniper_pending_eject:
+			_sniper_pending_eject = false
+			_eject_brass_casing(WEAPONS[14], false)
+		_play_reload_sfx(_sfx_bolt, 0.80)
+	if _reload_event(0.92, 2):
+		_play_reload_sfx(_sfx_shell_in, 1.08)
+	if _reload_event(1.30, 4):
+		_commit_mag_ammo()
+	if _reload_event(1.66, 8):
+		weapon_chambered[14] = true
+		_play_reload_sfx(_sfx_bolt, 0.92)
+		trauma = minf(1.0, trauma + 0.11)
+	var env_u := smoothstep(0.0, 0.25, t) * (1.0 - smoothstep(1.78, reload_dur, t))
+	reload_pos_off = cant_p * env_u
+	reload_rot_off = cant_r * env_u
+	var bolt_open := smoothstep(0.16, 0.38, t) * (1.0 - smoothstep(1.52, 1.72, t))
+	_pose_part("bolt", Vector3(0.0, 0.0, 0.082 * bolt_open), Vector3(0.0, 0.0, 1.05 * bolt_open))
+	var fr_vis := t >= 0.48 and t < 1.36
+	var press_u := smoothstep(0.55, 1.28, t)
+	var fr_drop := lerpf(0.085, -0.025, press_u)
+	_pose_part("feed_round", Vector3(0.0, fr_drop, 0.0), Vector3.ZERO, Vector3.ZERO, fr_vis)
+	var rh := sin(smoothstep(0.18, 1.78, t) * PI)
+	_pose_part("arm_right", Vector3(0.032 * rh, (0.135 - 0.075 * press_u) * rh, -0.055 * rh), Vector3(0.22 * rh, -0.22 * rh, -0.30 * rh))
+	if t >= reload_dur:
+		is_reloading = false
+		_reset_weapon_parts()
+
+
+func _update_reload_crossbow() -> void:
+	# Heavy Crossbow: pull bowstring back into trigger latch & seat fresh bolt on rail!
+	var t := reload_elapsed
+	if _reload_event(0.28, 1):
+		if _sfx_bow_draw:
+			_play_reload_sfx(_sfx_bow_draw, 1.15)
+	if _reload_event(0.95, 2):
+		_play_reload_sfx(_sfx_bolt, 1.22)
+		_commit_mag_ammo()
+		weapon_chambered[15] = true
+		trauma = minf(1.0, trauma + 0.08)
+	var pull := sin(smoothstep(0.0, reload_dur, t) * PI)
+	reload_pos_off = Vector3(-0.03 * pull, -0.08 * pull, 0.05 * pull)
+	reload_rot_off = Vector3(-0.28 * pull, 0.18 * pull, -0.14 * pull)
+	var bolt_vis := t >= 0.62
+	var bolt_z := lerpf(-0.18, 0.0, smoothstep(0.62, 1.05, t))
+	_pose_part("bow_arrow", Vector3(0.0, 0.0, bolt_z), Vector3.ZERO, Vector3.ZERO, bolt_vis)
+	_pose_part("arm_right", Vector3(0.0, 0.06 * pull, 0.14 * pull), Vector3(-0.22 * pull, 0.0, 0.0))
+	if t >= reload_dur:
+		is_reloading = false
+		_reset_weapon_parts()
+
+
+func _update_reload_rpg7() -> void:
+	# RPG-7: cant launcher tube across view -> slide fresh PG-7V Warhead into front muzzle (PIVOT_AR_HAND -> ZERO sleeve bloat!)
+	var t := reload_elapsed
+	var cant_p := Vector3(-0.085, 0.035, 0.12)
+	var cant_r := Vector3(0.22, 0.56, -0.28)
+	if _reload_event(0.32, 1):
+		_play_reload_sfx(_sfx_mag_out, 0.72)
+	if _reload_event(1.38, 2):
+		_play_reload_sfx(_sfx_mag_in, 0.68)
+		_commit_mag_ammo()
+		weapon_chambered[17] = true
+		trauma = minf(1.0, trauma + 0.14)
+	var env_u := smoothstep(0.0, 0.35, t) * (1.0 - smoothstep(1.80, reload_dur, t))
+	reload_pos_off = cant_p * env_u
+	reload_rot_off = cant_r * env_u
+	var wh_vis := t >= 0.65
+	var wh_z := lerpf(-0.24, 0.0, smoothstep(0.68, 1.44, t))
+	_pose_part("warhead", Vector3(0.0, 0.0, wh_z), Vector3.ZERO, Vector3.ZERO, wh_vis)
+	var lh := sin(smoothstep(0.45, 1.65, t) * PI)
+	_pose_part("arm_left", Vector3(0.02 * lh, -0.02 * lh, (-0.12 + wh_z * 0.45) * lh), Vector3(-0.42 * lh, 0.24 * lh, 0.32 * lh), PIVOT_AR_HAND)
+	if t >= reload_dur:
+		is_reloading = false
+		_reset_weapon_parts()
 
 
 func _update_reload_mp5() -> void:
@@ -4443,16 +4983,18 @@ func _build_world_arrow_node() -> Node3D:
 	return root
 
 
-func _fire_bow_arrow(power: float) -> void:
-	ammo_in_mag[4] = maxi(0, ammo_in_mag[4] - 1)
-	# Only start 0.35s quiver re-nock if we actually have reserve arrows!
-	_bow_nock_timer = 0.35 if ammo_reserve[4] > 0 else 0.0
-	fire_cd = 0.36
-	recoil_vel.y += 0.024 * power
-	recoil_z += 0.022 * power
-	trauma = minf(1.0, trauma + 0.07 * power)
-	if _sfx_bow_release:
-		_play_gun_sfx(_sfx_bow_release, lerpf(0.88, 1.06, power))
+func _fire_bow_arrow(power: float, weapon_idx: int = 4) -> void:
+	var is_xbow := (weapon_idx == 15)
+	if not is_xbow:
+		ammo_in_mag[4] = maxi(0, ammo_in_mag[4] - 1)
+		# Only start 0.35s quiver re-nock if we actually have reserve arrows!
+		_bow_nock_timer = 0.35 if ammo_reserve[4] > 0 else 0.0
+		fire_cd = 0.36
+		recoil_vel.y += 0.024 * power
+		recoil_z += 0.022 * power
+		trauma = minf(1.0, trauma + 0.07 * power)
+		if _sfx_bow_release:
+			_play_gun_sfx(_sfx_bow_release, lerpf(0.88, 1.06, power))
 
 	if _arrows.size() >= 24:
 		var old: Dictionary = _arrows.pop_front()
@@ -4460,10 +5002,12 @@ func _fire_bow_arrow(power: float) -> void:
 			(old["node"] as Node).queue_free()
 
 	var arrow_node := _build_world_arrow_node()
+	if is_xbow:
+		arrow_node.scale = Vector3(1.15, 1.15, 0.78)
 	_fx_parent().add_child(arrow_node)
 	var cam_orig := camera.global_position
 	var cam_fwd := -camera.global_transform.basis.z
-	var speed := lerpf(24.0, 62.0, power)
+	var speed := 76.0 if is_xbow else lerpf(24.0, 62.0, power)
 
 	# Unified zeroed ballistic solution:
 	# 1. Sweep from camera eye along cam_fwd to find true aim target (zeroed cleanly at 25m for full draw!).
@@ -4484,7 +5028,8 @@ func _fire_bow_arrow(power: float) -> void:
 	var target_pt := cam_orig + cam_fwd * zero_dist + Vector3(0.0, drop_comp, 0.0)
 
 	# 2. Launch from muzzle-side arrow rest (clamped behind any close cover so nearby walls intercept cleanly!)
-	var rest_w := weapon_pivot.to_global(Vector3(-0.022, 0.036, -0.34))
+	var rest_local := Vector3(0.0, 0.020, -0.44) if is_xbow else Vector3(-0.022, 0.036, -0.34)
+	var rest_w := weapon_pivot.to_global(rest_local)
 	var start_pos := rest_w
 	if space:
 		var cq := PhysicsRayQueryParameters3D.create(cam_orig, rest_w, 1)
@@ -4498,11 +5043,13 @@ func _fire_bow_arrow(power: float) -> void:
 	var vel := launch_dir * speed
 	arrow_node.global_position = start_pos
 	arrow_node.look_at(start_pos + launch_dir, Vector3.UP)
-	var upg_mult := 1.45 if is_weapon_upgraded(4) else 1.0
+	var upg_mult := 1.45 if is_weapon_upgraded(weapon_idx) else 1.0
+	var base_dmg := float(WEAPONS[15]["damage"]) if is_xbow else lerpf(28.0, 170.0, pow(power, 1.15))
 	_arrows.append({
 		"node": arrow_node,
 		"vel": vel,
-		"dmg": lerpf(28.0, 170.0, pow(power, 1.15)) * upg_mult,
+		"dmg": base_dmg * upg_mult,
+		"weapon_idx": weapon_idx,
 		"total_dist": 0.0,
 		"stuck": false,
 		"stuck_zombie": null,
@@ -4555,9 +5102,10 @@ func _update_arrows(delta: float) -> void:
 						var rq := PhysicsRayQueryParameters3D.create(p_eye, node.global_position + Vector3(0, 0.08, 0), 1)
 						rq.exclude = [get_rid()]
 						blocked = not space.intersect_ray(rq).is_empty()
-					if not blocked and ammo_reserve[4] < int(WEAPONS[4]["reserve_max"]):
-						ammo_reserve[4] = mini(int(WEAPONS[4]["reserve_max"]), ammo_reserve[4] + 1)
-						if current_weapon == 4 and ammo_in_mag[4] <= 0 and _bow_nock_timer <= 0.0:
+					var a_widx := int(a.get("weapon_idx", 4))
+					if not blocked and unlocked_weapons[a_widx] and ammo_reserve[a_widx] < int(WEAPONS[a_widx]["reserve_max"]):
+						ammo_reserve[a_widx] = mini(int(WEAPONS[a_widx]["reserve_max"]), ammo_reserve[a_widx] + 1)
+						if a_widx == 4 and current_weapon == 4 and ammo_in_mag[4] <= 0 and _bow_nock_timer <= 0.0:
 							_bow_nock_timer = 0.35
 						_play_reload_sfx(_sfx_shell_in, 1.35)
 						node.queue_free()
@@ -4589,7 +5137,7 @@ func _update_arrows(delta: float) -> void:
 				var hpos: Vector3 = z_hit["pos"]
 				var hz := str(z_hit["zone"])
 				var true_dist := float(a["total_dist"]) + float(z_hit["dist"])
-				var res := z.apply_shot([{"zone": hz, "pos": hpos, "dir": dir, "dmg": float(a["dmg"]), "dist": true_dist}], 4)
+				var res := z.apply_shot([{"zone": hz, "pos": hpos, "dir": dir, "dmg": float(a["dmg"]), "dist": true_dist}], int(a.get("weapon_idx", 4)))
 				var is_hs := bool(res.get("headshot", false))
 				var killed := bool(res.get("killed", false))
 				emit_signal("hit_confirmed", is_hs, killed)
@@ -4606,7 +5154,11 @@ func _update_arrows(delta: float) -> void:
 				a["stuck"] = true
 				a["stuck_zombie"] = z
 				var b_idx := z.get_bone_for_zone(hz) if z.has_method("get_bone_for_zone") else -1
-				if z.skeleton and b_idx >= 0 and not z.dismembered.has(hz):
+				if z.skeleton and b_idx >= 0 and z.dismembered.has(hz):
+					var p_idx := z.skeleton.get_bone_parent(b_idx)
+					if p_idx >= 0:
+						b_idx = p_idx
+				if z.skeleton and b_idx >= 0:
 					var b_glob := z.skeleton.global_transform * z.skeleton.get_bone_global_pose(b_idx)
 					a["stuck_bone"] = b_idx
 					a["stuck_local_pos"] = b_glob.affine_inverse() * node.global_position
@@ -4690,6 +5242,8 @@ func _eject_brass_casing(w: Dictionary, is_hull := false, override_world_pos := 
 func trigger_melee(heavy: bool = false) -> bool:
 	if _melee_timer > 0.08 or dead:
 		return false
+	_burst_remaining = 0
+	_burst_timer = 0.0
 	if _bow_drawing:
 		cancel_bow_draw(true)
 	if is_reloading:
@@ -4873,6 +5427,8 @@ func _instantiate_grenade_visual(g_type: String) -> Node3D:
 func throw_grenade() -> bool:
 	if dead or _grenade_cd > 0.0 or _melee_timer > 0.0 or is_reloading:
 		return false
+	_burst_remaining = 0
+	_burst_timer = 0.0
 	if _bow_drawing:
 		cancel_bow_draw(true)
 	var g_type := equipped_grenade
@@ -4932,11 +5488,13 @@ func _project_to_floor(pos: Vector3) -> Vector3:
 	return pos
 
 
-func _has_aoe_los(origin: Vector3, target_pos: Vector3) -> bool:
+func _has_aoe_los(origin: Vector3, target_pos: Vector3, blast_normal: Vector3 = Vector3.UP) -> bool:
 	var space := get_world_3d().direct_space_state
 	if space == null:
 		return true
-	var q := PhysicsRayQueryParameters3D.create(origin + Vector3(0.0, 0.35, 0.0), target_pos + Vector3(0.0, 0.95, 0.0), 1)
+	var n := blast_normal.normalized() if blast_normal.length_squared() > 0.01 else Vector3.UP
+	var start_p := origin + (Vector3(0.0, 0.35, 0.0) if n.y > 0.4 else n * 0.25)
+	var q := PhysicsRayQueryParameters3D.create(start_p, target_pos + Vector3(0.0, 0.95, 0.0), 1)
 	q.exclude = [get_rid()]
 	return space.intersect_ray(q).is_empty()
 
@@ -5045,22 +5603,25 @@ func _detonate_grenade(g: Dictionary) -> void:
 func _spawn_hazard_pool(kind: String, pos: Vector3, dur: float, radius: float) -> void:
 	var root_n := Node3D.new()
 	root_n.position = pos + Vector3(0.0, 0.08, 0.0)
-	var light := OmniLight3D.new()
-	light.position = Vector3(0.0, 0.65, 0.0)
-	light.shadow_enabled = false
-	light.light_cull_mask = 0xFFFFD
-	light.light_volumetric_fog_energy = 0.0
-	light.omni_range = radius * 2.0
-	if kind == "shock":
-		light.light_color = Color(0.25, 0.82, 1.0)
-		light.light_energy = 5.5
-	elif kind == "frag_flash":
-		light.light_color = Color(1.0, 0.58, 0.18)
-		light.light_energy = 12.0
-	else:
-		light.light_color = Color(1.0, 0.42, 0.08)
-		light.light_energy = 5.0
-	root_n.add_child(light)
+	var light: OmniLight3D = null
+	# Skip dynamic hazard OmniLights on WebGL2 so overlapping flame pools never exceed 8-light per-object budget!
+	if not OS.has_feature("web") or kind == "frag_flash":
+		light = OmniLight3D.new()
+		light.position = Vector3(0.0, 0.65, 0.0)
+		light.shadow_enabled = false
+		light.light_cull_mask = 0xFFFFD
+		light.light_volumetric_fog_energy = 0.0
+		light.omni_range = radius * 2.0
+		if kind == "shock":
+			light.light_color = Color(0.25, 0.82, 1.0)
+			light.light_energy = 5.5
+		elif kind == "frag_flash":
+			light.light_color = Color(1.0, 0.58, 0.18)
+			light.light_energy = 12.0
+		else:
+			light.light_color = Color(1.0, 0.42, 0.08)
+			light.light_energy = 5.0
+		root_n.add_child(light)
 	if kind == "fire" or kind == "shock":
 		var disc := MeshInstance3D.new()
 		var cm := CylinderMesh.new()
@@ -5128,29 +5689,239 @@ func _update_hazards(delta: float) -> void:
 		i -= 1
 
 
-func fire_weapon() -> bool:
+func _fire_flamethrower(w: Dictionary) -> void:
+	var origin := camera.global_position
+	var fwd := -camera.global_transform.basis.z
+	var right := camera.global_transform.basis.x
+	var space := get_world_3d().direct_space_state
+	var reach := 9.5
+	var dmg_scale := 1.45 if is_weapon_upgraded(current_weapon) else 1.0
+	var z_hit_set := {}
+	for ang_deg: float in [0.0, -5.0, 5.0, -10.0, 10.0]:
+		var rad := deg_to_rad(ang_deg)
+		var dir := (fwd * cos(rad) + right * sin(rad)).normalized()
+		var max_d := reach
+		if space:
+			var wq := PhysicsRayQueryParameters3D.create(origin, origin + dir * reach, 1)
+			wq.exclude = [get_rid()]
+			var wh := space.intersect_ray(wq)
+			if not wh.is_empty():
+				max_d = origin.distance_to(wh["position"])
+		var zh := ZombieAI.raycast_all_zombies(origin, dir, max_d)
+		if not zh.is_empty():
+			var z := zh["zombie"] as ZombieAI
+			if is_instance_valid(z) and not z.dead and not z_hit_set.has(z):
+				z_hit_set[z] = true
+				z.apply_burn(4.5, 48.0 * dmg_scale)
+				z.apply_status_damage(float(w["damage"]) * dmg_scale)
+				# apply_status_damage already emits hit_confirmed(false, true) on kill — never double-award points!
+				if not z.dead:
+					emit_signal("hit_confirmed", false, false)
+	# Periodically lay down burning floor patches safely ahead of player (never right under player's own boots!)
+	if _flame_pool_cd <= 0.0 and space:
+		_flame_pool_cd = 0.55
+		var fq := PhysicsRayQueryParameters3D.create(origin, origin + fwd * reach, 1)
+		fq.exclude = [get_rid()]
+		var fhit := space.intersect_ray(fq)
+		var pool_p := _project_to_floor(fhit["position"] as Vector3) if not fhit.is_empty() else _project_to_floor(origin + fwd * 5.8)
+		if pool_p.distance_to(global_position) >= 2.4:
+			_spawn_hazard_pool("fire", pool_p, 3.2, 2.2)
+
+
+func _fire_rpg_rocket() -> void:
+	var origin := camera.global_position
+	var fwd := -camera.global_transform.basis.z
+	var space := get_world_3d().direct_space_state
+	var base_dmg := float(WEAPONS[17]["damage"]) * (1.45 if is_weapon_upgraded(17) else 1.0)
+	var spawn_p := origin + fwd * 0.65 - camera.global_transform.basis.y * 0.06
+	var max_spawn_d := origin.distance_to(spawn_p)
+	var spawn_nrm := Vector3.UP
+	if space:
+		var sq := PhysicsRayQueryParameters3D.create(origin, spawn_p, 1)
+		sq.exclude = [get_rid()]
+		var sh := space.intersect_ray(sq)
+		if not sh.is_empty():
+			max_spawn_d = origin.distance_to(sh["position"] as Vector3)
+			spawn_p = (sh["position"] as Vector3) + (sh["normal"] as Vector3) * 0.12
+			spawn_nrm = sh["normal"] as Vector3
+	# Immediate point-blank zombie check so close zombies within 0.65m never let rockets pass through!
+	var pb_zh := ZombieAI.raycast_all_zombies(origin, fwd, max_spawn_d)
+	if not pb_zh.is_empty():
+		_pose_part("warhead", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, false)
+		_detonate_rpg(pb_zh["pos"] as Vector3, base_dmg, -fwd, pb_zh["zombie"] as ZombieAI)
+		return
+	var r_node := Node3D.new()
+	# Clone the actual photoreal PBR PG-7V Warhead mesh from weapon_rpg7.glb (AGENTS.md Rule #1!)
+	var cloned_wh := false
+	if _w_parts.has("warhead"):
+		for wn in _w_parts["warhead"]:
+			var wmi := wn as MeshInstance3D
+			if wmi and wmi.mesh:
+				var mi := MeshInstance3D.new()
+				mi.mesh = wmi.mesh
+				for si in range(wmi.mesh.get_surface_count()):
+					var sm := wmi.get_active_material(si)
+					if sm: mi.set_surface_override_material(si, sm)
+				mi.position = Vector3(0.0, 0.0, 0.35)
+				mi.layers = 1
+				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				r_node.add_child(mi)
+				cloned_wh = true
+				break
+	if not cloned_wh:
+		var body := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.012; cm.bottom_radius = 0.042; cm.height = 0.42; cm.radial_segments = 12
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.24, 0.30, 0.18); mat.metallic = 0.35; mat.roughness = 0.55
+		cm.material = mat
+		body.mesh = cm
+		body.rotation.x = -PI * 0.5
+		body.layers = 1
+		body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		r_node.add_child(body)
+	if not OS.has_feature("web"):
+		var exhaust := OmniLight3D.new()
+		exhaust.position = Vector3(0.0, 0.0, 0.25)
+		exhaust.light_color = Color(1.0, 0.56, 0.16)
+		exhaust.light_energy = 4.5
+		exhaust.omni_range = 6.0
+		exhaust.shadow_enabled = false
+		exhaust.light_cull_mask = 0xFFFFD
+		exhaust.light_volumetric_fog_energy = 0.0
+		r_node.add_child(exhaust)
+	_fx_parent().add_child(r_node)
+	r_node.global_position = spawn_p
+	r_node.look_at(spawn_p + fwd * 10.0, Vector3.UP)
+	_rockets.append({
+		"node": r_node,
+		"vel": fwd * 32.0,
+		"age": 0.0,
+		"dmg": base_dmg,
+	})
+	_pose_part("warhead", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, false)
+
+
+func _update_rockets(delta: float) -> void:
+	if _rockets.is_empty():
+		return
+	var space := get_world_3d().direct_space_state
+	var i := _rockets.size() - 1
+	while i >= 0:
+		var r: Dictionary = _rockets[i]
+		var node: Node3D = r["node"]
+		if not is_instance_valid(node):
+			_rockets.remove_at(i)
+			i -= 1
+			continue
+		r["age"] = float(r["age"]) + delta
+		var vel: Vector3 = r["vel"]
+		vel.y -= 2.2 * delta
+		var p0 := node.global_position
+		var p1 := p0 + vel * delta
+		var step := p1 - p0
+		var step_d := step.length()
+		var hit_pos := Vector3.ZERO
+		var hit_nrm := Vector3.UP
+		var direct_z: ZombieAI = null
+		var did_hit := false
+		if space and step_d > 0.001:
+			var q := PhysicsRayQueryParameters3D.create(p0, p1, 1)
+			q.exclude = [get_rid()]
+			var wh := space.intersect_ray(q)
+			var max_zd := p0.distance_to(wh["position"]) if not wh.is_empty() else step_d
+			var zh := ZombieAI.raycast_all_zombies(p0, step / step_d, max_zd)
+			if not zh.is_empty():
+				hit_pos = zh["pos"] as Vector3
+				hit_nrm = -(step / step_d)
+				direct_z = zh["zombie"] as ZombieAI
+				did_hit = true
+			elif not wh.is_empty():
+				hit_nrm = wh["normal"] as Vector3
+				hit_pos = (wh["position"] as Vector3) + hit_nrm * 0.15
+				did_hit = true
+		if did_hit or float(r["age"]) >= 4.5:
+			var dpos := hit_pos if did_hit else p1
+			_detonate_rpg(dpos, float(r["dmg"]), hit_nrm, direct_z)
+			node.queue_free()
+			_rockets.remove_at(i)
+		else:
+			node.global_position = p1
+			node.look_at(p1 + vel.normalized() * 4.0, Vector3.UP)
+			r["vel"] = vel
+		i -= 1
+
+
+func _detonate_rpg(pos: Vector3, base_dmg: float, blast_normal: Vector3 = Vector3.UP, direct_target: ZombieAI = null) -> void:
+	var dist_p := global_position.distance_to(pos)
+	trauma = minf(1.0, trauma + clampf(1.0 - dist_p / 18.0, 0.25, 1.0))
+	if sfx_gun and _weapon_audio.size() > 2 and _weapon_audio[2]:
+		_play_gun_sfx(_weapon_audio[2], 0.44)
+	var radius := 7.5
+	for z_raw in ZombieAI._all_zombies.duplicate():
+		var z := z_raw as ZombieAI
+		if not is_instance_valid(z) or z.dead:
+			continue
+		var is_direct := (z == direct_target)
+		var d_horiz := Vector2(z.global_position.x - pos.x, z.global_position.z - pos.z).length()
+		if is_direct or (d_horiz <= radius and absf(z.global_position.y - pos.y) <= 3.8 and _has_aoe_los(pos, z.global_position, blast_normal)):
+			var falloff := 1.0 if is_direct else clampf(1.0 - (d_horiz / radius) * 0.65, 0.35, 1.0)
+			var dir := (z.global_position + Vector3(0, 1.0, 0) - pos).normalized()
+			if dir.length_squared() < 0.01:
+				dir = -camera.global_transform.basis.z
+			# RPG-7 shaped-charge warhead punches straight through chest armor on direct hits!
+			var armor_bypass := (1.0 / maxf(z._chest_armor_mult, 0.35)) if is_direct else 1.0
+			var res := z.apply_shot([{"zone": "CHEST", "pos": z.global_position + Vector3(0, 1.0, 0), "dir": dir, "dmg": base_dmg * falloff * armor_bypass, "dist": d_horiz}], 2)
+			if not bool(res.get("corpse_hit", false)):
+				emit_signal("hit_confirmed", bool(res.get("headshot", false)), bool(res.get("killed", false)))
+			if not z.dead and z.has_method("apply_knockback"):
+				z.apply_knockback(dir * (10.0 * falloff))
+	if dist_p <= 5.0 and absf(global_position.y - pos.y) <= 3.0 and _has_aoe_los(pos, global_position, blast_normal):
+		take_damage(clampf(55.0 * (1.0 - dist_p / 5.0), 14.0, 55.0), pos)
+	_spawn_hazard_pool("frag_flash", pos, 0.45, 4.2)
+	_spawn_hazard_pool("fire", _project_to_floor(pos), 4.5, 2.8)
+
+
+func fire_weapon(is_burst_shot: bool = false) -> bool:
 	var w: Dictionary = WEAPONS[current_weapon]
 	if ammo_in_mag[current_weapon] <= 0:
+		if bool(w.get("is_flamethrower", false)):
+			emit_signal("status_message", "FLAMETHROWER TANK EMPTY (LIMITED FUEL)")
+			fire_cd = 0.35
+			return false
 		start_reload()
 		return false
 	ammo_in_mag[current_weapon] -= 1
 	if ammo_in_mag[current_weapon] <= 0:
 		weapon_chambered[current_weapon] = false
+		if current_weapon == 13 and sfx_casing and not _sfx_shell_clink.is_empty():
+			# Iconic M1 Garand en-bloc clip PING!
+			sfx_casing.stream = _sfx_shell_clink[0]
+			sfx_casing.pitch_scale = 2.15
+			sfx_casing.play()
+	# 3-Round Burst scheduling (FAMAS F1)!
+	var b_cnt := int(w.get("burst_count", 0))
+	if b_cnt > 1 and not is_burst_shot and ammo_in_mag[current_weapon] > 0:
+		_burst_remaining = mini(b_cnt - 1, ammo_in_mag[current_weapon])
+		_burst_timer = float(w.get("burst_interval", 0.058))
 	# Carry cooldown overshoot on automatic weapons so MP5 (0.068s) fires at true RPM instead of quantizing to 60Hz ticks!
 	if bool(w["auto"]):
 		fire_cd = maxf(0.0, fire_cd) + float(w["fire_rate"])
-	else:
+	elif not is_burst_shot:
 		fire_cd = float(w["fire_rate"])
 
+	var is_sup := has_attachment(current_weapon, "suppressor")
+	var f_scale_base := float(w["flash_scale"]) * (0.42 if is_sup else 1.0)
 	muzzle_elapsed = 0.0
-	muzzle_peak_e = 2.8 * float(w["flash_scale"]) * randf_range(0.88, 1.15)
-	muzzle_light.visible = true
-	muzzle_light.light_energy = muzzle_peak_e
-	muzzle_vm_light.visible = true
-	muzzle_vm_light.light_energy = minf(muzzle_peak_e * 0.38, 1.25)
-	_flash_shadow_boost = 1.0
-	_barrel_heat_timer = 1.4
-	_barrel_heat_step = 0.22
+	muzzle_peak_e = 2.8 * f_scale_base * randf_range(0.88, 1.15)
+	if f_scale_base > 0.05:
+		muzzle_light.visible = true
+		muzzle_light.light_energy = muzzle_peak_e
+		muzzle_vm_light.visible = true
+		muzzle_vm_light.light_energy = minf(muzzle_peak_e * 0.38, 1.25)
+		_flash_shadow_boost = 1.0
+		_barrel_heat_timer = 1.4
+		_barrel_heat_step = 0.22
 
 	var m_dist: float = absf((w["muzzle"] as Vector3).z)
 	var space := get_world_3d().direct_space_state
@@ -5164,20 +5935,21 @@ func fire_weapon() -> bool:
 			muzzle_light.position = w["muzzle"]
 		muzzle_vm_light.position = muzzle_light.position
 
-	muzzle_flash_timer = 0.036
-	muzzle_flash_rig.visible = true
-	muzzle_flash_rig.rotation.z = randf() * TAU
-	var fscale: float = float(w["flash_scale"]) * randf_range(0.86, 1.18)
-	muzzle_flash_rig.scale = Vector3.ONE * fscale
-	var seed_v := randf() * 100.0
-	for fm in _flash_mats:
-		fm.set_shader_parameter("flash_seed", seed_v)
-		fm.set_shader_parameter("cool_t", 0.0)
+	if f_scale_base > 0.05:
+		muzzle_flash_timer = 0.036
+		muzzle_flash_rig.visible = true
+		muzzle_flash_rig.rotation.z = randf() * TAU
+		var fscale: float = f_scale_base * randf_range(0.86, 1.18)
+		muzzle_flash_rig.scale = Vector3.ONE * fscale
+		var seed_v := randf() * 100.0
+		for fm in _flash_mats:
+			fm.set_shader_parameter("flash_seed", seed_v)
+			fm.set_shader_parameter("cool_t", 0.0)
 
-	if VFXManager.instance:
-		VFXManager.instance.spawn_muzzle_sparks(muzzle_flash_rig.global_position, -camera.global_transform.basis.z, current_weapon == 2 or current_weapon == 9)
+	if VFXManager.instance and f_scale_base > 0.05:
+		VFXManager.instance.spawn_muzzle_sparks(muzzle_flash_rig.global_position, -camera.global_transform.basis.z, current_weapon == 2 or current_weapon == 9 or current_weapon == 11 or current_weapon == 16)
 
-	if muzzle_smoke:
+	if muzzle_smoke and f_scale_base > 0.05:
 		if OS.has_feature("web"):
 			muzzle_smoke.restart()
 			muzzle_smoke.emitting = true
@@ -5187,7 +5959,7 @@ func fire_weapon() -> bool:
 				var sv := -camera.global_transform.basis.z * randf_range(0.25, 0.58) + camera.global_transform.basis.x * randf_range(0.08, 0.26) + Vector3(0.0, randf_range(0.36, 0.72), 0.0)
 				muzzle_smoke.emit_particle(smoke_xf, sv, Color.WHITE, Color.WHITE, GPUParticles3D.EMIT_FLAG_POSITION | GPUParticles3D.EMIT_FLAG_VELOCITY)
 
-	if current_weapon != 2 and current_weapon != 6 and current_weapon != 7:
+	if current_weapon != 2 and current_weapon != 6 and current_weapon != 7 and current_weapon != 11 and current_weapon != 14 and current_weapon != 15 and current_weapon != 16 and current_weapon != 17:
 		_eject_brass_casing(w, current_weapon == 9)
 	bolt_blowback = 1.0
 	if current_weapon == 1:
@@ -5198,16 +5970,17 @@ func fire_weapon() -> bool:
 	if current_weapon == 6:
 		_revolver_cyl_angle += TAU / 6.0
 		_revolver_hammer = 1.0
-	if current_weapon == 7:
+	if current_weapon == 7 or current_weapon == 14:
 		_hunting_bolt_timer = 0.78
 		_hunting_bolt_did_sfx = false
 
-	recoil_vel.y += w["recoil_pitch"] * (0.65 if is_ads else 1.0)
-	recoil_z += w["recoil_kick"]
-	recoil_roll += randf_range(-0.018, 0.018) * (0.5 if is_ads else 1.0)
-	recoil_fov = 1.15
-	trauma = minf(1.0, trauma + (0.28 if (current_weapon == 2 or current_weapon == 9) else (0.14 if current_weapon == 1 else 0.11)))
-	pitch = clamp(pitch + w["recoil_pitch"] * 0.32, -1.35, 1.35)
+	var rec_mult := 0.65 if is_sup else 1.0
+	recoil_vel.y += w["recoil_pitch"] * rec_mult * (0.65 if is_ads else 1.0)
+	recoil_z += w["recoil_kick"] * rec_mult
+	recoil_roll += randf_range(-0.018, 0.018) * rec_mult * (0.5 if is_ads else 1.0)
+	recoil_fov = 1.15 * rec_mult
+	trauma = minf(1.0, trauma + (0.28 if (current_weapon == 2 or current_weapon == 9 or current_weapon == 11 or current_weapon == 17) else (0.14 if current_weapon == 1 else 0.11)))
+	pitch = clamp(pitch + w["recoil_pitch"] * rec_mult * 0.32, -1.35, 1.35)
 
 	# Pooled polyphonic gunshot playback (NEVER swaps stream on an active voice, preserving 100% of reverb tails!)
 	var shot_stream: AudioStream = null
@@ -5219,14 +5992,26 @@ func fire_weapon() -> bool:
 	elif current_weapon < _weapon_audio.size():
 		shot_stream = _weapon_audio[current_weapon]
 	if shot_stream:
-		_play_gun_sfx(shot_stream, randf_range(0.95, 1.04))
+		var pitch_s := randf_range(1.25, 1.38) if is_sup else (0.68 if current_weapon == 16 else (0.58 if current_weapon == 17 else randf_range(0.95, 1.04)))
+		_play_gun_sfx(shot_stream, pitch_s)
+
+	# Specialized non-hitscan weapon dispatchers (Crossbow, Flamethrower, RPG-7)!
+	if bool(w.get("is_crossbow", false)):
+		_fire_bow_arrow(1.0, 15)
+		return true
+	if bool(w.get("is_flamethrower", false)):
+		_fire_flamethrower(w)
+		return true
+	if bool(w.get("is_rpg", false)):
+		_fire_rpg_rocket()
+		return true
 
 	var origin := camera.global_position
 	var fwd := -camera.global_transform.basis.z
 	var right := camera.global_transform.basis.x
 	var up := camera.global_transform.basis.y
-	# Consistent shotgun buckshot spread for BOTH M870 (2) and Benelli M4 (9)!
-	var is_shotgun := (current_weapon == 2 or current_weapon == 9)
+	# Consistent shotgun buckshot spread for M870 (2), Benelli M4 (9), and Sawed-Off DB (11)!
+	var is_shotgun := (current_weapon == 2 or current_weapon == 9 or current_weapon == 11)
 	var spread_mult := (0.55 if is_ads else 1.0) if is_shotgun else (0.14 if is_ads else 0.72)
 	var spread: float = w["spread"] * spread_mult
 	var dmg_per_hit: float = float(w["damage"]) * (1.45 if is_weapon_upgraded(current_weapon) else 1.0)
@@ -5363,6 +6148,8 @@ func take_damage(amount: float, from_pos: Vector3 = Vector3.ZERO) -> void:
 
 	if health <= 0.0:
 		dead = true
+		_burst_remaining = 0
+		_burst_timer = 0.0
 		if _quick_melee_active:
 			_quick_melee_active = false
 			_melee_timer = 0.0
@@ -5400,6 +6187,13 @@ func heal_full(reset_unlocks: bool = false) -> void:
 		if is_instance_valid(h.get("node")):
 			(h["node"] as Node).queue_free()
 	_hazards.clear()
+	for r: Dictionary in _rockets:
+		if is_instance_valid(r.get("node")):
+			(r["node"] as Node).queue_free()
+	_rockets.clear()
+	_burst_remaining = 0
+	_burst_timer = 0.0
+	_flame_pool_cd = 0.0
 	_quick_melee_active = false
 	_melee_timer = 0.0
 	_melee_hitstop_timer = 0.0
@@ -5410,15 +6204,20 @@ func heal_full(reset_unlocks: bool = false) -> void:
 		select_melee_weapon("knife")
 		grenade_counts = {"frag": 2, "molotov": 1, "shock": 1}
 		equipped_grenade = "frag"
+		weapon_attachments.clear()
 		_sync_unlocked_from_loadout()
-		upgraded_weapons = [false, false, false, false, false, false, false, false, false, false, false]
-		weapon_chambered = [true, true, true, true, true, true, true, true, true, true, true]
+		upgraded_weapons.resize(WEAPONS.size())
+		weapon_chambered.resize(WEAPONS.size())
+		for wi in range(WEAPONS.size()):
+			upgraded_weapons[wi] = false
+			weapon_chambered[wi] = true
 		equipped_melee_id = "knife"
 		for k in _melee_nodes.keys():
 			if is_instance_valid(_melee_nodes[k]):
 				(_melee_nodes[k] as Node3D).visible = (str(k) == "knife")
 		_equip_weapon(0, true)
 	for i in range(WEAPONS.size()):
-		ammo_in_mag[i] = get_weapon_mag_size(i)
-		ammo_reserve[i] = WEAPONS[i]["reserve_max"]
-		weapon_chambered[i] = true
+		if reset_unlocks or not is_no_refill_weapon(i):
+			ammo_in_mag[i] = get_weapon_mag_size(i)
+			ammo_reserve[i] = WEAPONS[i]["reserve_max"]
+			weapon_chambered[i] = true

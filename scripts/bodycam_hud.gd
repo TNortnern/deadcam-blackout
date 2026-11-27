@@ -513,8 +513,13 @@ func refresh_inventory(player: PlayerBodycam) -> void:
 		if i < player.firearm_slots.size():
 			var wi := player.firearm_slots[i]
 			var wname := str(PlayerBodycam.WEAPONS[wi]["name"])
-			if player.is_weapon_upgraded(wi):
-				wname += " MK-II"
+			var tags: Array[String] = []
+			if player.is_weapon_upgraded(wi): tags.append("MK-II")
+			if player.has_attachment(wi, "optic"): tags.append("RDS")
+			if player.has_attachment(wi, "suppressor"): tags.append("SD")
+			if player.has_attachment(wi, "ext_mag") and not player.is_weapon_upgraded(wi): tags.append("EXT")
+			if not tags.is_empty():
+				wname += " [%s]" % "+".join(tags)
 			var held := " [EQUIPPED]" if wi == player.current_weapon else ""
 			slot_lbl.text = "[%d] %s  (%d/%d)%s" % [i + 1, wname, player.ammo_in_mag[wi], player.ammo_reserve[wi], held]
 			slot_lbl.add_theme_color_override("font_color", Color(1.0, 0.95, 0.72) if wi == player.current_weapon else Color(0.88, 0.90, 0.88))
@@ -623,14 +628,14 @@ func _build_dev_overlay() -> void:
 
 	var card := PanelContainer.new()
 	card.set_anchors_preset(Control.PRESET_CENTER)
-	card.offset_left = -360
-	card.offset_top = -315
-	card.offset_right = 360
-	card.offset_bottom = 315
+	card.offset_left = -430
+	card.offset_top = -345
+	card.offset_right = 430
+	card.offset_bottom = 345
 	card.add_theme_stylebox_override("panel", _make_card_style(Color(0.86, 0.56, 0.22, 0.94)))
 
 	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 8)
+	vb.add_theme_constant_override("separation", 6)
 
 	var hdr := Label.new()
 	hdr.text = "DEV DEBUG SPAWN MENU [`]  //  GAME PAUSED"
@@ -646,16 +651,16 @@ func _build_dev_overlay() -> void:
 	vb.add_child(whdr)
 
 	var grid := GridContainer.new()
-	grid.columns = 3
-	grid.add_theme_constant_override("h_separation", 6)
-	grid.add_theme_constant_override("v_separation", 6)
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 5)
+	grid.add_theme_constant_override("v_separation", 5)
 	for wi in range(PlayerBodycam.WEAPONS.size()):
 		if wi == 3:
 			continue
 		var wb := Button.new()
 		wb.text = str(PlayerBodycam.WEAPONS[wi]["name"])
-		wb.custom_minimum_size = Vector2(215, 28)
-		wb.add_theme_font_size_override("font_size", 12)
+		wb.custom_minimum_size = Vector2(198, 25)
+		wb.add_theme_font_size_override("font_size", 11)
 		var cap_wi := wi
 		wb.pressed.connect(func(): emit_signal("dev_action", "give_weapon", cap_wi))
 		grid.add_child(wb)
@@ -688,14 +693,16 @@ func _build_dev_overlay() -> void:
 	vb.add_child(chdr)
 
 	var cgrid := GridContainer.new()
-	cgrid.columns = 3
-	cgrid.add_theme_constant_override("h_separation", 6)
-	cgrid.add_theme_constant_override("v_separation", 6)
+	cgrid.columns = 4
+	cgrid.add_theme_constant_override("h_separation", 5)
+	cgrid.add_theme_constant_override("v_separation", 5)
 	var dbg_specs := [
 		["+5000 POINTS", "add_points"],
 		["MAX AMMO + GRENADES", "refill_all"],
 		["GOD MODE: OFF", "toggle_god"],
 		["UPGRADE HELD MK-II", "upgrade_cur"],
+		["INSTALL OPTIC (RDS)", "attach_optic"],
+		["INSTALL SUPPRESSOR", "attach_suppressor"],
 		["KILL ALL ZOMBIES", "kill_all"],
 		["SKIP TO NEXT WAVE", "next_wave"],
 		["SPAWN BRUISER", "spawn_bruiser"],
@@ -708,8 +715,8 @@ func _build_dev_overlay() -> void:
 	for sp in dbg_specs:
 		var db := Button.new()
 		db.text = sp[0]
-		db.custom_minimum_size = Vector2(215, 30)
-		db.add_theme_font_size_override("font_size", 12)
+		db.custom_minimum_size = Vector2(198, 26)
+		db.add_theme_font_size_override("font_size", 11)
 		var cap_a: String = sp[1]
 		db.pressed.connect(func(): emit_signal("dev_action", cap_a, null))
 		if cap_a == "toggle_god":

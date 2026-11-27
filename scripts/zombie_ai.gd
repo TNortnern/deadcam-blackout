@@ -2024,7 +2024,7 @@ func _enter_ragdoll(shot_dir: Vector3, _total_dmg: float, primary_zone: String, 
 		sd = -global_transform.basis.z
 	var sd_horiz := Vector3(sd.x, 0.0, sd.z).normalized()
 	_pending_impulses.clear()
-	var is_close_shotgun := (weapon_idx == 2 and hit_dist < 5.8)
+	var is_close_shotgun := ((weapon_idx == 2 or weapon_idx == 9 or weapon_idx == 11) and hit_dist < 5.8)
 	var dist_att := clampf(1.25 - hit_dist * 0.11, 0.45, 1.25)
 
 	if is_close_shotgun:
@@ -2407,7 +2407,7 @@ func apply_shot(hits: Array, weapon_idx: int) -> Dictionary:
 		for hz_k in zone_pos_d.keys():
 			var hz_s := str(hz_k)
 			var z_pt: Vector3 = zone_pos_d[hz_k]
-			if hz_s == "HEAD" and not dismembered.has("HEAD") and (head_dmg >= 32.0 or weapon_idx == 2):
+			if hz_s == "HEAD" and not dismembered.has("HEAD") and (head_dmg >= 32.0 or weapon_idx == 2 or weapon_idx == 9 or weapon_idx == 11):
 				did_dismember_d = _dismember_zone("HEAD", z_pt, hd_d) or did_dismember_d
 			elif hz_s == "ARM_L" and not dismembered.has("ARM_L") and l_arm_dmg >= 38.0:
 				did_dismember_d = _dismember_zone("ARM_L", z_pt, hd_d) or did_dismember_d
@@ -2426,7 +2426,7 @@ func apply_shot(hits: Array, weapon_idx: int) -> Dictionary:
 		if _ragdoll_active:
 			var pb := _pb_for_zone(primary_z_d)
 			if is_instance_valid(pb):
-				var imp := (24.0 if (weapon_idx == 2 or weapon_idx == 6 or weapon_idx == 7) else 11.0) * clampf(total_d / 35.0, 0.7, 2.2)
+				var imp := (24.0 if (weapon_idx == 2 or weapon_idx == 6 or weapon_idx == 7 or weapon_idx == 9 or weapon_idx == 11 or weapon_idx == 13 or weapon_idx == 14) else 11.0) * clampf(total_d / 35.0, 0.7, 2.2)
 				pb.apply_central_impulse(hd_d * imp + Vector3(0.0, 2.2, 0.0))
 				_ragdoll_settle_timer = 0.0
 		elif skeleton:
@@ -2513,7 +2513,7 @@ func apply_shot(hits: Array, weapon_idx: int) -> Dictionary:
 	bend_axis = bend_axis.normalized()
 
 	# Weapon-weighted dismemberment & genuine leg-crippling (bow pins without popping heads on weak shots; leg hits cripple instead of instant-killing at 48 dmg!)
-	var is_shotgun := (weapon_idx == 2 or weapon_idx == 9)
+	var is_shotgun := (weapon_idx == 2 or weapon_idx == 9 or weapon_idx == 11)
 	var is_heavy_melee := (weapon_idx == 3)
 	var is_bow := (weapon_idx == 4)
 	var head_thresh := 125.0 if is_bow else (44.0 if (is_shotgun and min_dist < 6.5) else 62.0)

@@ -355,12 +355,32 @@ func _on_dev_action(action: String, arg: Variant) -> void:
 						hud.show_toast("DEV: UPGRADED TO SPIKED BASEBALL BAT")
 			else:
 				player.is_reloading = false
+				player._burst_remaining = 0
+				player._burst_timer = 0.0
 				player.reload_pos_off = Vector3.ZERO
 				player.reload_rot_off = Vector3.ZERO
 				player.upgrade_weapon(player.current_weapon)
 				player._reset_weapon_parts()
 				if hud:
 					hud.show_toast("DEV: UPGRADED %s TO MK-II" % PlayerBodycam.WEAPONS[player.current_weapon]["name"])
+		"attach_optic":
+			var cur_w := player.current_weapon
+			var wd_o: Dictionary = PlayerBodycam.WEAPONS[cur_w]
+			if not bool(wd_o.get("is_melee", false)) and not bool(wd_o.get("is_special", false)) and cur_w != 7 and not bool(wd_o.get("has_holo", false)):
+				player.add_attachment(cur_w, "optic")
+				if hud:
+					hud.show_toast("DEV: INSTALLED RED-DOT OPTIC ON %s" % wd_o["name"])
+			elif hud:
+				hud.show_toast("DEV: %s DOES NOT ACCEPT AFTERMARKET RED-DOT" % wd_o["name"])
+		"attach_suppressor":
+			var cur_s := player.current_weapon
+			var wd_s: Dictionary = PlayerBodycam.WEAPONS[cur_s]
+			if not bool(wd_s.get("is_melee", false)) and not bool(wd_s.get("is_special", false)) and not bool(wd_s.get("is_crossbow", false)) and cur_s != 6:
+				player.add_attachment(cur_s, "suppressor")
+				if hud:
+					hud.show_toast("DEV: INSTALLED SUPPRESSOR ON %s" % wd_s["name"])
+			elif hud:
+				hud.show_toast("DEV: %s CANNOT MOUNT SUPPRESSOR" % wd_s["name"])
 		"kill_all":
 			for z in zombies_root.get_children():
 				if z is ZombieAI and not z.dead:
@@ -981,8 +1001,9 @@ func _run_web_shader_warmup() -> void:
 	var saved_lock := world.debug_lock_env
 	world.debug_lock_env = true
 
+	var warmup_weapons := [1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 0]
 	var step := 0
-	var total_steps := 10
+	var total_steps := 3 + warmup_weapons.size() + 4
 	var _render_step := func(label: String) -> void:
 		step += 1
 		if hud:
@@ -1005,9 +1026,10 @@ func _run_web_shader_warmup() -> void:
 	player.muzzle_vm_light.visible = true
 	player.muzzle_vm_light.light_energy = 0.8
 	player.muzzle_flash_rig.visible = true
-	for w_idx in [1, 2, 4, 5, 6, 7, 8, 9, 10, 0]:
+	for wi_pos in range(warmup_weapons.size()):
+		var w_idx: int = warmup_weapons[wi_pos]
 		player._equip_weapon(w_idx, true)
-		_render_step.call("WEAPON %d/10" % (w_idx + 1))
+		_render_step.call("WEAPON %d/%d" % [wi_pos + 1, warmup_weapons.size()])
 		await tree.process_frame
 	player.muzzle_light.visible = false
 	player.muzzle_light.light_energy = 0.0
