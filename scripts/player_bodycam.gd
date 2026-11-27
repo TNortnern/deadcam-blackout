@@ -2927,8 +2927,11 @@ func _update_weapon_mechanics(delta: float) -> void:
 			var lift := sin(smoothstep(0.0, 0.25, u) * PI * 0.5) * (1.0 - smoothstep(0.75, 1.0, u))
 			var pull := sin(smoothstep(0.18, 0.82, u) * PI)
 			_pose_part("bolt", Vector3(0.0, 0.0, pull * 0.082), Vector3(0.0, 0.0, lift * 1.05))
+			var hand_reach := smoothstep(0.0, 0.18, u) * (1.0 - smoothstep(0.80, 1.0, u))
+			_pose_part("arm_right", Vector3(0.056, 0.076, -0.015) * hand_reach + Vector3(0.0, 0.0, pull * 0.082), Vector3(0.16, -0.18, -0.30) * hand_reach)
 		else:
 			_pose_part("bolt", Vector3.ZERO)
+			_pose_part("arm_right", Vector3.ZERO)
 	elif current_weapon == 8 or current_weapon == 9:
 		_pose_part("bolt", Vector3(0.0, 0.0, bolt_blowback * 0.055))
 	elif current_weapon == 10:
@@ -3014,17 +3017,17 @@ func start_reload() -> bool:
 	elif current_weapon == 1:
 		reload_dur = 2.28 if reload_was_empty else 1.88
 	elif current_weapon == 5:
-		reload_dur = 2.08 if reload_was_empty else 1.56
+		reload_dur = 2.12 if reload_was_empty else 1.60
 	elif current_weapon == 6:
-		reload_dur = 2.20
+		reload_dur = 2.24
 	elif current_weapon == 7:
 		reload_dur = 1.2 # Managed by per-round feed loop phases
 	elif current_weapon == 8:
-		reload_dur = 2.24 if reload_was_empty else 1.72
+		reload_dur = 2.40 if reload_was_empty else 1.88
 	elif current_weapon == 9:
 		reload_dur = 1.2 # Managed by interruptible shell loop phases
 	elif current_weapon == 10:
-		reload_dur = 3.35
+		reload_dur = 3.40
 	else:
 		reload_dur = 1.2 # Managed by shell loop phases
 	return true
@@ -3055,38 +3058,43 @@ func _update_reload(delta: float) -> void:
 
 func _update_reload_mp5() -> void:
 	var t := reload_elapsed
-	var cant_p := Vector3(-0.052, 0.148, -0.062)
-	var cant_r := Vector3(0.28, 0.44, -0.52)
-	var eject_dir := Vector3(-0.05, -0.94, -0.33).normalized()
-	var hand_mag_p := Vector3(0.036, -0.072, 0.088)
-	var hand_mag_r := Vector3(-0.34, 0.22, 0.28)
+	var cant_p := Vector3(-0.056, 0.148, -0.068)
+	var cant_r := Vector3(0.30, 0.46, -0.52)
+	var eject_dir := Vector3(-0.04, -0.94, -0.33).normalized()
+	# Exact palm-to-mag wrap using PIVOT_AR_HAND (+0.034 X hugs curved 9mm mag with zero daylight!)
+	var hand_mag_p := Vector3(0.034, -0.098, 0.088)
+	var hand_mag_r := Vector3(-0.46, 0.24, 0.36)
+	var hand_drop_r := Vector3(-0.58, 0.30, 0.44)
 	var hand_extract_end := hand_mag_p + eject_dir * 0.24
-	var hand_pouch_p := hand_extract_end + Vector3(-0.04, -0.06, 0.03)
-	var hand_slap_hi := Vector3(-0.072, 0.118, 0.115)
-	var hand_slap_hit := Vector3(-0.038, 0.034, 0.105)
-	var hand_slap_r := Vector3(0.16, 0.12, -0.24)
+	var hand_pouch_p := hand_extract_end + Vector3(-0.035, -0.055, 0.025)
+	# Keep forearm rolled +Z and pitched -X like M16 bolt-catch slap -> ZERO sleeve bloat in camera!
+	var slap_gun_p := Vector3(-0.035, 0.068, -0.065)
+	var slap_gun_r := Vector3(0.14, 0.26, -0.28)
+	var hand_slap_hi := Vector3(-0.036, 0.044, 0.012)
+	var hand_slap_hit := Vector3(-0.016, 0.004, 0.016)
+	var hand_slap_r := Vector3(-0.46, 0.24, 0.36)
 
 	# Timestamp-crossing authoritative events (never skipped on long frames!)
 	if _reload_event(0.24, 1):
 		_play_reload_sfx(_sfx_mag_out, 1.12)
 	if _reload_event(0.56, 32):
 		_spawn_dropped_mag(5)
-	if _reload_event(1.08, 2):
+	if _reload_event(1.12, 2):
 		_play_reload_sfx(_sfx_mag_in, 1.14)
-	if _reload_event(1.18, 4):
+	if _reload_event(1.22, 4):
 		_commit_mag_ammo()
 		if not reload_was_empty:
 			weapon_chambered[5] = true
 		trauma = minf(1.0, trauma + 0.08)
-	if reload_was_empty and _reload_event(1.54, 8):
-		# Strictly on palm contact at 1.54s!
+	if reload_was_empty and _reload_event(1.56, 8):
+		# Strictly on palm contact at 1.56s!
 		weapon_chambered[5] = true
 		_play_reload_sfx(_sfx_bolt, 1.18)
 		trauma = minf(1.0, trauma + 0.12)
 
-	# Charging handle stays locked rearward until palm strikes at 1.54s!
+	# Charging handle stays locked rearward until palm strikes at 1.56s!
 	if reload_was_empty:
-		var ch_u := 1.0 if t < 1.54 else (1.0 - smoothstep(1.54, 1.60, t))
+		var ch_u := 1.0 if t < 1.56 else (1.0 - smoothstep(1.56, 1.62, t))
 		_pose_part("charge", Vector3(0.0, 0.0, 0.068 * ch_u), Vector3(0.0, 0.0, 0.52 * ch_u))
 	else:
 		_pose_part("charge", Vector3.ZERO)
@@ -3096,53 +3104,53 @@ func _update_reload_mp5() -> void:
 		reload_pos_off = cant_p * u
 		reload_rot_off = cant_r * u
 		_pose_part("mag", Vector3.ZERO)
-		_pose_part("arm_left", hand_mag_p * u, hand_mag_r * u)
+		_pose_part("arm_left", hand_mag_p * u, hand_mag_r * u, PIVOT_AR_HAND)
 	elif t < 0.64:
 		var u := smoothstep(0.22, 0.58, t)
-		reload_pos_off = cant_p + Vector3(0, -0.018 * sin(u * PI), 0)
+		reload_pos_off = cant_p + Vector3(0, -0.020 * sin(u * PI), 0)
 		reload_rot_off = cant_r + Vector3(0.05 * sin(u * PI), 0, -0.06 * sin(u * PI))
 		var mp := eject_dir * (0.24 * u)
 		_pose_part("mag", mp, Vector3(0.24 * u, 0.0, -0.08 * u), Vector3.ZERO, t < 0.56)
-		_pose_part("arm_left", hand_mag_p + mp, hand_mag_r + Vector3(-0.12 * u, 0.06 * u, 0.0))
-	elif t < 0.90:
-		# Continuous hand dip to pouch and return (ZERO snap at 0.64s!)
-		var u := smoothstep(0.64, 0.90, t)
+		_pose_part("arm_left", hand_mag_p + mp, hand_mag_r.lerp(hand_drop_r, u), PIVOT_AR_HAND)
+	elif t < 0.94:
+		# Clear 0.30s empty magwell pause while left hand dips to pouch and fetches fresh mag
+		var u := smoothstep(0.64, 0.94, t)
 		var dip := sin(u * PI)
 		reload_pos_off = cant_p + Vector3(-0.008 * dip, -0.024 * dip, 0.01)
 		reload_rot_off = cant_r
 		_pose_part("mag", eject_dir * 0.24, Vector3.ZERO, Vector3.ZERO, false)
 		var arm_p := hand_extract_end.lerp(hand_pouch_p, smoothstep(0.0, 0.45, u)) if u < 0.5 else hand_pouch_p.lerp(hand_mag_p + eject_dir * 0.22, smoothstep(0.5, 1.0, u))
-		_pose_part("arm_left", arm_p, hand_mag_r + Vector3(-0.12 * (1.0 - u), 0.06 * (1.0 - u), 0.0))
-	elif t < 1.28:
-		var u := smoothstep(0.90, 1.18, t)
-		var slap := sin(smoothstep(1.16, 1.28, t) * PI)
+		_pose_part("arm_left", arm_p, hand_drop_r.lerp(hand_mag_r, smoothstep(0.5, 1.0, u)), PIVOT_AR_HAND)
+	elif t < 1.30:
+		var u := smoothstep(0.94, 1.22, t)
+		var slap := sin(smoothstep(1.18, 1.30, t) * PI)
 		reload_pos_off = cant_p + Vector3(0, 0.024 * slap, -0.01 * slap)
 		reload_rot_off = cant_r + Vector3(0.07 * slap, 0, 0.05 * slap)
 		var mp := eject_dir * lerpf(0.22, 0.0, u)
 		_pose_part("mag", mp, Vector3(lerpf(0.22, 0.0, u), 0.0, 0.0), Vector3.ZERO, true)
-		_pose_part("arm_left", hand_mag_p + mp + Vector3(0.0, 0.018 * slap, 0.0), hand_mag_r)
-	elif reload_was_empty and t < 1.78:
-		# Iconic HK slap: palm winds up (1.28..1.46) -> strikes down on handle at 1.54s -> follows through!
-		var u := smoothstep(1.28, 1.78, t)
-		var wind := smoothstep(1.28, 1.46, t)
-		var strike := smoothstep(1.46, 1.56, t)
-		var slap_hit := sin(smoothstep(1.52, 1.68, t) * PI)
-		reload_pos_off = cant_p.lerp(Vector3(-0.015, 0.03, -0.015), u) + Vector3(0.018 * slap_hit, -0.024 * slap_hit, 0.0)
-		reload_rot_off = cant_r.lerp(Vector3(0.06, 0.12, -0.14), u) + Vector3(0.0, 0.0, -0.18 * slap_hit)
+		_pose_part("arm_left", hand_mag_p + mp + Vector3(0.0, 0.018 * slap, 0.0), hand_mag_r, PIVOT_AR_HAND)
+	elif reload_was_empty and t < 1.80:
+		# Iconic HK slap: palm winds up over forward handle (1.30..1.48) -> strikes down at 1.56s!
+		var u := smoothstep(1.30, 1.80, t)
+		var wind := smoothstep(1.30, 1.48, t)
+		var strike := smoothstep(1.48, 1.58, t)
+		var slap_hit := sin(smoothstep(1.54, 1.70, t) * PI)
+		reload_pos_off = cant_p.lerp(slap_gun_p, u) + Vector3(0.016 * slap_hit, -0.022 * slap_hit, 0.0)
+		reload_rot_off = cant_r.lerp(slap_gun_r, u) + Vector3(0.0, 0.0, -0.14 * slap_hit)
 		_pose_part("mag", Vector3.ZERO)
-		var arm_p := hand_mag_p.lerp(hand_slap_hi, wind) if t < 1.46 else hand_slap_hi.lerp(hand_slap_hit, strike)
-		_pose_part("arm_left", arm_p, hand_mag_r.lerp(hand_slap_r, wind))
+		var arm_p := hand_mag_p.lerp(hand_slap_hi, wind) if t < 1.48 else hand_slap_hi.lerp(hand_slap_hit, strike)
+		_pose_part("arm_left", arm_p, hand_mag_r.lerp(hand_slap_r, wind), PIVOT_AR_HAND)
 	else:
-		var s0 := 1.78 if reload_was_empty else 1.28
+		var s0 := 1.80 if reload_was_empty else 1.30
 		var u := smoothstep(s0, reload_dur, t)
-		var prev_p := Vector3(-0.015, 0.03, -0.015) if reload_was_empty else cant_p
-		var prev_r := Vector3(0.06, 0.12, -0.14) if reload_was_empty else cant_r
+		var prev_p := slap_gun_p if reload_was_empty else cant_p
+		var prev_r := slap_gun_r if reload_was_empty else cant_r
 		reload_pos_off = prev_p.lerp(Vector3.ZERO, u)
 		reload_rot_off = prev_r.lerp(Vector3.ZERO, u)
 		_pose_part("mag", Vector3.ZERO)
 		var prev_arm := hand_slap_hit if reload_was_empty else hand_mag_p
 		var prev_ar := hand_slap_r if reload_was_empty else hand_mag_r
-		_pose_part("arm_left", prev_arm.lerp(Vector3.ZERO, u), prev_ar.lerp(Vector3.ZERO, u))
+		_pose_part("arm_left", prev_arm.lerp(Vector3.ZERO, u), prev_ar.lerp(Vector3.ZERO, u), PIVOT_AR_HAND)
 	if t >= reload_dur:
 		is_reloading = false
 		_reset_weapon_parts()
@@ -3150,26 +3158,33 @@ func _update_reload_mp5() -> void:
 
 func _update_reload_ak74() -> void:
 	var t := reload_elapsed
-	var cant_p := Vector3(-0.055, 0.145, -0.065)
-	var cant_r := Vector3(0.28, 0.44, -0.48)
-	var hand_mag_p := Vector3(0.015, -0.155, 0.155)
-	var hand_mag_r := Vector3(-0.52, 0.28, 0.38)
-	var hand_bolt_p := Vector3(0.072, -0.042, 0.175)
-	var hand_bolt_r := Vector3(-0.28, 0.42, 0.62)
-	var rack_rot := Vector3(0.12, -0.22, 0.34)
+	var cant_p := Vector3(-0.058, 0.150, -0.072)
+	var cant_r := Vector3(0.30, 0.46, -0.50)
+	# Exact palm contact wrapping AK-74M curved plum mag using PIVOT_AR_HAND!
+	var hand_mag_p := Vector3(0.040, -0.088, 0.078)
+	var hand_mag_r := Vector3(-0.48, 0.24, 0.36)
+	var hand_drop_r := Vector3(-0.62, 0.32, 0.46)
+	var extract_end_mp := Vector3(-0.015, -0.25, -0.055)
+	var hand_extract_end := hand_mag_p + extract_end_mp
+	var hand_pouch_p := hand_extract_end + Vector3(-0.04, -0.06, 0.025)
+	# 3/4 view exposing right-side AK charging handle so gloved hand pulling bolt back is unmistakable!
+	var rack_pos := Vector3(-0.090, 0.102, -0.055)
+	var rack_rot := Vector3(0.24, -0.56, 0.56)
+	var hand_bolt_p := Vector3(0.042, 0.046, 0.095)
+	var hand_bolt_r := Vector3(-0.40, 0.30, 0.48)
 
 	if _reload_event(0.24, 1):
 		_play_reload_sfx(_sfx_mag_out, 0.94)
-	if _reload_event(0.58, 32):
+	if _reload_event(0.66, 32):
 		_spawn_dropped_mag(8)
-	if _reload_event(1.14, 2):
+	if _reload_event(1.30, 2):
 		_play_reload_sfx(_sfx_mag_in, 0.92)
-	if _reload_event(1.24, 4):
+	if _reload_event(1.42, 4):
 		_commit_mag_ammo()
 		if not reload_was_empty:
 			weapon_chambered[8] = true
 		trauma = minf(1.0, trauma + 0.10)
-	if reload_was_empty and _reload_event(1.56, 8):
+	if reload_was_empty and _reload_event(1.82, 8):
 		weapon_chambered[8] = true
 		_play_reload_sfx(_sfx_bolt, 0.92)
 		trauma = minf(1.0, trauma + 0.11)
@@ -3179,39 +3194,55 @@ func _update_reload_ak74() -> void:
 		reload_pos_off = cant_p * u
 		reload_rot_off = cant_r * u
 		_pose_part("mag", Vector3.ZERO)
-		_pose_part("arm_left", hand_mag_p * u, hand_mag_r * u)
-	elif t < 0.68:
-		var u := smoothstep(0.24, 0.58, t)
-		# Rock forward off front lug, then pull down!
-		var mp := Vector3(0.0, -0.22 * smoothstep(0.22, 1.0, u), -0.05 * u)
-		var mr := Vector3(0.46 * smoothstep(0.0, 0.65, u), 0.0, 0.0)
-		_pose_part("mag", mp, mr, Vector3.ZERO, t < 0.58)
-		_pose_part("arm_left", hand_mag_p + mp, hand_mag_r)
-	elif t < 1.32:
-		# Bring fresh plum mag up, hook front lug, rock backward into latch!
-		var u_up := smoothstep(0.76, 1.08, t)
-		var u_rock := smoothstep(1.08, 1.24, t)
-		var rock_bump := sin(smoothstep(1.20, 1.32, t) * PI)
-		reload_pos_off = cant_p + Vector3(0, 0.025 * rock_bump, 0)
-		reload_rot_off = cant_r + Vector3(0.08 * rock_bump, 0, 0)
-		var mp := Vector3(0.0, lerpf(-0.22, 0.0, u_up), lerpf(-0.05, 0.0, u_up))
-		var mr := Vector3(lerpf(0.46, 0.0, u_rock), 0.0, 0.0)
-		_pose_part("mag", mp, mr, Vector3.ZERO, t >= 0.74)
-		_pose_part("arm_left", hand_mag_p + mp + Vector3(0.0, 0.015 * rock_bump, 0.0), hand_mag_r)
-	elif reload_was_empty and t < 1.88:
-		# Support hand reaches under receiver to right-side AK charging handle and racks it cleanly!
-		var reach := smoothstep(1.32, 1.50, t)
-		var pull := sin(smoothstep(1.50, 1.82, t) * PI)
-		reload_pos_off = cant_p.lerp(Vector3(-0.025, 0.06, -0.03), reach)
-		reload_rot_off = cant_r.lerp(rack_rot, reach)
+		_pose_part("bolt", Vector3.ZERO)
+		_pose_part("arm_left", hand_mag_p * u, hand_mag_r * u, PIVOT_AR_HAND)
+	elif t < 0.72:
+		# Unmistakable AK rock-forward off rear latch, then full downward pull out of magwell!
+		var u := smoothstep(0.24, 0.66, t)
+		var u_rock := smoothstep(0.0, 0.45, u)
+		var u_pull := smoothstep(0.20, 1.0, u)
+		reload_pos_off = cant_p + Vector3(0.0, -0.022 * sin(u * PI), 0.010)
+		reload_rot_off = cant_r + Vector3(0.07 * sin(u * PI), 0.0, -0.07 * sin(u * PI))
+		var mp := Vector3(-0.015 * u_pull, -0.25 * u_pull, -0.055 * u_pull)
+		var mr := Vector3(0.52 * u_rock, 0.0, 0.0)
+		_pose_part("mag", mp, mr, Vector3.ZERO, t < 0.66)
+		_pose_part("bolt", Vector3.ZERO)
+		_pose_part("arm_left", hand_mag_p + mp, hand_mag_r.lerp(hand_drop_r, u), PIVOT_AR_HAND)
+	elif t < 1.04:
+		# Clear 0.32s EMPTY MAGWELL pause while left hand dips to pouch & grabs fresh plum mag!
+		var u := smoothstep(0.72, 1.04, t)
+		var dip := sin(u * PI)
+		reload_pos_off = cant_p + Vector3(-0.008 * dip, -0.024 * dip, 0.010)
+		reload_rot_off = cant_r + Vector3(-0.04 * dip, 0.02, 0.03)
+		_pose_part("mag", extract_end_mp, Vector3(0.52, 0.0, 0.0), Vector3.ZERO, false)
+		_pose_part("bolt", Vector3.ZERO)
+		var arm_p := hand_extract_end.lerp(hand_pouch_p, smoothstep(0.0, 0.45, u)) if u < 0.5 else hand_pouch_p.lerp(hand_mag_p + extract_end_mp, smoothstep(0.5, 1.0, u))
+		_pose_part("arm_left", arm_p, hand_drop_r.lerp(hand_mag_r, smoothstep(0.5, 1.0, u)), PIVOT_AR_HAND)
+	elif t < 1.52:
+		# Bring fresh plum mag up tilted forward, hook front lug, rock backward into crisp latch click!
+		var u_up := smoothstep(1.04, 1.28, t)
+		var u_rock := smoothstep(1.26, 1.42, t)
+		var rock_bump := sin(smoothstep(1.38, 1.52, t) * PI)
+		reload_pos_off = cant_p + Vector3(0.0, 0.026 * rock_bump, -0.010 * rock_bump)
+		reload_rot_off = cant_r + Vector3(0.09 * rock_bump, 0.0, 0.06 * rock_bump)
+		var mp := extract_end_mp.lerp(Vector3.ZERO, u_up)
+		var mr := Vector3(lerpf(0.52, 0.0, u_rock), 0.0, 0.0)
+		_pose_part("mag", mp, mr, Vector3.ZERO, true)
+		_pose_part("bolt", Vector3.ZERO)
+		_pose_part("arm_left", hand_mag_p + mp + Vector3(0.0, 0.016 * rock_bump, 0.0), hand_mag_r, PIVOT_AR_HAND)
+	elif reload_was_empty and t < 2.06:
+		# Roll AK 3/4 right-side-up so support hand visibly grabs & pulls the right-side charging handle!
+		var reach := smoothstep(1.52, 1.72, t)
+		var pull := sin(smoothstep(1.72, 2.02, t) * PI)
+		reload_pos_off = cant_p.lerp(rack_pos, reach) + Vector3(0.0, -0.010 * pull, 0.014 * pull)
+		reload_rot_off = cant_r.lerp(rack_rot, reach) + Vector3(0.05 * pull, 0.0, 0.06 * pull)
 		_pose_part("mag", Vector3.ZERO)
 		_pose_part("bolt", Vector3(0.0, 0.0, 0.078 * pull))
-		_pose_part("arm_left", hand_mag_p.lerp(hand_bolt_p, reach) + Vector3(0.0, 0.0, 0.072 * pull), hand_mag_r.lerp(hand_bolt_r, reach))
+		_pose_part("arm_left", hand_mag_p.lerp(hand_bolt_p, reach) + Vector3(0.0, 0.0, 0.072 * pull), hand_mag_r.lerp(hand_bolt_r, reach), PIVOT_AR_HAND)
 	else:
-		# Smooth continuous return from exact previous pose (ZERO roll snap at 1.88s!)
-		var s0 := 1.88 if reload_was_empty else 1.32
+		var s0 := 2.06 if reload_was_empty else 1.52
 		var u := smoothstep(s0, reload_dur, t)
-		var prev_p := Vector3(-0.025, 0.06, -0.03) if reload_was_empty else cant_p
+		var prev_p := rack_pos if reload_was_empty else cant_p
 		var prev_r := rack_rot if reload_was_empty else cant_r
 		var prev_ap := hand_bolt_p if reload_was_empty else hand_mag_p
 		var prev_ar := hand_bolt_r if reload_was_empty else hand_mag_r
@@ -3219,7 +3250,7 @@ func _update_reload_ak74() -> void:
 		reload_rot_off = prev_r.lerp(Vector3.ZERO, u)
 		_pose_part("mag", Vector3.ZERO)
 		_pose_part("bolt", Vector3.ZERO)
-		_pose_part("arm_left", prev_ap.lerp(Vector3.ZERO, u), prev_ar.lerp(Vector3.ZERO, u))
+		_pose_part("arm_left", prev_ap.lerp(Vector3.ZERO, u), prev_ar.lerp(Vector3.ZERO, u), PIVOT_AR_HAND)
 	if t >= reload_dur:
 		is_reloading = false
 		_reset_weapon_parts()
@@ -3228,15 +3259,19 @@ func _update_reload_ak74() -> void:
 func _update_reload_benelli(delta: float) -> void:
 	# Real interruptible shell-by-shell loading with visible 12ga shell + chrome Lifter + Bolt chambering!
 	reload_shell_timer += delta
-	var cant_p := Vector3(-0.028, 0.092, -0.048)
-	var cant_r := Vector3(0.26, 0.22, -1.08)
-	var hand_caddy_p := Vector3(-0.015, -0.150, 0.160)
-	var hand_caddy_r := Vector3(0.20, 0.08, 0.20)
-	var hand_port_p := Vector3(0.026, -0.056, 0.148)
-	var hand_port_r := Vector3(0.12, 0.06, 0.14)
-	var hand_push_p := Vector3(0.030, -0.024, 0.106)
-	var hand_push_r := Vector3(0.05, 0.04, 0.06)
-	var hand_bolt_p := Vector3(0.055, 0.010, 0.140)
+	# Push Benelli forward (-0.088 Z) & counter-roll arm_left (+0.85 Z) so elbow stays tucked down-left (ZERO sleeve bloat!)
+	var cant_p := Vector3(-0.044, 0.118, -0.088)
+	var cant_r := Vector3(0.22, 0.34, -0.82)
+	var hand_caddy_p := Vector3(-0.025, -0.140, 0.045)
+	var hand_caddy_r := Vector3(-0.26, 0.14, 0.88)
+	var hand_port_p := Vector3(0.012, -0.052, 0.040)
+	var hand_port_r := Vector3(-0.22, 0.12, 0.85)
+	var hand_push_p := Vector3(0.016, -0.020, 0.018)
+	var hand_push_r := Vector3(-0.18, 0.10, 0.82)
+	var rack_p := Vector3(-0.080, 0.088, -0.055)
+	var rack_r := Vector3(0.18, -0.52, 0.48)
+	var hand_bolt_p := Vector3(0.036, 0.036, 0.075)
+	var hand_bolt_r := Vector3(-0.38, 0.30, 0.46)
 	var mag_cap := get_weapon_mag_size(9)
 
 	var p_start := Vector3(0.0, -0.145, -0.105)
@@ -3258,7 +3293,7 @@ func _update_reload_benelli(delta: float) -> void:
 		var u := smoothstep(0.0, 0.24, reload_shell_timer)
 		reload_pos_off = cant_p * u
 		reload_rot_off = cant_r * u
-		_pose_part("arm_left", hand_caddy_p * u, hand_caddy_r * u)
+		_pose_part("arm_left", hand_caddy_p * u, hand_caddy_r * u, PIVOT_AR_HAND)
 		if reload_shell_timer >= 0.24:
 			reload_shell_phase = 1
 			reload_shell_timer = 0.0
@@ -3303,7 +3338,7 @@ func _update_reload_benelli(delta: float) -> void:
 			cur_ar = hand_push_r.lerp(hand_caddy_r, d)
 			if is_instance_valid(_benelli_shell_rig):
 				_benelli_shell_rig.visible = false
-		_pose_part("arm_left", cur_ap, cur_ar)
+		_pose_part("arm_left", cur_ap, cur_ar, PIVOT_AR_HAND)
 
 		# Single unified shell-commit event at seating (0.28s) so sound, visual vanish, and ammo count match 100%!
 		if st >= 0.28 and not (reload_flags & 1):
@@ -3331,22 +3366,27 @@ func _update_reload_benelli(delta: float) -> void:
 		if is_instance_valid(_benelli_shell_rig):
 			_benelli_shell_rig.visible = false
 		_pose_part("lifter", Vector3.ZERO)
-		var exit_dur := 0.36 if reload_was_empty else (0.14 if reload_cancel_req else 0.24)
+		var exit_dur := 0.50 if reload_was_empty else (0.14 if reload_cancel_req else 0.24)
 		var u := smoothstep(0.0, exit_dur, reload_shell_timer)
 		if reload_was_empty:
-			var rack := sin(smoothstep(0.08, exit_dur * 0.80, reload_shell_timer) * PI)
+			var roll_in := smoothstep(0.0, 0.16, reload_shell_timer)
+			var roll_out := smoothstep(0.36, exit_dur, reload_shell_timer)
+			var rack := sin(smoothstep(0.14, 0.38, reload_shell_timer) * PI)
+			reload_pos_off = cant_p.lerp(rack_p, roll_in).lerp(Vector3.ZERO, roll_out)
+			reload_rot_off = cant_r.lerp(rack_r, roll_in).lerp(Vector3.ZERO, roll_out)
 			_pose_part("bolt", Vector3(0.0, 0.0, 0.068 * rack))
-			var arm_p := _shotgun_exit_arm_p.lerp(hand_bolt_p, smoothstep(0.0, 0.12, reload_shell_timer)).lerp(Vector3.ZERO, smoothstep(exit_dur * 0.65, exit_dur, reload_shell_timer))
-			_pose_part("arm_left", arm_p, _shotgun_exit_arm_r.lerp(Vector3.ZERO, u))
-			if reload_shell_timer >= exit_dur * 0.42 and not (reload_flags & 4):
+			var arm_p := _shotgun_exit_arm_p.lerp(hand_bolt_p, roll_in).lerp(Vector3.ZERO, roll_out) + Vector3(0.0, 0.0, 0.064 * rack)
+			var arm_r := _shotgun_exit_arm_r.lerp(hand_bolt_r, roll_in).lerp(Vector3.ZERO, roll_out)
+			_pose_part("arm_left", arm_p, arm_r, PIVOT_AR_HAND)
+			if reload_shell_timer >= 0.24 and not (reload_flags & 4):
 				reload_flags |= 4
 				weapon_chambered[9] = true
 				_play_reload_sfx(_sfx_bolt, 0.96)
 				trauma = minf(1.0, trauma + 0.10)
 		else:
-			_pose_part("arm_left", _shotgun_exit_arm_p.lerp(Vector3.ZERO, u), _shotgun_exit_arm_r.lerp(Vector3.ZERO, u))
-		reload_pos_off = cant_p.lerp(Vector3.ZERO, u)
-		reload_rot_off = cant_r.lerp(Vector3.ZERO, u)
+			reload_pos_off = cant_p.lerp(Vector3.ZERO, u)
+			reload_rot_off = cant_r.lerp(Vector3.ZERO, u)
+			_pose_part("arm_left", _shotgun_exit_arm_p.lerp(Vector3.ZERO, u), _shotgun_exit_arm_r.lerp(Vector3.ZERO, u), PIVOT_AR_HAND)
 		if reload_shell_timer >= exit_dur:
 			weapon_chambered[9] = true
 			is_reloading = false
@@ -3356,14 +3396,20 @@ func _update_reload_benelli(delta: float) -> void:
 
 func _update_reload_m249() -> void:
 	# Fixed hinge sign (-1.15 rad X lifts TopCover UP cleanly revealing FeedTray!),
-	# hand reaches lid -> sweeps belt -> swaps box mag -> drapes fresh brass belt -> slams lid -> racks Charge!
+	# Forward hand_lid_p + 3/4 rack view eliminate sleeve bloat while preserving awesome box/belt visuals!
 	var t := reload_elapsed
-	var cant_p := Vector3(-0.04, 0.09, -0.04)
-	var cant_r := Vector3(0.20, 0.26, -0.28)
-	var hand_lid_p := Vector3(-0.02, 0.05, 0.14)
-	var hand_box_p := Vector3(0.015, -0.145, 0.14)
-	var hand_belt_p := Vector3(-0.02, 0.02, 0.16)
-	var hand_charge_p := Vector3(0.075, -0.02, 0.16)
+	var cant_p := Vector3(-0.048, 0.095, -0.055)
+	var cant_r := Vector3(0.20, 0.30, -0.26)
+	var hand_lid_p := Vector3(-0.024, 0.022, 0.012)
+	var hand_lid_r := Vector3(-0.28, 0.16, 0.26)
+	var hand_box_p := Vector3(0.006, -0.092, 0.078)
+	var hand_box_r := Vector3(-0.50, 0.22, 0.34)
+	var hand_belt_p := Vector3(-0.020, 0.044, 0.068)
+	var hand_belt_r := Vector3(-0.40, 0.18, 0.28)
+	var rack_p := Vector3(-0.082, 0.088, -0.055)
+	var rack_r := Vector3(0.18, -0.52, 0.50)
+	var hand_charge_p := Vector3(0.045, 0.032, 0.068)
+	var hand_charge_r := Vector3(-0.36, 0.30, 0.48)
 
 	if _reload_event(0.24, 1):
 		_play_reload_sfx(_sfx_bolt, 0.72)
@@ -3386,14 +3432,14 @@ func _update_reload_m249() -> void:
 		trauma = minf(1.0, trauma + 0.10)
 
 	if t < 0.48:
-		# Left hand reaches up & pops TopCover UP (-1.15 rad X)!
+		# Left hand reaches up & pops TopCover UP (-1.15 rad X) cleanly with ZERO sleeve bloat!
 		var u := smoothstep(0.0, 0.48, t)
 		var lid_u := smoothstep(0.18, 0.46, t)
 		reload_pos_off = cant_p * u
 		reload_rot_off = cant_r * u
 		_pose_part("top_cover", Vector3.ZERO, Vector3(-1.15 * lid_u, 0.0, 0.0))
 		_pose_part("ammo_belt", Vector3.ZERO)
-		_pose_part("arm_left", hand_lid_p * smoothstep(0.0, 0.22, t) + Vector3(0.0, 0.09 * lid_u, 0.0))
+		_pose_part("arm_left", hand_lid_p * smoothstep(0.0, 0.22, t) + Vector3(0.0, 0.032 * lid_u, -0.016 * lid_u), hand_lid_r * smoothstep(0.0, 0.22, t), PIVOT_AR_HAND)
 	elif t < 1.15:
 		# Sweep old belt off tray and pull 100-rd box mag down & drop it
 		var u := smoothstep(0.55, 1.05, t)
@@ -3403,8 +3449,9 @@ func _update_reload_m249() -> void:
 		var mp := Vector3(-0.04 * u, -0.24 * u, 0.0)
 		_pose_part("mag", mp, Vector3.ZERO, Vector3.ZERO, t < 1.02)
 		_pose_part("ammo_belt", Vector3(-0.08 * u, -0.14 * u, 0.0), Vector3(0.0, 0.0, 0.45 * u), Vector3.ZERO, t < 0.92)
-		var arm_to_box := (hand_lid_p + Vector3(0.0, 0.09, 0.0)).lerp(hand_box_p, smoothstep(0.48, 0.62, t))
-		_pose_part("arm_left", arm_to_box + mp)
+		var to_box := smoothstep(0.48, 0.62, t)
+		var arm_to_box := (hand_lid_p + Vector3(0.0, 0.032, -0.016)).lerp(hand_box_p, to_box)
+		_pose_part("arm_left", arm_to_box + mp, hand_lid_r.lerp(hand_box_r, to_box), PIVOT_AR_HAND)
 	elif t < 2.08:
 		# Bring fresh box mag up and lock under receiver
 		var u := smoothstep(1.32, 1.98, t)
@@ -3414,7 +3461,7 @@ func _update_reload_m249() -> void:
 		var mp := Vector3(lerpf(-0.04, 0.0, u), lerpf(-0.24, 0.0, u), 0.0)
 		_pose_part("mag", mp, Vector3.ZERO, Vector3.ZERO, t >= 1.28)
 		_pose_part("ammo_belt", Vector3(-0.06, -0.12, 0.0), Vector3(0.0, 0.0, 0.55), Vector3.ZERO, false)
-		_pose_part("arm_left", hand_box_p + mp)
+		_pose_part("arm_left", hand_box_p + mp, hand_box_r, PIVOT_AR_HAND)
 	elif t < 2.42:
 		# Left hand drapes fresh brass AmmoBelt cleanly across the exposed steel FeedTray!
 		var u := smoothstep(2.08, 2.38, t)
@@ -3424,7 +3471,7 @@ func _update_reload_m249() -> void:
 		_pose_part("mag", Vector3.ZERO)
 		var bp := Vector3(lerpf(-0.06, 0.0, u), lerpf(-0.08, 0.0, u), 0.0)
 		_pose_part("ammo_belt", bp, Vector3(0.0, 0.0, lerpf(0.48, 0.0, u)), Vector3.ZERO, true)
-		_pose_part("arm_left", hand_box_p.lerp(hand_belt_p, u))
+		_pose_part("arm_left", hand_box_p.lerp(hand_belt_p, u), hand_box_r.lerp(hand_belt_r, u), PIVOT_AR_HAND)
 	elif t < 2.76:
 		# Left hand slams TopCover shut (-1.15 -> 0.0 rad X)!
 		var close_u := smoothstep(2.46, 2.66, t)
@@ -3434,39 +3481,42 @@ func _update_reload_m249() -> void:
 		_pose_part("top_cover", Vector3.ZERO, Vector3(-1.15 * (1.0 - close_u), 0.0, 0.0))
 		_pose_part("mag", Vector3.ZERO)
 		_pose_part("ammo_belt", Vector3.ZERO)
-		_pose_part("arm_left", hand_belt_p.lerp(hand_lid_p + Vector3(0.0, 0.02, 0.0), close_u))
-	elif t < 3.12:
-		# Rack right-side charging handle to chamber 5.56mm belt!
-		var reach := smoothstep(2.76, 2.90, t)
-		var pull := sin(smoothstep(2.88, 3.10, t) * PI)
-		reload_pos_off = cant_p.lerp(Vector3(-0.02, 0.04, -0.02), reach)
-		reload_rot_off = cant_r.lerp(Vector3(0.08, 0.10, -0.10), reach)
+		_pose_part("arm_left", hand_belt_p.lerp(hand_lid_p + Vector3(0.0, 0.015, 0.0), close_u), hand_belt_r.lerp(hand_lid_r, close_u), PIVOT_AR_HAND)
+	elif t < 3.16:
+		# Roll M249 3/4 right-side-up so charging handle pull is crisp & unmistakable!
+		var reach := smoothstep(2.76, 2.92, t)
+		var pull := sin(smoothstep(2.90, 3.14, t) * PI)
+		reload_pos_off = cant_p.lerp(rack_p, reach)
+		reload_rot_off = cant_r.lerp(rack_r, reach)
 		_pose_part("top_cover", Vector3.ZERO)
 		_pose_part("charge", Vector3(0.0, 0.0, 0.072 * pull))
-		_pose_part("arm_left", hand_lid_p.lerp(hand_charge_p, reach) + Vector3(0.0, 0.0, 0.065 * pull))
+		_pose_part("arm_left", hand_lid_p.lerp(hand_charge_p, reach) + Vector3(0.0, 0.0, 0.068 * pull), hand_lid_r.lerp(hand_charge_r, reach), PIVOT_AR_HAND)
 	else:
-		var u := smoothstep(3.12, reload_dur, t)
-		reload_pos_off = Vector3(-0.02, 0.04, -0.02).lerp(Vector3.ZERO, u)
-		reload_rot_off = Vector3(0.08, 0.10, -0.10).lerp(Vector3.ZERO, u)
+		var u := smoothstep(3.16, reload_dur, t)
+		reload_pos_off = rack_p.lerp(Vector3.ZERO, u)
+		reload_rot_off = rack_r.lerp(Vector3.ZERO, u)
 		_pose_part("top_cover", Vector3.ZERO)
 		_pose_part("charge", Vector3.ZERO)
 		_pose_part("mag", Vector3.ZERO)
 		_pose_part("ammo_belt", Vector3.ZERO)
-		_pose_part("arm_left", hand_charge_p.lerp(Vector3.ZERO, u))
+		_pose_part("arm_left", hand_charge_p.lerp(Vector3.ZERO, u), hand_charge_r.lerp(Vector3.ZERO, u), PIVOT_AR_HAND)
 	if t >= reload_dur:
 		is_reloading = false
 		_reset_weapon_parts()
 
 
 func _update_reload_magnum() -> void:
-	# FIXED Crane sign: +1.28 rad Z swings Cylinder LEFT & OUT cleanly from the open frame window!
-	# Ejects exact spent count from cylinder world pos, animates visible SpeedLoader + support hand!
+	# Strong left-side presentation cant so open chrome 6-shot cylinder + brass dumping + 6-round SpeedLoader are unmistakable!
 	var t := reload_elapsed
-	var cant_p := Vector3(-0.035, 0.082, -0.045)
-	var cant_r := Vector3(0.28, 0.24, -0.44)
-	var load_r := Vector3(-0.16, 0.20, -0.38)
-	var hand_cyl_p := Vector3(-0.04, -0.02, 0.04)
-	var hand_load_p := Vector3(-0.05, -0.03, 0.11)
+	var cant_p := Vector3(-0.072, 0.116, 0.018)
+	var cant_r := Vector3(0.26, 0.58, -0.46)
+	var load_p := Vector3(-0.072, 0.122, 0.018)
+	var load_r := Vector3(-0.32, 0.56, -0.38)
+	var hand_clear_p := Vector3(-0.135, -0.140, 0.035)
+	var hand_clear_r := Vector3(-0.30, 0.25, 0.22)
+	# Fingers support the SpeedLoader from below-left so all 6 gleaming brass .44 rounds & chrome cylinder stay 100% unobstructed!
+	var hand_load_p := Vector3(-0.082, -0.064, 0.014)
+	var hand_load_r := Vector3(-0.18, 0.20, 0.18)
 
 	if _reload_event(0.14, 1):
 		_play_reload_sfx(_sfx_mag_out, 0.90)
@@ -3478,9 +3528,9 @@ func _update_reload_magnum() -> void:
 				cyl_w = cn.global_position
 		for _c in range(maxi(1, _magnum_spent_count)):
 			_eject_brass_casing(WEAPONS[6], false, cyl_w)
-	if _reload_event(1.18, 4):
+	if _reload_event(1.22, 4):
 		_play_reload_sfx(_sfx_shell_in, 0.88)
-	if _reload_event(1.66, 8):
+	if _reload_event(1.72, 8):
 		_commit_mag_ammo()
 		weapon_chambered[6] = true
 		_play_reload_sfx(_sfx_mag_in, 0.92)
@@ -3490,90 +3540,96 @@ func _update_reload_magnum() -> void:
 		var u := smoothstep(0.0, 0.28, t)
 		reload_pos_off = cant_p * u
 		reload_rot_off = cant_r * u
-		_pose_part("crane", Vector3.ZERO, Vector3(0.0, 0.0, 1.28 * u))
+		_pose_part("crane", Vector3.ZERO, Vector3(0.0, 0.0, 1.32 * u))
 		_pose_part("speed_loader", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, false)
-		_pose_part("arm_left", hand_cyl_p * u)
+		_pose_part("arm_left", hand_clear_p * u, hand_clear_r * u)
 	elif t < 0.74:
+		# Tilt muzzle UP so spent brass visibly dumps out the open chrome cylinder with unobstructed sightline!
 		var u := smoothstep(0.28, 0.74, t)
 		var dump := sin(u * PI)
-		reload_pos_off = cant_p + Vector3(0, 0.03 * dump, 0.02 * dump)
-		reload_rot_off = cant_r + Vector3(0.52 * dump, 0.0, -0.14 * dump)
-		_pose_part("crane", Vector3.ZERO, Vector3(0.0, 0.0, 1.28))
+		reload_pos_off = cant_p + Vector3(0.0, 0.028 * dump, 0.018 * dump)
+		reload_rot_off = cant_r + Vector3(0.62 * dump, 0.0, -0.12 * dump)
+		_pose_part("crane", Vector3.ZERO, Vector3(0.0, 0.0, 1.32))
 		_pose_part("speed_loader", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, false)
-		_pose_part("arm_left", hand_cyl_p + Vector3(0.0, 0.03 * dump, -0.04 * dump))
-	elif t < 1.50:
-		# Support hand brings visible 6-shot SpeedLoader straight into the swung-out cylinder!
-		var u_in := smoothstep(0.74, 1.18, t)
-		var u_out := smoothstep(1.26, 1.48, t)
-		var seat := sin(smoothstep(1.12, 1.32, t) * PI)
-		reload_pos_off = cant_p + Vector3(0.0, -0.015 + 0.020 * seat, 0.0)
-		reload_rot_off = cant_r.lerp(load_r, smoothstep(0.74, 0.95, t))
-		_pose_part("crane", Vector3.ZERO, Vector3(0.0, 0.0, 1.28))
+		_pose_part("arm_left", hand_clear_p + Vector3(-0.02 * dump, -0.02 * dump, 0.02 * dump), hand_clear_r)
+	elif t < 1.54:
+		# Tilt muzzle DOWN so open rear of all 6 chambers faces camera while visible 6-shot brass SpeedLoader slides in!
+		var u_tilt := smoothstep(0.74, 0.94, t)
+		var u_in := smoothstep(0.80, 1.24, t)
+		var u_out := smoothstep(1.30, 1.52, t)
+		var seat := sin(smoothstep(1.18, 1.36, t) * PI)
+		reload_pos_off = cant_p.lerp(load_p, u_tilt) + Vector3(0.0, 0.018 * seat, 0.0)
+		reload_rot_off = cant_r.lerp(load_r, u_tilt)
+		_pose_part("crane", Vector3.ZERO, Vector3(0.0, 0.0, 1.32))
 		_pose_part("cylinder", Vector3.ZERO, Vector3(0.0, 0.0, _revolver_cyl_angle + u_in * TAU))
-		var sl_z := lerpf(0.14, 0.0, u_in) + 0.16 * u_out
-		_pose_part("speed_loader", Vector3(0.0, 0.0, sl_z), Vector3(0.0, 0.0, u_out * 0.6), Vector3.ZERO, t < 1.44)
-		_pose_part("arm_left", hand_load_p + Vector3(0.0, -0.02 * u_out, sl_z))
+		var sl_z := lerpf(0.11, 0.0, u_in) + 0.14 * u_out
+		_pose_part("speed_loader", Vector3(0.0, 0.0, sl_z), Vector3(0.0, 0.0, u_out * 0.65), Vector3.ZERO, t < 1.48)
+		var arm_in := hand_clear_p.lerp(hand_load_p + Vector3(0.0, 0.0, sl_z), smoothstep(0.74, 0.94, t))
+		_pose_part("arm_left", arm_in + Vector3(0.0, -0.04 * u_out, 0.0), hand_clear_r.lerp(hand_load_r, u_tilt))
 	else:
-		var u := smoothstep(1.50, reload_dur, t)
-		var snap := smoothstep(1.54, 1.70, t)
-		var flick := sin(smoothstep(1.52, 1.78, t) * PI)
-		reload_pos_off = cant_p.lerp(Vector3.ZERO, u) + Vector3(-0.022 * flick, 0.0, 0.0)
-		reload_rot_off = load_r.lerp(Vector3.ZERO, u) + Vector3(0.0, 0.0, 0.30 * flick)
-		_pose_part("crane", Vector3.ZERO, Vector3(0.0, 0.0, 1.28 * (1.0 - snap)))
+		var u := smoothstep(1.54, reload_dur, t)
+		var snap := smoothstep(1.58, 1.76, t)
+		var flick := sin(smoothstep(1.56, 1.84, t) * PI)
+		reload_pos_off = load_p.lerp(Vector3.ZERO, u) + Vector3(-0.025 * flick, 0.0, 0.0)
+		reload_rot_off = load_r.lerp(Vector3.ZERO, u) + Vector3(0.0, 0.0, 0.34 * flick)
+		_pose_part("crane", Vector3.ZERO, Vector3(0.0, 0.0, 1.32 * (1.0 - snap)))
 		_pose_part("speed_loader", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, false)
-		_pose_part("arm_left", hand_cyl_p.lerp(Vector3.ZERO, u))
+		_pose_part("arm_left", (hand_load_p + Vector3(0.0, -0.04, 0.14)).lerp(Vector3.ZERO, u), hand_load_r.lerp(Vector3.ZERO, u))
 	if t >= reload_dur:
 		is_reloading = false
 		_reset_weapon_parts()
 
 
 func _update_reload_hunting(delta: float) -> void:
-	# Interruptible per-round Springfield M1903 reload through OPEN receiver with visible FeedRound + animated hand!
+	# Interruptible per-round Springfield M1903 reload — 3/4 yaw (-0.58 Y) & roll (+0.68 Z) show open breech, bolt & gleaming brass .30-06!
 	reload_shell_timer += delta
-	var cant_p := Vector3(-0.045, 0.088, -0.052)
-	var cant_r := Vector3(0.18, 0.26, -0.38)
-	var hand_bolt_p := Vector3(0.055, 0.042, 0.095)
-	var hand_feed_p := Vector3(0.025, 0.068, 0.045)
+	var cant_p := Vector3(-0.115, 0.114, -0.026)
+	var cant_r := Vector3(0.24, -0.62, 0.72)
+	var hand_bolt_p := Vector3(0.056, 0.068, -0.015)
+	var hand_bolt_r := Vector3(0.16, -0.18, -0.28)
+	var hand_feed_p := Vector3(0.068, 0.024, -0.052)
+	var hand_feed_r := Vector3(0.08, -0.20, -0.20)
 	var mag_cap := get_weapon_mag_size(7)
 
 	if reload_shell_phase == 0:
-		# Open bolt (and eject any pending spent casing if player reloaded right after firing!)
-		var u := smoothstep(0.0, 0.34, reload_shell_timer)
+		# Roll rifle 3/4 right-side-up & visibly grab + lift + pull bolt rearward with right hand!
+		var u := smoothstep(0.0, 0.36, reload_shell_timer)
 		reload_pos_off = cant_p * u
 		reload_rot_off = cant_r * u
-		var lift := smoothstep(0.0, 0.18, reload_shell_timer)
-		var pull := smoothstep(0.14, 0.34, reload_shell_timer)
+		var lift := smoothstep(0.04, 0.20, reload_shell_timer)
+		var pull := smoothstep(0.16, 0.36, reload_shell_timer)
 		_pose_part("bolt", Vector3(0.0, 0.0, 0.085 * pull), Vector3(0.0, 0.0, 1.05 * lift))
 		_pose_part("feed_round", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, false)
-		_pose_part("arm_right", hand_bolt_p * lift + Vector3(0.0, 0.0, 0.082 * pull))
-		if reload_shell_timer >= 0.14 and not (reload_flags & 1):
+		_pose_part("arm_right", hand_bolt_p * lift + Vector3(0.0, 0.0, 0.085 * pull), hand_bolt_r * lift)
+		if reload_shell_timer >= 0.16 and not (reload_flags & 1):
 			reload_flags |= 1
 			_play_reload_sfx(_sfx_bolt, 0.78)
 			if _sniper_pending_eject:
 				_sniper_pending_eject = false
 				_eject_brass_casing(WEAPONS[7], false)
-		if reload_shell_timer >= 0.34:
+		if reload_shell_timer >= 0.36:
 			reload_shell_phase = 1
 			reload_shell_timer = 0.0
 			reload_flags = 0
 	elif reload_shell_phase == 1:
 		var st := reload_shell_timer
-		var push := sin(smoothstep(0.10, 0.28, st) * PI)
+		var push := sin(smoothstep(0.12, 0.30, st) * PI)
 		reload_pos_off = cant_p + Vector3(0.0, 0.014 * push, 0.0)
 		reload_rot_off = cant_r
 		_pose_part("bolt", Vector3(0.0, 0.0, 0.085), Vector3(0.0, 0.0, 1.05))
-		var u_in := smoothstep(0.0, 0.26, st)
-		var fp := Vector3(lerpf(0.045, 0.0, u_in), lerpf(0.075, -0.012, u_in), 0.0)
-		_pose_part("feed_round", fp, Vector3(-0.22 * (1.0 - u_in), 0.0, 0.0), Vector3.ZERO, st < 0.26)
-		_pose_part("arm_right", hand_feed_p + fp)
-		if st >= 0.24 and not (reload_flags & 2):
+		# Arc bright brass .30-06 round visibly from right-side down under scope into open breech!
+		var u_in := smoothstep(0.0, 0.28, st)
+		var fp := Vector3(lerpf(0.088, 0.0, u_in), lerpf(0.048, -0.014, u_in), lerpf(0.008, 0.0, u_in))
+		_pose_part("feed_round", fp, Vector3(-0.14 * (1.0 - u_in), 0.18 * (1.0 - u_in), -0.32 * (1.0 - u_in)), Vector3.ZERO, st < 0.28)
+		_pose_part("arm_right", hand_feed_p + fp, hand_feed_r)
+		if st >= 0.25 and not (reload_flags & 2):
 			reload_flags |= 2
 			_play_reload_sfx(_sfx_shell_in, randf_range(1.06, 1.16))
 			if ammo_in_mag[7] < mag_cap and ammo_reserve[7] > 0:
 				ammo_in_mag[7] += 1
 				ammo_reserve[7] -= 1
 				trauma = minf(1.0, trauma + 0.04)
-		if st >= 0.34 or (reload_cancel_req and ammo_in_mag[7] > 0 and st >= 0.26):
+		if st >= 0.36 or (reload_cancel_req and ammo_in_mag[7] > 0 and st >= 0.28):
 			if reload_cancel_req or ammo_in_mag[7] >= mag_cap or ammo_reserve[7] <= 0:
 				reload_shell_phase = 2
 				reload_shell_timer = 0.0
@@ -3583,16 +3639,17 @@ func _update_reload_hunting(delta: float) -> void:
 				reload_shell_timer = 0.0
 				reload_flags = 0
 	elif reload_shell_phase == 2:
-		var exit_dur := 0.50
+		var exit_dur := 0.52
 		var u := smoothstep(0.0, exit_dur, reload_shell_timer)
-		var close_u := smoothstep(0.0, 0.26, reload_shell_timer)
-		var lock_u := smoothstep(0.22, 0.38, reload_shell_timer)
-		reload_pos_off = cant_p.lerp(Vector3.ZERO, u)
-		reload_rot_off = cant_r.lerp(Vector3.ZERO, u)
+		var close_u := smoothstep(0.04, 0.28, reload_shell_timer)
+		var lock_u := smoothstep(0.24, 0.38, reload_shell_timer)
+		reload_pos_off = cant_p.lerp(Vector3.ZERO, smoothstep(0.24, exit_dur, reload_shell_timer))
+		reload_rot_off = cant_r.lerp(Vector3.ZERO, smoothstep(0.24, exit_dur, reload_shell_timer))
 		_pose_part("bolt", Vector3(0.0, 0.0, 0.085 * (1.0 - close_u)), Vector3(0.0, 0.0, 1.05 * (1.0 - lock_u)))
 		_pose_part("feed_round", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, false)
-		_pose_part("arm_right", (hand_bolt_p + Vector3(0.0, 0.0, 0.082 * (1.0 - close_u))).lerp(Vector3.ZERO, smoothstep(0.32, exit_dur, reload_shell_timer)))
-		if reload_shell_timer >= 0.22 and not (reload_flags & 4):
+		var ret := smoothstep(0.34, exit_dur, reload_shell_timer)
+		_pose_part("arm_right", (hand_bolt_p + Vector3(0.0, 0.0, 0.085 * (1.0 - close_u))).lerp(Vector3.ZERO, ret), hand_bolt_r.lerp(Vector3.ZERO, ret))
+		if reload_shell_timer >= 0.24 and not (reload_flags & 4):
 			reload_flags |= 4
 			weapon_chambered[7] = true
 			_play_reload_sfx(_sfx_bolt, 0.88)
@@ -3755,7 +3812,9 @@ func _update_reload_pistol() -> void:
 		reload_rot_off = cant_r * u
 		_pose_part("mag", Vector3.ZERO)
 		_pose_part("mag_bullet", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, not reload_was_empty)
-		_pose_part("arm_left", hand_drop_p * u, hand_drop_r * u)
+		var start_hp := hand_drop_p if reload_was_empty else hand_seat_p
+		var start_hr := hand_drop_r if reload_was_empty else hand_seat_r
+		_pose_part("arm_left", start_hp * u, start_hr * u)
 	elif t < 0.46:
 		var u := smoothstep(0.16, 0.44, t)
 		reload_pos_off = cant_p + Vector3(0.0, -0.015 * sin(u * PI), 0.0)
@@ -3763,7 +3822,10 @@ func _update_reload_pistol() -> void:
 		var mp := EJECT_G17 * (0.22 * u)
 		_pose_part("mag", mp, Vector3.ZERO, Vector3.ZERO, t < 0.42 if reload_was_empty else u < 0.92)
 		_pose_part("mag_bullet", mp, Vector3.ZERO, Vector3.ZERO, (not reload_was_empty) and u < 0.92)
-		_pose_part("arm_left", hand_drop_p + Vector3(-0.025 * u, -0.065 * u, 0.02 * u), hand_drop_r)
+		if reload_was_empty:
+			_pose_part("arm_left", hand_drop_p + Vector3(-0.025 * u, -0.065 * u, 0.02 * u), hand_drop_r)
+		else:
+			_pose_part("arm_left", hand_seat_p + mp, hand_seat_r.lerp(hand_drop_r, u))
 	elif t < 0.76:
 		var u := smoothstep(0.46, 0.76, t)
 		var dip := sin(u * PI)
@@ -3771,7 +3833,8 @@ func _update_reload_pistol() -> void:
 		reload_rot_off = cant_r
 		_pose_part("mag", EJECT_G17 * 0.22, Vector3.ZERO, Vector3.ZERO, false)
 		_pose_part("mag_bullet", EJECT_G17 * 0.22, Vector3.ZERO, Vector3.ZERO, false)
-		var fetch_p := (hand_drop_p + Vector3(-0.025, -0.065, 0.02)).lerp(hand_seat_p + EJECT_G17 * 0.20, u)
+		var fetch_start := (hand_drop_p + Vector3(-0.025, -0.065, 0.02)) if reload_was_empty else (hand_seat_p + EJECT_G17 * 0.22)
+		var fetch_p := fetch_start.lerp(hand_seat_p + EJECT_G17 * 0.20, u)
 		_pose_part("arm_left", fetch_p, hand_drop_r.lerp(hand_seat_r, u))
 	elif t < 1.02:
 		var u := smoothstep(0.76, 0.95, t)
