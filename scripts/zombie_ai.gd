@@ -44,6 +44,38 @@ var bleed_timer: float = 0.0
 var bleed_dps: float = 20.0
 var _bleed_tick: float = 0.0
 var _status_light: OmniLight3D = null
+var _burn_fx_root: Node3D = null
+static var _burn_fire_shader: Shader = null
+
+
+func _ensure_burn_fx() -> void:
+	if _burn_fx_root != null and is_instance_valid(_burn_fx_root):
+		return
+	if _burn_fire_shader == null and ResourceLoader.exists("res://shaders/realistic_fire.gdshader"):
+		_burn_fire_shader = load("res://shaders/realistic_fire.gdshader") as Shader
+	if _burn_fire_shader == null:
+		return
+	_burn_fx_root = Node3D.new()
+	_burn_fx_root.name = "BurnFireFX"
+	_burn_fx_root.visible = false
+	for fi in range(4):
+		var sm := ShaderMaterial.new()
+		sm.shader = _burn_fire_shader
+		sm.set_shader_parameter("flame_speed", 3.2 + float(fi) * 0.45)
+		sm.set_shader_parameter("phase_seed", float(fi) * 3.1 + randf() * 5.0)
+		sm.set_shader_parameter("intensity", 1.08)
+		sm.set_shader_parameter("smoke_mix", 0.65)
+		sm.set_shader_parameter("billboard_y", 1.0)
+		var qm := QuadMesh.new()
+		qm.size = Vector2(0.60, 0.78) if fi == 0 else (Vector2(0.46, 0.68) if fi < 3 else Vector2(0.54, 0.76))
+		qm.material = sm
+		var mi := MeshInstance3D.new()
+		mi.mesh = qm
+		var offsets := [Vector3(0.0, 1.32, 0.28), Vector3(-0.26, 1.44, 0.22), Vector3(0.26, 1.40, 0.20), Vector3(0.0, 1.48, -0.18)]
+		mi.position = offsets[fi]
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_burn_fx_root.add_child(mi)
+	add_child(_burn_fx_root)
 var _body_col: CollisionShape3D = null
 var _exploder_light: OmniLight3D = null
 var _exploder_sac: Node3D = null
@@ -1501,6 +1533,14 @@ func apply_burn(dur: float, dps: float = 26.0) -> void:
 	burn_timer = maxf(burn_timer, dur)
 	burn_dps = maxf(burn_dps, dps)
 	_ensure_status_light()
+	_ensure_burn_fx()
+	if _burn_fx_root and is_instance_valid(_burn_fx_root):
+		_burn_fx_root.visible = true
+		_burn_fx_root.position.y = -0.65 if is_crawler else 0.0
+	if _status_light and is_instance_valid(_status_light):
+		_status_light.visible = true
+		_status_light.light_color = Color(1.0, 0.42, 0.10)
+		_status_light.light_energy = 1.8
 
 
 func apply_shock(dur: float) -> void:
@@ -1636,6 +1676,8 @@ func apply_status_damage(dmg: float) -> void:
 	if health <= 0.0:
 		if _status_light and is_instance_valid(_status_light):
 			_status_light.visible = false
+		if _burn_fx_root and is_instance_valid(_burn_fx_root):
+			_burn_fx_root.visible = false
 		burn_timer = 0.0
 		shock_timer = 0.0
 		bleed_timer = 0.0
@@ -1660,6 +1702,8 @@ func _tick_status_effects(delta: float) -> void:
 	if dead:
 		if _status_light and is_instance_valid(_status_light):
 			_status_light.visible = false
+		if _burn_fx_root and is_instance_valid(_burn_fx_root):
+			_burn_fx_root.visible = false
 		if _exploder_light and is_instance_valid(_exploder_light):
 			_exploder_light.visible = false
 		return
@@ -1671,6 +1715,10 @@ func _tick_status_effects(delta: float) -> void:
 	var any_fx := false
 	if burn_timer > 0.0:
 		any_fx = true
+		_ensure_burn_fx()
+		if _burn_fx_root and is_instance_valid(_burn_fx_root):
+			_burn_fx_root.visible = true
+			_burn_fx_root.position.y = -0.65 if is_crawler else 0.0
 		burn_timer = maxf(0.0, burn_timer - delta)
 		_burn_tick += delta
 		if _burn_tick >= 0.35:
@@ -1678,6 +1726,8 @@ func _tick_status_effects(delta: float) -> void:
 			apply_status_damage(burn_dps * 0.35)
 			if dead:
 				return
+	elif _burn_fx_root and is_instance_valid(_burn_fx_root) and _burn_fx_root.visible:
+		_burn_fx_root.visible = false
 	if shock_timer > 0.0:
 		any_fx = true
 		shock_timer = maxf(0.0, shock_timer - delta)
@@ -1984,6 +2034,9 @@ func _freeze_ragdoll_to_static() -> void:
 	anim_player = null
 	if _status_light and is_instance_valid(_status_light):
 		_status_light.visible = false
+	if _burn_fx_root and is_instance_valid(_burn_fx_root):
+		_burn_fx_root.visible = false
+	burn_timer = 0.0
 	if _exploder_attach and is_instance_valid(_exploder_attach):
 		_exploder_attach.queue_free()
 		_exploder_attach = null
@@ -2373,6 +2426,11 @@ func _attempt_melee_hit(raw_to: Vector3, dist_xz: float, dy_player: float) -> vo
 		health = 0.0
 		dead = true
 		state = State.DEAD
+		burn_timer = 0.0
+		if _status_light and is_instance_valid(_status_light):
+			_status_light.visible = false
+		if _burn_fx_root and is_instance_valid(_burn_fx_root):
+			_burn_fx_root.visible = false
 		_release_token()
 		_detonate_exploder(false)
 		_enter_ragdoll(-z_fwd, 120.0, "CHEST", 1.5, 2)
@@ -2621,9 +2679,12 @@ func apply_shot(hits: Array, weapon_idx: int) -> Dictionary:
 	if health <= 0.0:
 		dead = true
 		state = State.DEAD
+		burn_timer = 0.0
 		_release_token()
 		if _status_light and is_instance_valid(_status_light):
 			_status_light.visible = false
+		if _burn_fx_root and is_instance_valid(_burn_fx_root):
+			_burn_fx_root.visible = false
 		if variant == Variant.EXPLODER:
 			_detonate_exploder(any_hs and not zone_pos.has("CHEST"))
 		if growl_player and _death_stream:

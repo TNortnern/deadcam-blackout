@@ -109,14 +109,7 @@ func _update_trap(delta: float) -> void:
 			trap_blade_node.rotation.z += delta * 24.0
 		if trap_fx_node and is_instance_valid(trap_fx_node):
 			trap_fx_node.visible = true
-			if trap_type == "flame":
-				# Dynamic roaring fire plume flicker
-				for ci in range(trap_fx_node.get_child_count()):
-					var ch := trap_fx_node.get_child(ci)
-					if ch is MeshInstance3D:
-						var sc_y := 0.85 + 0.30 * sin(msec * 28.0 + float(ci) * 1.7)
-						(ch as Node3D).scale = Vector3(0.92 + 0.14 * cos(msec * 22.0 + float(ci)), sc_y, 1.0)
-			elif trap_type == "electric":
+			if trap_type == "electric":
 				# High-voltage plasma arc jitter
 				for ci in range(trap_fx_node.get_child_count()):
 					var ch := trap_fx_node.get_child(ci)
@@ -459,7 +452,7 @@ func get_prompt(player_points: int, player: Node = null) -> String:
 				var no_refill: bool = player.has_method("is_no_refill_weapon") and player.is_no_refill_weapon(cur)
 				var is_spec := bool(PlayerBodycam.WEAPONS[cur].get("is_special", false))
 				if already_up:
-					if not is_spec and cur != 7 and not bool(PlayerBodycam.WEAPONS[cur].get("has_holo", false)) and not player.has_attachment(cur, "optic"):
+					if not is_spec and cur != 7 and cur != 13 and cur != 14 and not bool(PlayerBodycam.WEAPONS[cur].get("has_holo", false)) and not player.has_attachment(cur, "optic"):
 						if player_points < 500:
 							return "[E] INSTALL TACTICAL RED-DOT OPTIC (500 PTS NEEDED)"
 						return "[E] INSTALL TACTICAL RED-DOT OPTIC (500 PTS)"
@@ -606,7 +599,7 @@ func interact(game_manager: Node, player: Node) -> String:
 			_rolled_lucky_mod = ""
 			if not bool(w_dict.get("is_special", false)) and randf() < 0.25:
 				var mods: Array[String] = []
-				if roll != 7 and not bool(w_dict.get("has_holo", false)):
+				if roll != 7 and roll != 13 and roll != 14 and not bool(w_dict.get("has_holo", false)):
 					mods.append("optic")
 				if roll != 6 and not bool(w_dict.get("is_crossbow", false)):
 					mods.append("suppressor")
@@ -678,7 +671,7 @@ func interact(game_manager: Node, player: Node) -> String:
 			var is_spec := bool(PlayerBodycam.WEAPONS[cur].get("is_special", false))
 			var no_refill: bool = player.has_method("is_no_refill_weapon") and player.is_no_refill_weapon(cur)
 			if already_up:
-				if not is_spec and cur != 7 and not bool(PlayerBodycam.WEAPONS[cur].get("has_holo", false)) and not player.has_attachment(cur, "optic"):
+				if not is_spec and cur != 7 and cur != 13 and cur != 14 and not bool(PlayerBodycam.WEAPONS[cur].get("has_holo", false)) and not player.has_attachment(cur, "optic"):
 					if game_manager and game_manager.points < 500:
 						return "Need 500 points for Tactical Red-Dot Optic!"
 					if game_manager: game_manager.add_points(-500)

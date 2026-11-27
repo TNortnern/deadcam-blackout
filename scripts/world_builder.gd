@@ -2979,27 +2979,60 @@ func _spawn_trap(parent_grp: Node3D, node_name: String, t_type: String, t_label:
 	tr.trap_fx_node = fx_root
 
 	if t_type == "flame":
-		# Industrial twin floor gas-jet manifold pipes + textured additive flame plume quads!
+		# Industrial twin floor gas-jet manifold pipes seated FLUSH on y=0.0 floor (zone_center.y = 1.0 -> local y = -0.93 with height 0.14 -> world 0.00..0.14m!)
 		for fz_o: float in [-1.25, 1.25]:
-			_add_box(frame_root, Vector3(0.0, -0.88, fz_o), Vector3(zone_he.x * 1.55, 0.14, 0.16), mats["metal"], Vector3.ZERO, false)
-		var f_mat := StandardMaterial3D.new()
-		f_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		f_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-		f_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		f_mat.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
-		f_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-		f_mat.albedo_color = Color(1.0, 0.54, 0.16, 0.92)
-		if ResourceLoader.exists("res://assets/textures/muzzle_flash_side.png"):
-			f_mat.albedo_texture = load("res://assets/textures/muzzle_flash_side.png")
-		var qm := QuadMesh.new(); qm.size = Vector2(0.85, 1.85); qm.material = f_mat
+			_add_box(frame_root, Vector3(0.0, -0.93, fz_o), Vector3(zone_he.x * 1.55, 0.14, 0.16), mats["metal"], Vector3.ZERO, false)
+			for fx_n: float in [-1.45, -0.50, 0.50, 1.45]:
+				var noz := MeshInstance3D.new()
+				var ncm := CylinderMesh.new(); ncm.top_radius = 0.055; ncm.bottom_radius = 0.075; ncm.height = 0.14; ncm.radial_segments = 10
+				ncm.material = mats["metal"]; noz.mesh = ncm
+				noz.position = Vector3(fx_n, -0.82, fz_o)
+				noz.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				frame_root.add_child(noz)
+		var fire_sh := load("res://shaders/realistic_fire.gdshader") as Shader
+		var f_idx := 0
+		var heights := [1.60, 2.08, 1.85, 2.22, 1.75, 2.15, 1.65, 1.98]
+		var widths := [0.95, 1.15, 1.05, 1.18, 0.98, 1.12, 1.02, 1.16]
 		for fz_o: float in [-1.25, 1.25]:
-			for fx_o: float in [-1.4, -0.45, 0.45, 1.4]:
+			for fx_o: float in [-1.45, -0.50, 0.50, 1.45]:
+				var sm := ShaderMaterial.new()
+				sm.shader = fire_sh
+				sm.set_shader_parameter("flame_speed", 3.1 + float(f_idx % 3) * 0.55)
+				sm.set_shader_parameter("phase_seed", float(f_idx) * 2.91 + 1.3)
+				sm.set_shader_parameter("intensity", 0.96 + float(f_idx % 3) * 0.06)
+				sm.set_shader_parameter("smoke_mix", 0.62)
+				sm.set_shader_parameter("billboard_y", 1.0)
+				sm.set_shader_parameter("jet_mode", 0.0)
+				var qm := QuadMesh.new()
+				var fh: float = heights[f_idx % heights.size()]
+				var fw: float = widths[f_idx % widths.size()]
+				qm.size = Vector2(fw, fh)
+				qm.material = sm
 				var flame_q := MeshInstance3D.new()
 				flame_q.mesh = qm
-				flame_q.position = Vector3(fx_o, 0.05, fz_o)
-				flame_q.rotation.z = PI * 0.5
+				flame_q.position = Vector3(fx_o + (0.06 if (f_idx % 2 == 0) else -0.06), -0.86 + fh * 0.46, fz_o)
 				flame_q.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 				fx_root.add_child(flame_q)
+				f_idx += 1
+			# Overlapping low roaring manifold base flames anchored directly into the floor burner pipe (no floating cutoff!)
+			for bx_o: float in [-0.95, 0.0, 0.95]:
+				var bsm := ShaderMaterial.new()
+				bsm.shader = fire_sh
+				bsm.set_shader_parameter("flame_speed", 2.8 + absf(bx_o) * 0.4)
+				bsm.set_shader_parameter("phase_seed", float(f_idx) * 4.13)
+				bsm.set_shader_parameter("intensity", 0.92)
+				bsm.set_shader_parameter("smoke_mix", 0.50)
+				bsm.set_shader_parameter("billboard_y", 1.0)
+				bsm.set_shader_parameter("jet_mode", 0.0)
+				var bqm := QuadMesh.new()
+				bqm.size = Vector2(1.38, 1.15)
+				bqm.material = bsm
+				var bq := MeshInstance3D.new()
+				bq.mesh = bqm
+				bq.position = Vector3(bx_o, -0.44, fz_o)
+				bq.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				fx_root.add_child(bq)
+				f_idx += 1
 	elif t_type == "electric":
 		# Twin high-voltage Tesla coil pylons + animated glowing plasma arcs!
 		for ez_s: float in [-zone_he.z * 0.82, zone_he.z * 0.82]:

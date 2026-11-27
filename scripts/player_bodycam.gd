@@ -25,7 +25,7 @@ const WEAPONS := [
 		"muzzle": Vector3(0.0, 0.05, -0.28),
 		"ejection": Vector3(0.025, 0.055, -0.08),
 		"has_holo": false,
-		"holo_pos": Vector3.ZERO,
+		"holo_pos": Vector3(0.0, 0.072, -0.12),
 	},
 	{
 		"name": "M16A2 REFLEX",
@@ -75,7 +75,7 @@ const WEAPONS := [
 		"muzzle": Vector3(0.0, 0.015, -0.695),
 		"ejection": Vector3(0.024, 0.014, -0.150),
 		"has_holo": false,
-		"holo_pos": Vector3.ZERO,
+		"holo_pos": Vector3(0.0, 0.048, -0.12),
 	},
 	{
 		"name": "COMBAT KNIFE",
@@ -93,10 +93,10 @@ const WEAPONS := [
 		"recoil_pitch": 0.02,
 		"recoil_kick": 0.02,
 		"flash_scale": 0.0,
-		"hip_pos": Vector3(0.20, -0.24, -0.36),
-		"hip_rot": Vector3(0.20, -0.78, 0.28),
-		"ads_pos": Vector3(0.14, -0.19, -0.32),
-		"ads_rot": Vector3(0.24, -0.62, 0.34),
+		"hip_pos": Vector3(0.24, -0.155, -0.29),
+		"hip_rot": Vector3(-0.04, -0.14, 0.10),
+		"ads_pos": Vector3(0.20, -0.145, -0.27),
+		"ads_rot": Vector3(-0.02, -0.10, 0.12),
 		"muzzle": Vector3(0.0, 0.0, -0.35),
 		"ejection": Vector3.ZERO,
 		"has_holo": false,
@@ -154,7 +154,7 @@ const WEAPONS := [
 		"muzzle": Vector3(0.0, 0.016, -0.40),
 		"ejection": Vector3(0.036, 0.032, -0.09),
 		"has_holo": false,
-		"holo_pos": Vector3.ZERO,
+		"holo_pos": Vector3(0.0, 0.036, -0.10),
 	},
 	{
 		"name": ".44 MAGNUM",
@@ -180,7 +180,7 @@ const WEAPONS := [
 		"muzzle": Vector3(0.0, 0.042, -0.38),
 		"ejection": Vector3.ZERO,
 		"has_holo": false,
-		"holo_pos": Vector3.ZERO,
+		"holo_pos": Vector3(0.0, 0.075, -0.14),
 	},
 	{
 		"name": "SPRINGFIELD M1903",
@@ -233,7 +233,7 @@ const WEAPONS := [
 		"muzzle": Vector3(0.0, 0.024, -0.74),
 		"ejection": Vector3(0.042, 0.034, -0.14),
 		"has_holo": false,
-		"holo_pos": Vector3.ZERO,
+		"holo_pos": Vector3(0.0, 0.082, -0.12),
 	},
 	{
 		"name": "BENELLI M4",
@@ -259,7 +259,7 @@ const WEAPONS := [
 		"muzzle": Vector3(0.0, 0.032, -0.72),
 		"ejection": Vector3(0.040, 0.028, -0.14),
 		"has_holo": false,
-		"holo_pos": Vector3.ZERO,
+		"holo_pos": Vector3(0.0, 0.076, -0.12),
 	},
 	{
 		"name": "M249 SAW",
@@ -280,12 +280,12 @@ const WEAPONS := [
 		"flash_scale": 1.15,
 		"hip_pos": Vector3(0.135, -0.205, -0.32),
 		"hip_rot": Vector3(0.02, 0.08, -0.04),
-		"ads_pos": Vector3(0.0, -0.086, -0.26),
+		"ads_pos": Vector3(0.0, -0.105, -0.25),
 		"ads_rot": Vector3(0.0, 0.0, 0.0),
 		"muzzle": Vector3(0.0, 0.034, -0.78),
 		"ejection": Vector3(0.048, 0.026, -0.16),
 		"has_holo": false,
-		"holo_pos": Vector3.ZERO,
+		"holo_pos": Vector3(0.0, 0.104, -0.09),
 	},
 	{
 		"name": "SAWED-OFF DB 12GA",
@@ -311,7 +311,7 @@ const WEAPONS := [
 		"muzzle": Vector3(0.0, 0.022, -0.40),
 		"ejection": Vector3(0.0, 0.020, -0.06),
 		"has_holo": false,
-		"holo_pos": Vector3(0.0, 0.068, -0.10),
+		"holo_pos": Vector3(0.0, 0.062, -0.10),
 	},
 	{
 		"name": "FAMAS F1 5.56",
@@ -339,7 +339,7 @@ const WEAPONS := [
 		"muzzle": Vector3(0.0, 0.018, -0.48),
 		"ejection": Vector3(0.036, 0.025, -0.14),
 		"has_holo": false,
-		"holo_pos": Vector3(0.0, 0.095, -0.12),
+		"holo_pos": Vector3(0.0, 0.091, -0.12),
 	},
 	{
 		"name": "M1 GARAND .30-06",
@@ -419,7 +419,7 @@ const WEAPONS := [
 		"muzzle": Vector3(0.0, 0.020, -0.52),
 		"ejection": Vector3.ZERO,
 		"has_holo": false,
-		"holo_pos": Vector3(0.0, 0.078, -0.14),
+		"holo_pos": Vector3(0.0, 0.019, -0.11),
 	},
 	{
 		"name": "M2 FLAMETHROWER",
@@ -496,6 +496,8 @@ var weapon_clearance: Node3D
 var weapon_pivot: Node3D
 var weapon_rig_holder: Node3D
 var holo_quad: MeshInstance3D
+var optic_hood: Node3D
+var _optic_rest_pos: Vector3 = Vector3(0.0, 0.072, -0.12)
 var vm_rim: OmniLight3D
 var flashlight: SpotLight3D
 var flashlight_spill: SpotLight3D
@@ -590,7 +592,11 @@ var weapon_attachments: Dictionary = {} # weapon_idx -> {"optic": bool, "suppres
 var _burst_remaining: int = 0
 var _burst_timer: float = 0.0
 var _rockets: Array[Dictionary] = []
+var _flame_jets: Array[Dictionary] = []
 var _flame_pool_cd: float = 0.0
+static var _fire_shader: Shader = null
+static var _char_shader: Shader = null
+static var _smoke_wisp_tex: Texture2D = null
 var equipped_melee_id: String = "knife"
 var _melee_timer: float = 0.0
 var _melee_dur: float = 0.42
@@ -864,19 +870,29 @@ func _build_rig() -> void:
 	holo_quad.layers = 2
 	weapon_pivot.add_child(holo_quad)
 
-	# Modular Tactical Red-Dot Sight aluminum housing frame (shown ONLY when an aftermarket "optic" attachment is installed!)
-	var optic_hood := Node3D.new()
+	# Modular Tactical Red-Dot Sight slim machined aluminum housing (direct sibling on weapon_pivot so it NEVER vanishes on reload and tracks hinged/reciprocating parts!)
+	optic_hood = Node3D.new()
 	optic_hood.name = "ModularOpticHood"
 	optic_hood.visible = false
-	var h_metal := _make_vm_mat(Color(0.09, 0.10, 0.11), 0.36, 0.82, 0.55)
-	var base_b := BoxMesh.new(); base_b.size = Vector3(0.028, 0.008, 0.052); base_b.material = h_metal
-	var side_b := BoxMesh.new(); side_b.size = Vector3(0.0032, 0.022, 0.040); side_b.material = h_metal
-	var top_b := BoxMesh.new(); top_b.size = Vector3(0.028, 0.0032, 0.040); top_b.material = h_metal
-	_add_vm_mesh(optic_hood, base_b, Vector3(0.0, -0.014, 0.0))
-	_add_vm_mesh(optic_hood, side_b, Vector3(-0.0125, 0.0, 0.0))
-	_add_vm_mesh(optic_hood, side_b, Vector3(0.0125, 0.0, 0.0))
-	_add_vm_mesh(optic_hood, top_b, Vector3(0.0, 0.012, 0.0))
-	holo_quad.add_child(optic_hood)
+	var h_metal := _make_vm_mat(Color(0.11, 0.12, 0.13), 0.34, 0.84, 0.62, Color.BLACK, "metal_tactical")
+	var h_lens := StandardMaterial3D.new()
+	h_lens.albedo_color = Color(0.10, 0.24, 0.22, 0.16)
+	h_lens.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	h_lens.roughness = 0.08
+	h_lens.metallic = 0.15
+	h_lens.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var base_b := BoxMesh.new(); base_b.size = Vector3(0.024, 0.007, 0.048); base_b.material = h_metal
+	var riser_b := BoxMesh.new(); riser_b.size = Vector3(0.020, 0.005, 0.036); riser_b.material = h_metal
+	var side_b := BoxMesh.new(); side_b.size = Vector3(0.0024, 0.020, 0.032); side_b.material = h_metal
+	var top_b := BoxMesh.new(); top_b.size = Vector3(0.025, 0.0024, 0.032); top_b.material = h_metal
+	var lens_q := QuadMesh.new(); lens_q.size = Vector2(0.021, 0.018); lens_q.material = h_lens
+	_add_vm_mesh(optic_hood, base_b, Vector3(0.0, -0.0155, 0.0))
+	_add_vm_mesh(optic_hood, riser_b, Vector3(0.0, -0.0110, 0.0))
+	_add_vm_mesh(optic_hood, side_b, Vector3(-0.0118, 0.0005, 0.0))
+	_add_vm_mesh(optic_hood, side_b, Vector3(0.0118, 0.0005, 0.0))
+	_add_vm_mesh(optic_hood, top_b, Vector3(0.0, 0.0112, 0.0))
+	_add_vm_mesh(optic_hood, lens_q, Vector3(0.0, 0.0005, -0.012))
+	weapon_pivot.add_child(optic_hood)
 
 	flashlight = SpotLight3D.new()
 	flashlight.light_color = Color(0.96, 0.98, 1.0)
@@ -1656,14 +1672,15 @@ func _attach_ar_top_cartridge(inst: Node3D, parts: Dictionary) -> void:
 
 func _build_melee_viewmodel_rig(holder: Node3D) -> void:
 	_melee_nodes.clear()
-	# Seat every melee grip cleanly INSIDE ArmRight's clenched glove palm (~(-0.068, -0.058, 0.028))!
+	# Right-third AAA tactical melee ready stance: every handle sits snugly inside M16A2 ArmRight's clenched palm (~(0.005, -0.068, 0.035))
+	# with blades/heads yawed ~28-36 deg so the flat bevel/head gleams clearly on the right side without ever blocking the center crosshair!
 	var specs := [
-		["knife", "res://assets/models/weapon_melee_knife.glb", true, Vector3(-0.068, -0.052, 0.028), Vector3(0.14, 0.12, -0.18)],
-		["fire_axe", "res://assets/models/weapon_melee_axe.glb", false, Vector3(-0.068, -0.048, 0.028), Vector3(0.16, 0.14, -0.16)],
-		["machete", "res://assets/models/weapon_melee_machete.glb", false, Vector3(-0.068, -0.050, 0.028), Vector3(0.14, 0.12, -0.18)],
-		["bat", "res://assets/models/weapon_melee_bat.glb", false, Vector3(-0.068, -0.036, 0.028), Vector3(0.16, 0.12, -0.16)],
-		["bat_spiked", "res://assets/models/weapon_melee_bat_spiked.glb", false, Vector3(-0.068, -0.036, 0.028), Vector3(0.16, 0.12, -0.16)],
-		["crowbar", "res://assets/models/weapon_melee_crowbar.glb", false, Vector3(-0.068, -0.095, 0.028), Vector3(0.16, 0.14, -0.16)],
+		["knife", "res://assets/models/weapon_melee_knife.glb", true, Vector3(0.002, -0.056, 0.012), Vector3(-0.34, 0.65, 0.18), Vector3.ONE * 1.15],
+		["fire_axe", "res://assets/models/weapon_melee_axe.glb", false, Vector3(0.010, -0.072, 0.016), Vector3(-0.38, 0.50, -0.34), Vector3.ONE * 0.90],
+		["machete", "res://assets/models/weapon_melee_machete.glb", false, Vector3(0.006, -0.068, 0.014), Vector3(-0.36, 0.58, -0.24), Vector3.ONE * 0.95],
+		["bat", "res://assets/models/weapon_melee_bat.glb", false, Vector3(0.012, -0.064, 0.018), Vector3(-0.40, 0.36, -0.38), Vector3.ONE * 0.88],
+		["bat_spiked", "res://assets/models/weapon_melee_bat_spiked.glb", false, Vector3(0.012, -0.064, 0.018), Vector3(-0.40, 0.36, -0.38), Vector3.ONE * 0.88],
+		["crowbar", "res://assets/models/weapon_melee_crowbar.glb", false, Vector3(0.008, -0.102, 0.016), Vector3(-0.38, 0.54, -0.30), Vector3.ONE * 0.92],
 	]
 	for sp in specs:
 		var mid: String = sp[0]
@@ -1674,6 +1691,7 @@ func _build_melee_viewmodel_rig(holder: Node3D) -> void:
 		root_n.visible = vis
 		root_n.position = sp[3]
 		root_n.rotation = sp[4]
+		root_n.scale = sp[5]
 		if ResourceLoader.exists(glb_path):
 			if not _glb_cache.has(glb_path):
 				_glb_cache[glb_path] = load(glb_path)
@@ -2067,7 +2085,7 @@ func _build_single_weapon_rig(i: int) -> void:
 	var parts := {}
 	if bool(w.get("is_melee", false)):
 		_build_melee_viewmodel_rig(holder)
-		_clone_tactical_arms(0, holder, parts, Vector3.ZERO, Vector3.ZERO, Vector3(-0.02, -0.04, 0.14), Vector3(0.18, 0.45, -0.15), false, true)
+		_clone_tactical_arms(1, holder, parts, Vector3.ZERO, Vector3.ZERO, Vector3(0.026, 0.040, 0.026), Vector3(0.32, 0.40, -0.04), false, true)
 	elif glb_path != "":
 		if not _glb_cache.has(glb_path):
 			_glb_cache[glb_path] = load(glb_path)
@@ -2169,12 +2187,23 @@ func _move_part_group(grp: String, delta_pos: Vector3, delta_rot := Vector3.ZERO
 	_pose_part(grp, delta_pos, delta_rot, Vector3.ZERO, is_vis)
 
 
+func _pose_optic_hood(delta_pos: Vector3, delta_rot := Vector3.ZERO, pivot := Vector3.ZERO) -> void:
+	if not is_instance_valid(optic_hood) or not optic_hood.visible:
+		return
+	if delta_rot != Vector3.ZERO and pivot != Vector3.ZERO:
+		optic_hood.position = pivot + Basis.from_euler(delta_rot) * (_optic_rest_pos - pivot) + delta_pos
+	else:
+		optic_hood.position = _optic_rest_pos + delta_pos
+	optic_hood.rotation = delta_rot
+
+
 func _apply_idle_bolt_and_cover() -> void:
 	if current_weapon == 0:
 		var empty_g17 := ammo_in_mag[0] <= 0 or not weapon_chambered[0]
 		var locked_back := 1.0 if empty_g17 else 0.0
 		var slide_z := maxf(bolt_blowback, locked_back) * 0.034
 		_pose_part("slide", Vector3(0.0, 0.0, slide_z))
+		_pose_optic_hood(Vector3(0.0, 0.0, slide_z))
 		_pose_part("slidestop", Vector3.ZERO, Vector3(-0.22 * locked_back, 0.0, 0.0), PIVOT_G17_SLIDESTOP)
 		_pose_part("trigger", Vector3.ZERO, Vector3(-0.22 * clampf(bolt_blowback, 0.0, 1.0), 0.0, 0.0), PIVOT_G17_TRIGGER)
 		_pose_part("mag_bullet", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, ammo_in_mag[0] > 0)
@@ -2211,6 +2240,7 @@ func _reset_weapon_parts() -> void:
 				p.position = _w_rest_pos.get(iid, Vector3.ZERO)
 				p.rotation = _w_rest_rot.get(iid, Vector3.ZERO)
 				p.visible = not hide_rest
+	_pose_optic_hood(Vector3.ZERO)
 	_apply_idle_bolt_and_cover()
 
 
@@ -2265,14 +2295,17 @@ func _equip_weapon(idx: int, force_preview: bool = false) -> void:
 		_pose_bow_rig()
 
 	var use_holo := bool(w["has_holo"]) or has_attachment(idx, "optic")
-	holo_quad.visible = use_holo
-	var hood := holo_quad.get_node_or_null("ModularOpticHood") as Node3D
-	if hood:
-		hood.visible = has_attachment(idx, "optic") and not bool(w["has_holo"])
+	var show_hood := has_attachment(idx, "optic") and not bool(w["has_holo"])
 	var hpos: Vector3 = w.get("holo_pos", Vector3.ZERO)
 	if hpos == Vector3.ZERO:
 		hpos = Vector3(0.0, 0.072, -0.12)
+	_optic_rest_pos = hpos
+	holo_quad.visible = use_holo
 	holo_quad.position = hpos
+	if is_instance_valid(optic_hood):
+		optic_hood.visible = show_hood
+		optic_hood.position = hpos
+		optic_hood.rotation = Vector3.ZERO
 	if is_instance_valid(weapon_pivot) and get_tree() and get_tree().paused:
 		weapon_pivot.position = w["hip_pos"]
 		weapon_pivot.rotation = w["hip_rot"]
@@ -2498,12 +2531,17 @@ func add_attachment(idx: int, mod_key: String) -> void:
 	if idx == current_weapon:
 		var w: Dictionary = WEAPONS[idx]
 		var use_holo := bool(w["has_holo"]) or has_attachment(idx, "optic")
-		holo_quad.visible = use_holo
-		var hood := holo_quad.get_node_or_null("ModularOpticHood") as Node3D
-		if hood:
-			hood.visible = has_attachment(idx, "optic") and not bool(w["has_holo"])
+		var show_hood := has_attachment(idx, "optic") and not bool(w["has_holo"])
 		var hpos: Vector3 = w.get("holo_pos", Vector3.ZERO)
-		holo_quad.position = hpos if hpos != Vector3.ZERO else Vector3(0.0, 0.072, -0.12)
+		if hpos == Vector3.ZERO:
+			hpos = Vector3(0.0, 0.072, -0.12)
+		_optic_rest_pos = hpos
+		holo_quad.visible = use_holo
+		holo_quad.position = hpos
+		if is_instance_valid(optic_hood):
+			optic_hood.visible = show_hood
+			optic_hood.position = hpos
+			optic_hood.rotation = Vector3.ZERO
 
 
 func is_no_refill_weapon(idx: int) -> bool:
@@ -2904,7 +2942,11 @@ func set_deterministic_view(pos: Vector3, look_yaw: float, look_pitch: float, we
 		flashlight_bounce.visible = false
 		flashlight_bounce.light_energy = 0.0
 	var w: Dictionary = WEAPONS[current_weapon]
-	weapon_pivot.position = w["ads_pos"] if is_ads else w["hip_pos"]
+	var ads_p_eff: Vector3 = w["ads_pos"] as Vector3
+	var has_added_optic := has_attachment(current_weapon, "optic") and not bool(w["has_holo"])
+	if has_added_optic and is_instance_valid(holo_quad):
+		ads_p_eff = Vector3(-holo_quad.position.x, -holo_quad.position.y, ads_p_eff.z)
+	weapon_pivot.position = ads_p_eff if is_ads else w["hip_pos"]
 	weapon_pivot.rotation = w["ads_rot"] if is_ads else w["hip_rot"]
 	camera.fov = float(w.get("ads_fov", 60.5)) if is_ads else 94.0
 	muzzle_light.light_energy = flash_energy
@@ -3012,6 +3054,7 @@ func _physics_process(delta: float) -> void:
 	_update_arrows(delta)
 	_update_grenades(delta)
 	_update_hazards(delta)
+	_update_flame_jets(delta)
 	_update_rockets(delta)
 	if _flame_pool_cd > 0.0:
 		_flame_pool_cd = maxf(0.0, _flame_pool_cd - delta)
@@ -3276,6 +3319,9 @@ func _process(delta: float) -> void:
 	if is_instance_valid(holo_quad):
 		var want_holo := (bool(w["has_holo"]) or has_attachment(current_weapon, "optic")) and not bool(w.get("is_melee", false)) and not _quick_melee_active and not is_reloading and sniper_scope_alpha < 0.92
 		holo_quad.visible = want_holo
+	if is_instance_valid(optic_hood):
+		var want_hood := has_attachment(current_weapon, "optic") and not bool(w["has_holo"]) and not bool(w.get("is_melee", false)) and not _quick_melee_active and sniper_scope_alpha < 0.92
+		optic_hood.visible = want_hood
 
 	var sway_scale := lerpf(1.0, 0.18, _ads_blend)
 	var low_ready_pos := Vector3(-0.048, -0.062, 0.038) * _sprint_blend
@@ -3677,6 +3723,7 @@ func _update_reload_sawed_off() -> void:
 	var hinge_piv := Vector3(0.0, 0.004, -0.032)
 	var hinge_rot := Vector3(-0.62 * hinge, 0.0, 0.0)
 	_pose_part("barrel", Vector3.ZERO, hinge_rot, hinge_piv)
+	_pose_optic_hood(Vector3.ZERO, hinge_rot, hinge_piv)
 	var shell_vis := t < 0.42 or t >= 0.85
 	var shell_slide := lerpf(0.09, 0.0, smoothstep(0.85, 1.32, t)) if t >= 0.85 else (0.11 * smoothstep(0.24, 0.42, t))
 	var aligned_slide := Basis.from_euler(hinge_rot) * Vector3(0.0, 0.0, shell_slide)
@@ -4223,13 +4270,16 @@ func _update_reload_m249() -> void:
 		_play_reload_sfx(_sfx_bolt, 0.88)
 		trauma = minf(1.0, trauma + 0.10)
 
+	var lid_piv := Vector3(0.0, 0.0371, -0.3087)
 	if t < 0.48:
 		# Left hand reaches up & pops TopCover UP (-1.15 rad X) cleanly with ZERO sleeve bloat!
 		var u := smoothstep(0.0, 0.48, t)
 		var lid_u := smoothstep(0.18, 0.46, t)
 		reload_pos_off = cant_p * u
 		reload_rot_off = cant_r * u
-		_pose_part("top_cover", Vector3.ZERO, Vector3(-1.15 * lid_u, 0.0, 0.0))
+		var lid_rot := Vector3(-1.15 * lid_u, 0.0, 0.0)
+		_pose_part("top_cover", Vector3.ZERO, lid_rot)
+		_pose_optic_hood(Vector3.ZERO, lid_rot, lid_piv)
 		_pose_part("ammo_belt", Vector3.ZERO)
 		_pose_part("arm_left", hand_lid_p * smoothstep(0.0, 0.22, t) + Vector3(0.0, 0.032 * lid_u, -0.016 * lid_u), hand_lid_r * smoothstep(0.0, 0.22, t), PIVOT_AR_HAND)
 	elif t < 1.15:
@@ -4238,6 +4288,7 @@ func _update_reload_m249() -> void:
 		reload_pos_off = cant_p
 		reload_rot_off = cant_r
 		_pose_part("top_cover", Vector3.ZERO, Vector3(-1.15, 0.0, 0.0))
+		_pose_optic_hood(Vector3.ZERO, Vector3(-1.15, 0.0, 0.0), lid_piv)
 		var mp := Vector3(-0.04 * u, -0.24 * u, 0.0)
 		_pose_part("mag", mp, Vector3.ZERO, Vector3.ZERO, t < 1.02)
 		_pose_part("ammo_belt", Vector3(-0.08 * u, -0.14 * u, 0.0), Vector3(0.0, 0.0, 0.45 * u), Vector3.ZERO, t < 0.92)
@@ -4250,6 +4301,7 @@ func _update_reload_m249() -> void:
 		reload_pos_off = cant_p + Vector3(0.0, 0.018 * sin(smoothstep(1.90, 2.08, t) * PI), 0.0)
 		reload_rot_off = cant_r
 		_pose_part("top_cover", Vector3.ZERO, Vector3(-1.15, 0.0, 0.0))
+		_pose_optic_hood(Vector3.ZERO, Vector3(-1.15, 0.0, 0.0), lid_piv)
 		var mp := Vector3(lerpf(-0.04, 0.0, u), lerpf(-0.24, 0.0, u), 0.0)
 		_pose_part("mag", mp, Vector3.ZERO, Vector3.ZERO, t >= 1.28)
 		_pose_part("ammo_belt", Vector3(-0.06, -0.12, 0.0), Vector3(0.0, 0.0, 0.55), Vector3.ZERO, false)
@@ -4260,6 +4312,7 @@ func _update_reload_m249() -> void:
 		reload_pos_off = cant_p
 		reload_rot_off = cant_r
 		_pose_part("top_cover", Vector3.ZERO, Vector3(-1.15, 0.0, 0.0))
+		_pose_optic_hood(Vector3.ZERO, Vector3(-1.15, 0.0, 0.0), lid_piv)
 		_pose_part("mag", Vector3.ZERO)
 		var bp := Vector3(lerpf(-0.06, 0.0, u), lerpf(-0.08, 0.0, u), 0.0)
 		_pose_part("ammo_belt", bp, Vector3(0.0, 0.0, lerpf(0.48, 0.0, u)), Vector3.ZERO, true)
@@ -4270,7 +4323,9 @@ func _update_reload_m249() -> void:
 		var slam := sin(smoothstep(2.60, 2.74, t) * PI)
 		reload_pos_off = cant_p + Vector3(0.0, -0.022 * slam, 0.0)
 		reload_rot_off = cant_r + Vector3(-0.06 * slam, 0.0, 0.0)
-		_pose_part("top_cover", Vector3.ZERO, Vector3(-1.15 * (1.0 - close_u), 0.0, 0.0))
+		var close_rot := Vector3(-1.15 * (1.0 - close_u), 0.0, 0.0)
+		_pose_part("top_cover", Vector3.ZERO, close_rot)
+		_pose_optic_hood(Vector3.ZERO, close_rot, lid_piv)
 		_pose_part("mag", Vector3.ZERO)
 		_pose_part("ammo_belt", Vector3.ZERO)
 		_pose_part("arm_left", hand_belt_p.lerp(hand_lid_p + Vector3(0.0, 0.015, 0.0), close_u), hand_belt_r.lerp(hand_lid_r, close_u), PIVOT_AR_HAND)
@@ -4281,6 +4336,7 @@ func _update_reload_m249() -> void:
 		reload_pos_off = cant_p.lerp(rack_p, reach)
 		reload_rot_off = cant_r.lerp(rack_r, reach)
 		_pose_part("top_cover", Vector3.ZERO)
+		_pose_optic_hood(Vector3.ZERO)
 		_pose_part("charge", Vector3(0.0, 0.0, 0.072 * pull))
 		_pose_part("arm_left", hand_lid_p.lerp(hand_charge_p, reach) + Vector3(0.0, 0.0, 0.068 * pull), hand_lid_r.lerp(hand_charge_r, reach), PIVOT_AR_HAND)
 	else:
@@ -4288,6 +4344,7 @@ func _update_reload_m249() -> void:
 		reload_pos_off = rack_p.lerp(Vector3.ZERO, u)
 		reload_rot_off = rack_r.lerp(Vector3.ZERO, u)
 		_pose_part("top_cover", Vector3.ZERO)
+		_pose_optic_hood(Vector3.ZERO)
 		_pose_part("charge", Vector3.ZERO)
 		_pose_part("mag", Vector3.ZERO)
 		_pose_part("ammo_belt", Vector3.ZERO)
@@ -4594,7 +4651,9 @@ func _update_reload_pistol() -> void:
 		trauma = minf(1.0, trauma + 0.09)
 
 	var snap_t := 1.0 - smoothstep(1.18, 1.25, t) if reload_was_empty else 0.0
-	_pose_part("slide", Vector3(0.0, 0.0, (0.034 if t < 1.18 else 0.034 * snap_t) if reload_was_empty else 0.0))
+	var p_slide_z := (0.034 if t < 1.18 else 0.034 * snap_t) if reload_was_empty else 0.0
+	_pose_part("slide", Vector3(0.0, 0.0, p_slide_z))
+	_pose_optic_hood(Vector3(0.0, 0.0, p_slide_z))
 	_pose_part("slidestop", Vector3.ZERO, Vector3(-0.22 * (1.0 if t < 1.16 else (1.0 - smoothstep(1.16, 1.22, t))) if reload_was_empty else 0.0, 0.0, 0.0), PIVOT_G17_SLIDESTOP)
 	var bullet_vis := (not reload_was_empty) or t >= 0.76
 
@@ -5600,41 +5659,180 @@ func _detonate_grenade(g: Dictionary) -> void:
 		_spawn_hazard_pool("shock", _project_to_floor(pos), 5.5, 4.8)
 
 
+func _ensure_fire_fx_assets() -> void:
+	if _fire_shader == null and ResourceLoader.exists("res://shaders/realistic_fire.gdshader"):
+		_fire_shader = load("res://shaders/realistic_fire.gdshader") as Shader
+	if _smoke_wisp_tex == null and ResourceLoader.exists("res://assets/textures/gunsmoke_wisp.png"):
+		_smoke_wisp_tex = load("res://assets/textures/gunsmoke_wisp.png") as Texture2D
+	if _char_shader == null:
+		_char_shader = Shader.new()
+		_char_shader.code = """shader_type spatial;
+render_mode blend_mix, depth_draw_never, unshaded, shadows_disabled;
+uniform float fade_alpha = 1.0;
+uniform float seed = 0.0;
+float h21(vec2 p){p=fract(p*vec2(127.1,311.7));p+=dot(p,p+34.5);return fract(p.x*p.y);}
+float vn(vec2 p){vec2 i=floor(p),f=fract(p);vec2 u=f*f*(3.0-2.0*f);return mix(mix(h21(i),h21(i+vec2(1,0)),u.x),mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),u.x),u.y);}
+void fragment(){
+	vec2 p=(UV-0.5)*2.0;
+	float r=length(p);
+	float n=vn(p*3.5+seed)*0.6+vn(p*7.5-seed*1.7)*0.4;
+	float mask=1.0-smoothstep(0.22,0.96,r+(n-0.5)*0.55);
+	float ember=smoothstep(0.52,0.85,mask*n)*0.32;
+	ALBEDO=mix(vec3(0.025,0.02,0.018),vec3(0.95,0.22,0.02),ember);
+	ALPHA=mask*0.80*fade_alpha;
+	if(ALPHA<0.02)discard;
+}"""
+
+
 func _spawn_hazard_pool(kind: String, pos: Vector3, dur: float, radius: float) -> void:
+	_ensure_fire_fx_assets()
 	var root_n := Node3D.new()
-	root_n.position = pos + Vector3(0.0, 0.08, 0.0)
+	root_n.position = pos + Vector3(0.0, 0.02, 0.0)
 	var light: OmniLight3D = null
 	# Skip dynamic hazard OmniLights on WebGL2 so overlapping flame pools never exceed 8-light per-object budget!
 	if not OS.has_feature("web") or kind == "frag_flash":
 		light = OmniLight3D.new()
-		light.position = Vector3(0.0, 0.65, 0.0)
+		light.position = Vector3(0.0, 0.72, 0.0)
 		light.shadow_enabled = false
 		light.light_cull_mask = 0xFFFFD
 		light.light_volumetric_fog_energy = 0.0
-		light.omni_range = radius * 2.0
+		light.omni_range = radius * 2.2
 		if kind == "shock":
 			light.light_color = Color(0.25, 0.82, 1.0)
 			light.light_energy = 5.5
 		elif kind == "frag_flash":
-			light.light_color = Color(1.0, 0.58, 0.18)
+			light.light_color = Color(1.0, 0.56, 0.16)
 			light.light_energy = 12.0
 		else:
-			light.light_color = Color(1.0, 0.42, 0.08)
+			light.light_color = Color(1.0, 0.38, 0.06)
 			light.light_energy = 5.0
 		root_n.add_child(light)
-	if kind == "fire" or kind == "shock":
+
+	var fire_mats: Array[ShaderMaterial] = []
+	var fire_nodes: Array[MeshInstance3D] = []
+	var fire_base_hs: Array[float] = []
+	var smoke_entries: Array[Dictionary] = []
+	var char_mat: ShaderMaterial = null
+
+	if kind == "fire":
+		# Organic feathered-edge scorched soot & glowing ember char stain on the floor (ZERO circular cylinder primitives!)
+		if _char_shader != null:
+			var char_mi := MeshInstance3D.new()
+			var pm := PlaneMesh.new()
+			pm.size = Vector2(radius * 1.65, radius * 1.65)
+			char_mat = ShaderMaterial.new()
+			char_mat.shader = _char_shader
+			char_mat.set_shader_parameter("fade_alpha", 1.0)
+			char_mat.set_shader_parameter("seed", randf_range(0.0, 50.0))
+			pm.material = char_mat
+			char_mi.mesh = pm
+			char_mi.position.y = 0.012
+			char_mi.layers = 1
+			char_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			root_n.add_child(char_mi)
+
+		# Cohesive overlapping multi-tiered photoreal turbulent gasoline flame plumes
+		if _fire_shader != null:
+			var r_sc := clampf(radius / 3.0, 0.58, 1.32)
+			var plume_cnt := 6 if OS.has_feature("web") else 11
+			for fi in range(plume_cnt):
+				var sm := ShaderMaterial.new()
+				sm.shader = _fire_shader
+				sm.set_shader_parameter("flame_speed", randf_range(2.3, 3.6))
+				sm.set_shader_parameter("phase_seed", randf_range(0.0, 40.0))
+				sm.set_shader_parameter("intensity", randf_range(0.90, 1.10))
+				sm.set_shader_parameter("smoke_mix", randf_range(0.54, 0.80))
+				sm.set_shader_parameter("fade_alpha", 1.0)
+				sm.set_shader_parameter("billboard_y", 1.0)
+				sm.set_shader_parameter("jet_mode", 0.0)
+				var is_core := fi < 4
+				var pw := (randf_range(0.95, 1.32) if is_core else randf_range(0.68, 1.05)) * r_sc
+				var ph := (randf_range(1.08, 1.52) if is_core else randf_range(0.65, 1.15)) * r_sc
+				var qm := QuadMesh.new()
+				qm.size = Vector2(pw, ph)
+				qm.material = sm
+				var fmi := MeshInstance3D.new()
+				fmi.mesh = qm
+				var ang := float(fi) * 2.39996 + randf_range(-0.30, 0.30)
+				var dist := (randf_range(0.0, 0.18) if is_core else randf_range(0.20, 0.50)) * radius
+				fmi.position = Vector3(cos(ang) * dist, ph * 0.44, sin(ang) * dist)
+				fmi.layers = 1
+				fmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				root_n.add_child(fmi)
+				fire_mats.append(sm)
+				fire_nodes.append(fmi)
+				fire_base_hs.append(ph)
+
+		# Rising dark oily soot smoke wisps curling above the gasoline fire
+		if _smoke_wisp_tex != null:
+			var smoke_cnt := 2 if OS.has_feature("web") else 4
+			for si in range(smoke_cnt):
+				var smat := StandardMaterial3D.new()
+				smat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+				smat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+				smat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+				smat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+				smat.albedo_texture = _smoke_wisp_tex
+				smat.albedo_color = Color(0.05, 0.045, 0.042, 0.40)
+				var sqm := QuadMesh.new()
+				var sz := randf_range(0.95, 1.55) * clampf(radius / 3.0, 0.65, 1.25)
+				sqm.size = Vector2(sz, sz)
+				sqm.material = smat
+				var smi := MeshInstance3D.new()
+				smi.mesh = sqm
+				var base_xz := Vector2(randf_range(-0.35, 0.35), randf_range(-0.35, 0.35)) * radius
+				smi.position = Vector3(base_xz.x, 0.90 + float(si) * 0.36, base_xz.y)
+				smi.layers = 1
+				smi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				root_n.add_child(smi)
+				smoke_entries.append({
+					"node": smi,
+					"mat": smat,
+					"base_x": base_xz.x,
+					"base_z": base_xz.y,
+					"phase": float(si) / float(smoke_cnt),
+					"speed": randf_range(0.45, 0.72),
+				})
+	elif kind == "frag_flash":
+		# Turbulent expanding blast fireball + dark concussion soot puff for Frag & RPG-7 detonations!
+		if _fire_shader != null:
+			var blast_cnt := 2 if OS.has_feature("web") else 4
+			for bi in range(blast_cnt):
+				var sm := ShaderMaterial.new()
+				sm.shader = _fire_shader
+				sm.set_shader_parameter("flame_speed", 4.5)
+				sm.set_shader_parameter("phase_seed", randf_range(0.0, 30.0))
+				sm.set_shader_parameter("intensity", 1.55)
+				sm.set_shader_parameter("smoke_mix", 0.64)
+				sm.set_shader_parameter("fade_alpha", 1.0)
+				sm.set_shader_parameter("billboard_y", 1.0)
+				sm.set_shader_parameter("jet_mode", 1.0)
+				var qm := QuadMesh.new()
+				qm.size = Vector2(1.0, 1.0)
+				qm.material = sm
+				var bmi := MeshInstance3D.new()
+				bmi.mesh = qm
+				bmi.position = Vector3(randf_range(-0.35, 0.35), 0.55 + float(bi) * 0.22, randf_range(-0.35, 0.35))
+				bmi.scale = Vector3.ONE * (0.45 * clampf(radius / 3.0, 0.7, 1.5))
+				bmi.layers = 1
+				bmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				root_n.add_child(bmi)
+				fire_mats.append(sm)
+				fire_nodes.append(bmi)
+	elif kind == "shock":
 		var disc := MeshInstance3D.new()
 		var cm := CylinderMesh.new()
-		cm.top_radius = radius * 0.78; cm.bottom_radius = radius * 0.85; cm.height = 0.04; cm.radial_segments = 20
+		cm.top_radius = radius * 0.78; cm.bottom_radius = radius * 0.85; cm.height = 0.025; cm.radial_segments = 20
 		var mat := StandardMaterial3D.new()
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		mat.albedo_color = Color(1.0, 0.36, 0.06, 0.42) if kind == "fire" else Color(0.20, 0.78, 1.0, 0.34)
+		mat.albedo_color = Color(0.20, 0.78, 1.0, 0.28)
 		cm.material = mat
 		disc.mesh = cm
 		disc.layers = 1
 		disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		root_n.add_child(disc)
+
 	_fx_parent().add_child(root_n)
 	_hazards.append({
 		"node": root_n,
@@ -5645,6 +5843,11 @@ func _spawn_hazard_pool(kind: String, pos: Vector3, dur: float, radius: float) -
 		"age": 0.0,
 		"dur": dur,
 		"tick": 0.0,
+		"fire_mats": fire_mats,
+		"fire_nodes": fire_nodes,
+		"fire_base_hs": fire_base_hs,
+		"smoke": smoke_entries,
+		"char_mat": char_mat,
 	})
 
 
@@ -5663,12 +5866,62 @@ func _update_hazards(delta: float) -> void:
 			_hazards.remove_at(i)
 			i -= 1
 			continue
-		var fade := clampf(1.0 - maxf(0.0, (float(h["age"]) - dur * 0.7) / maxf(dur * 0.3, 0.05)), 0.0, 1.0)
+		var age_f: float = float(h["age"])
+		var fade := clampf(1.0 - maxf(0.0, (age_f - dur * 0.7) / maxf(dur * 0.3, 0.05)), 0.0, 1.0)
 		var light: OmniLight3D = h["light"]
 		var kind := str(h["kind"])
 		if is_instance_valid(light):
-			var flicker := 0.8 + 0.35 * sin(float(h["age"]) * (38.0 if kind == "shock" else 22.0))
-			light.light_energy = (12.0 if kind == "frag_flash" else 5.2) * fade * flicker
+			var flicker := 0.82 + 0.30 * sin(age_f * (38.0 if kind == "shock" else 21.0)) + 0.14 * sin(age_f * 37.0)
+			light.light_energy = (12.0 if kind == "frag_flash" else 4.8) * fade * flicker
+		var fmats: Array = h.get("fire_mats", [])
+		var fnodes: Array = h.get("fire_nodes", [])
+		var fbhs: Array = h.get("fire_base_hs", [])
+		if kind == "fire":
+			var rise_in := clampf(age_f / 0.18, 0.15, 1.0)
+			var h_sc := rise_in * lerpf(0.32, 1.0, fade)
+			for fi in range(fmats.size()):
+				var sm := fmats[fi] as ShaderMaterial
+				if sm:
+					sm.set_shader_parameter("fade_alpha", fade)
+					sm.set_shader_parameter("intensity", lerpf(0.60, 1.04, fade))
+			for fi in range(fnodes.size()):
+				var fn := fnodes[fi] as MeshInstance3D
+				if is_instance_valid(fn):
+					fn.scale = Vector3(lerpf(0.68, 1.0, fade), h_sc, 1.0)
+					if fi < fbhs.size():
+						fn.position.y = float(fbhs[fi]) * 0.44 * h_sc
+			var cmat := h.get("char_mat") as ShaderMaterial
+			if cmat:
+				cmat.set_shader_parameter("fade_alpha", fade)
+			var sm_arr: Array = h.get("smoke", [])
+			for se: Dictionary in sm_arr:
+				var snode := se.get("node") as MeshInstance3D
+				var smat := se.get("mat") as StandardMaterial3D
+				if is_instance_valid(snode) and smat:
+					var cyc := fmod(float(se["phase"]) + age_f * float(se["speed"]), 1.0)
+					snode.position = Vector3(
+						float(se["base_x"]) + sin(age_f * 1.4 + float(se["phase"]) * TAU) * 0.24 * cyc,
+						0.78 + cyc * 1.85,
+						float(se["base_z"]) + cos(age_f * 1.1 + float(se["phase"]) * TAU) * 0.22 * cyc
+					)
+					var sc_s := lerpf(0.65, 1.75, cyc)
+					snode.scale = Vector3(sc_s, sc_s, 1.0)
+					smat.albedo_color.a = sin(cyc * PI) * 0.38 * fade
+		elif kind == "frag_flash":
+			var u := clampf(age_f / maxf(dur, 0.05), 0.0, 1.0)
+			var blast_r := clampf(float(h["radius"]) / 3.0, 0.75, 1.55)
+			for fi in range(fmats.size()):
+				var sm := fmats[fi] as ShaderMaterial
+				if sm:
+					sm.set_shader_parameter("fade_alpha", clampf(1.0 - pow(u, 1.4), 0.0, 1.0))
+					sm.set_shader_parameter("intensity", lerpf(1.75, 0.35, u))
+					sm.set_shader_parameter("smoke_mix", lerpf(0.28, 0.94, u))
+			for fi in range(fnodes.size()):
+				var fn := fnodes[fi] as MeshInstance3D
+				if is_instance_valid(fn):
+					var ex := lerpf(0.45, 2.35, sqrt(u)) * blast_r
+					fn.scale = Vector3(ex, ex, 1.0)
+					fn.position.y += delta * 1.6
 		if kind == "fire" or kind == "shock":
 			h["tick"] = float(h["tick"]) + delta
 			if float(h["tick"]) >= 0.30:
@@ -5689,7 +5942,119 @@ func _update_hazards(delta: float) -> void:
 		i -= 1
 
 
+func _spawn_flame_jet_stream(w: Dictionary) -> void:
+	_ensure_fire_fx_assets()
+	if _fire_shader == null:
+		return
+	var max_jets := 20 if OS.has_feature("web") else 42
+	var burst_cnt := 2 if OS.has_feature("web") else 4
+	var start_w := weapon_pivot.to_global(w["muzzle"] as Vector3)
+	var fwd := -camera.global_transform.basis.z
+	var right := camera.global_transform.basis.x
+	var up := camera.global_transform.basis.y
+	# Guard against wall-clipping when standing right next to a wall
+	var space := get_world_3d().direct_space_state
+	if space:
+		var cq := PhysicsRayQueryParameters3D.create(camera.global_position, start_w, 1)
+		cq.exclude = [get_rid()]
+		var ch := space.intersect_ray(cq)
+		if not ch.is_empty():
+			start_w = (ch["position"] as Vector3) + (ch["normal"] as Vector3) * 0.14
+	for ji in range(burst_cnt):
+		if _flame_jets.size() >= max_jets:
+			var old: Dictionary = _flame_jets.pop_front()
+			if is_instance_valid(old.get("node")):
+				(old["node"] as Node).queue_free()
+		var sm := ShaderMaterial.new()
+		sm.shader = _fire_shader
+		sm.set_shader_parameter("flame_speed", randf_range(3.6, 5.2))
+		sm.set_shader_parameter("phase_seed", randf_range(0.0, 50.0))
+		sm.set_shader_parameter("intensity", 1.48)
+		sm.set_shader_parameter("smoke_mix", 0.22)
+		sm.set_shader_parameter("fade_alpha", 1.0)
+		sm.set_shader_parameter("billboard_y", 1.0)
+		sm.set_shader_parameter("jet_mode", 1.0)
+		var qm := QuadMesh.new()
+		qm.size = Vector2(1.0, 1.0)
+		qm.material = sm
+		var mi := MeshInstance3D.new()
+		mi.mesh = qm
+		mi.layers = 1
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var stagger := float(ji) * 0.34
+		var spread_dir := (fwd + right * randf_range(-0.055, 0.055) + up * randf_range(-0.045, 0.045)).normalized()
+		var spawn_pt := start_w + spread_dir * stagger
+		var hit_wall := false
+		if space and stagger > 0.01:
+			var sq := PhysicsRayQueryParameters3D.create(start_w, spawn_pt, 1)
+			sq.exclude = [get_rid()]
+			var sh := space.intersect_ray(sq)
+			if not sh.is_empty():
+				spawn_pt = (sh["position"] as Vector3) + (sh["normal"] as Vector3) * 0.14
+				hit_wall = true
+		_fx_parent().add_child(mi)
+		mi.global_position = spawn_pt
+		mi.scale = Vector3.ONE * lerpf(0.22, 0.36, float(ji) / maxf(float(burst_cnt - 1), 1.0))
+		_flame_jets.append({
+			"node": mi,
+			"mat": sm,
+			"vel": Vector3(0.0, 1.45, 0.0) if hit_wall else (spread_dir * randf_range(11.5, 14.5) + velocity * 0.35),
+			"age": 0.0,
+			"dur": randf_range(0.50, 0.66),
+			"stopped": hit_wall,
+		})
+
+
+func _update_flame_jets(delta: float) -> void:
+	if _flame_jets.is_empty():
+		return
+	var space := get_world_3d().direct_space_state
+	var i := _flame_jets.size() - 1
+	while i >= 0:
+		var fj: Dictionary = _flame_jets[i]
+		var node := fj["node"] as MeshInstance3D
+		fj["age"] = float(fj["age"]) + delta
+		var dur: float = float(fj["dur"])
+		if not is_instance_valid(node) or float(fj["age"]) >= dur:
+			if is_instance_valid(node):
+				node.queue_free()
+			_flame_jets.remove_at(i)
+			i -= 1
+			continue
+		var u := clampf(float(fj["age"]) / maxf(dur, 0.05), 0.0, 1.0)
+		var vel: Vector3 = fj["vel"]
+		if not bool(fj["stopped"]):
+			vel *= exp(-delta * 2.45)
+			vel.y += 1.65 * delta
+			var p0 := node.global_position
+			var p1 := p0 + vel * delta
+			if space and p0.distance_squared_to(p1) > 0.0001:
+				var q := PhysicsRayQueryParameters3D.create(p0, p1, 1)
+				q.exclude = [get_rid()]
+				var h := space.intersect_ray(q)
+				if not h.is_empty():
+					node.global_position = (h["position"] as Vector3) + (h["normal"] as Vector3) * 0.14
+					vel = Vector3(0.0, 1.45, 0.0)
+					fj["stopped"] = true
+				else:
+					node.global_position = p1
+			else:
+				node.global_position = p1
+		else:
+			node.global_position += vel * delta
+		fj["vel"] = vel
+		var sc := lerpf(0.22, 1.28, pow(u, 0.60))
+		node.scale = Vector3(sc, sc, 1.0)
+		var sm := fj["mat"] as ShaderMaterial
+		if sm:
+			sm.set_shader_parameter("intensity", lerpf(1.48, 0.35, pow(u, 0.85)))
+			sm.set_shader_parameter("smoke_mix", lerpf(0.22, 0.90, smoothstep(0.25, 0.92, u)))
+			sm.set_shader_parameter("fade_alpha", clampf(1.0 - smoothstep(0.58, 1.0, u), 0.0, 1.0))
+		i -= 1
+
+
 func _fire_flamethrower(w: Dictionary) -> void:
+	_spawn_flame_jet_stream(w)
 	var origin := camera.global_position
 	var fwd := -camera.global_transform.basis.z
 	var right := camera.global_transform.basis.x
@@ -5935,7 +6300,7 @@ func fire_weapon(is_burst_shot: bool = false) -> bool:
 			muzzle_light.position = w["muzzle"]
 		muzzle_vm_light.position = muzzle_light.position
 
-	if f_scale_base > 0.05:
+	if f_scale_base > 0.05 and current_weapon != 16:
 		muzzle_flash_timer = 0.036
 		muzzle_flash_rig.visible = true
 		muzzle_flash_rig.rotation.z = randf() * TAU
@@ -6191,6 +6556,10 @@ func heal_full(reset_unlocks: bool = false) -> void:
 		if is_instance_valid(r.get("node")):
 			(r["node"] as Node).queue_free()
 	_rockets.clear()
+	for fj: Dictionary in _flame_jets:
+		if is_instance_valid(fj.get("node")):
+			(fj["node"] as Node).queue_free()
+	_flame_jets.clear()
 	_burst_remaining = 0
 	_burst_timer = 0.0
 	_flame_pool_cd = 0.0
