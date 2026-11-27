@@ -125,7 +125,8 @@ func _ready() -> void:
 	if amb:
 		if amb is AudioStreamWAV:
 			amb.loop_mode = AudioStreamWAV.LOOP_FORWARD
-			amb.loop_end = int(44100 * 4.0)
+			var full_len := int(round(amb.get_length() * float(amb.mix_rate)))
+			amb.loop_end = full_len if full_len > 44100 else int(44100 * 4.0)
 		ambient_audio.stream = amb
 		ambient_audio.volume_db = -14.0
 		add_child(ambient_audio)
@@ -440,6 +441,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			hud.settings_panel.visible = true
 			if player:
 				player.input_enabled = false
+				if player.has_method("cancel_bow_draw"):
+					player.cancel_bow_draw(true)
 			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 			return
 	elif event is InputEventMouseButton and event.pressed and game_active and not player.dead:
@@ -512,13 +515,31 @@ func _pick_fair_spawn_point() -> Dictionary:
 
 	if cands.is_empty():
 		return {"ok": false}
-	cands.sort_custom(func(a, b): return a["score"] > b["score"])
-	var pick_pool := mini(3, cands.size())
-	var chosen: Dictionary = cands[randi() % pick_pool]
+	# Strictly prefer occluded/out-of-FOV spawns so zombies never pop in on screen!
+	var hidden_cands: Array[Dictionary] = []
+	for c: Dictionary in cands:
+		if not bool(c["visible"]):
+			hidden_cands.append(c)
+	var use_cands: Array[Dictionary] = hidden_cands if not hidden_cands.is_empty() else cands
+	use_cands.sort_custom(func(a, b): return a["score"] > b["score"])
+	var pick_pool := mini(3, use_cands.size())
+	var chosen: Dictionary = use_cands[randi() % pick_pool]
 	_recent_spawns.append(int(chosen["idx"]))
 	if _recent_spawns.size() > 3:
 		_recent_spawns.pop_front()
-	return {"ok": true, "pos": chosen["pos"]}
+	var sp_pos: Vector3 = chosen["pos"]
+	var face_yaw := atan2(ppos.x - sp_pos.x, ppos.z - sp_pos.z)
+	return {"ok": true, "pos": sp_pos, "yaw": face_yaw}
+
+
+func relocate_stuck_zombie(z: ZombieAI) -> void:
+	if z == null or not is_instance_valid(z) or z.dead or player == null:
+		return
+	var pick := _pick_fair_spawn_point()
+	if pick.get("ok", false):
+		z.global_position = pick["pos"]
+		z.rotation.y = float(pick.get("yaw", 0.0))
+		z.velocity = Vector3.ZERO
 
 
 func spawn_zombie_at(pos: Vector3, variant: ZombieAI.Variant, yaw_rad := 0.0, with_cue := false) -> ZombieAI:
@@ -555,6 +576,9 @@ func add_points(delta_pts: int) -> void:
 func on_generator_activated() -> void:
 	power_restored = true
 	world.set_asylum_power(true)
+	for inter: InteractableObject in world.interactables:
+		if is_instance_valid(inter) and inter.kind == InteractableObject.Kind.UPGRADE_BENCH:
+			inter.activated = true
 	add_points(200)
 
 
@@ -592,7 +616,8 @@ func _process(delta: float) -> void:
 		return
 	if world and player and player.camera:
 		world.update_zone_culling(player.camera)
-	hud.update_hud(delta, player, wave, points, get_living_zombies() + zombies_to_spawn)
+	var living_z := get_living_zombies()
+	hud.update_hud(delta, player, wave, points, living_z + zombies_to_spawn, living_z)
 	if hud.perf_label and hud.perf_label.visible and render_vp:
 		_perf_accum += delta
 		if _perf_accum >= 0.25:
@@ -608,27 +633,31 @@ func _process(delta: float) -> void:
 	if deterministic_mode:
 		return
 
-	# Outdoor-gated distant lightning (ZERO bleed through solid tunnel or lobby roof!)
-	if lightning_flash > 0.0:
-		lightning_flash = maxf(0.0, lightning_flash - delta * 4.5)
-	else:
-		thunder_timer -= delta
-		if thunder_timer <= 0.0:
-			thunder_timer = randf_range(16.0, 32.0)
-			lightning_flash = 1.0
-	var outdoor_weight := smoothstep(-25.0, -30.5, player.global_position.z)
-	var moon_vis := outdoor_weight > 0.001
-	if world.moon_light.visible != moon_vis:
-		world.moon_light.visible = moon_vis
-	var want_moon_e := MOON_BASE * outdoor_weight
-	if moon_vis and absf(world.moon_light.light_energy - want_moon_e) > 0.001:
-		world.moon_light.light_energy = want_moon_e
-	if world.lightning_light:
-		var l_vis := moon_vis and lightning_flash > 0.01
-		if world.lightning_light.visible != l_vis:
-			world.lightning_light.visible = l_vis
-		if l_vis:
-			world.lightning_light.light_energy = lightning_flash * 2.8 * outdoor_weight
+	# Outdoor-gated moon & distant lightning (STRICTLY skipped during live daylight_mode so sun_energy=2.45 is never overwritten!)
+	if not world.daylight_mode:
+		if lightning_flash > 0.0:
+			lightning_flash = maxf(0.0, lightning_flash - delta * 4.5)
+		else:
+			thunder_timer -= delta
+			if thunder_timer <= 0.0:
+				thunder_timer = randf_range(16.0, 32.0)
+				lightning_flash = 1.0
+		var outdoor_weight := smoothstep(-25.0, -30.5, player.global_position.z)
+		var moon_vis := outdoor_weight > 0.001
+		if world.moon_light.visible != moon_vis:
+			world.moon_light.visible = moon_vis
+		var want_moon_e := MOON_BASE * outdoor_weight
+		if moon_vis and absf(world.moon_light.light_energy - want_moon_e) > 0.001:
+			world.moon_light.light_energy = want_moon_e
+		if world.lightning_light:
+			var l_vis := moon_vis and lightning_flash > 0.01
+			if world.lightning_light.visible != l_vis:
+				world.lightning_light.visible = l_vis
+			if l_vis:
+				world.lightning_light.light_energy = lightning_flash * 2.8 * outdoor_weight
+	elif world.lightning_light and world.lightning_light.visible:
+		world.lightning_light.visible = false
+		world.lightning_light.light_energy = 0.0
 
 	if not game_active or player.dead:
 		return
@@ -647,7 +676,7 @@ func _process(delta: float) -> void:
 				elif wave >= 3:
 					var r := randf()
 					v = ZombieAI.Variant.TACTICAL_SOLDIER if r < 0.38 else (ZombieAI.Variant.RUNNER if r < 0.68 else ZombieAI.Variant.ASYLUM_PATIENT)
-				spawn_zombie_at(pick["pos"], v, 0.0, true)
+				spawn_zombie_at(pick["pos"], v, float(pick.get("yaw", 0.0)), true)
 			else:
 				spawn_timer = 0.45
 	elif get_living_zombies() == 0:
@@ -712,7 +741,8 @@ func _run_web_async_boot() -> void:
 	if amb:
 		if amb is AudioStreamWAV:
 			amb.loop_mode = AudioStreamWAV.LOOP_FORWARD
-			amb.loop_end = int(44100 * 4.0)
+			var full_len := int(round(amb.get_length() * float(amb.mix_rate)))
+			amb.loop_end = full_len if full_len > 44100 else int(44100 * 4.0)
 		ambient_audio.stream = amb
 		ambient_audio.volume_db = -14.0
 		add_child(ambient_audio)
@@ -793,10 +823,11 @@ func _run_web_shader_warmup() -> void:
 	_render_step.call("WINTER COURTYARD")
 	await tree.process_frame
 
-	# Step 10: Cabin exterior
-	player.global_position = Vector3(0.0, 0.05, -54.0)
+	# Step 10: Cabin + Frozen Sawmill + Evidence Chest & Upgrade Bench shader warmup!
+	player.global_position = Vector3(8.0, 0.5, -72.0)
+	player.yaw = 0.0
 	world.update_zone_culling(player.camera)
-	_render_step.call("CABIN")
+	_render_step.call("CABIN & SAWMILL")
 	await tree.process_frame
 
 	# Restore clean initial lobby state

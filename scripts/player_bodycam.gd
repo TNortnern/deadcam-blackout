@@ -120,10 +120,10 @@ const WEAPONS := [
 		"recoil_kick": 0.020,
 		"flash_scale": 0.0,
 		"ads_fov": 72.0,
-		"hip_pos": Vector3(0.32, -0.145, -0.52),
-		"hip_rot": Vector3(0.02, 0.06, 0.52),
-		"ads_pos": Vector3(0.062, -0.056, -0.45),
-		"ads_rot": Vector3(0.0, 0.02, 0.22),
+		"hip_pos": Vector3(0.30, -0.140, -0.50),
+		"hip_rot": Vector3(0.02, 0.05, 0.48),
+		"ads_pos": Vector3(0.044, -0.068, -0.44),
+		"ads_rot": Vector3(0.0, 0.0, 0.20),
 		"muzzle": Vector3(0.0, 0.03, -0.45),
 		"ejection": Vector3.ZERO,
 		"has_holo": false,
@@ -315,14 +315,19 @@ var muzzle_smoke: GPUParticles3D
 var interact_ray: RayCast3D
 
 var sfx_gun: AudioStreamPlayer
+var _sfx_gun_pool: Array[AudioStreamPlayer] = []
+var _sfx_gun_pool_idx: int = 0
 var sfx_misc: AudioStreamPlayer
 var sfx_reload: AudioStreamPlayer
+var _sfx_reload_pool: Array[AudioStreamPlayer] = []
+var _sfx_reload_pool_idx: int = 0
 var sfx_step: AudioStreamPlayer
 var sfx_hit: AudioStreamPlayer
 var sfx_hit_tick: AudioStreamPlayer
 var sfx_casing: AudioStreamPlayer
 var sfx_hurt: AudioStreamPlayer
 var sfx_slash: AudioStreamPlayer
+var sfx_bow_draw: AudioStreamPlayer
 
 var health: float = 100.0
 var max_health: float = 100.0
@@ -333,8 +338,9 @@ var is_crouching: bool = false
 var is_sprinting: bool = false
 var is_reloading: bool = false
 
-# Multi-stage reload sequencer state
+# Multi-stage reload sequencer state (authoritative physics clock + timestamp-crossing events!)
 var reload_elapsed: float = 0.0
+var _reload_prev_t: float = 0.0
 var reload_dur: float = 1.85
 var reload_was_empty: bool = false
 var reload_flags: int = 0
@@ -342,6 +348,12 @@ var reload_shell_timer: float = 0.0
 var reload_shell_phase: int = 0 # 0=enter, 1=loop, 2=exit
 var reload_cancel_req: bool = false
 var _shotgun_fire_on_cancel: bool = false
+var _shotgun_exit_arm_p: Vector3 = Vector3.ZERO
+var _shotgun_exit_arm_r: Vector3 = Vector3.ZERO
+var _magnum_spent_count: int = 0
+var _sniper_pending_eject: bool = false
+var _fire_buffer_timer: float = 0.0
+var _base_head_roll: float = 0.0
 var _last_near_focus: float = -1.0
 var reload_pos_off: Vector3 = Vector3.ZERO
 var reload_rot_off: Vector3 = Vector3.ZERO
@@ -367,6 +379,8 @@ var _land_dip: float = 0.0
 var current_weapon: int = 0
 # Player starts with G17 (0) + Quick Melee Knife (3); all 9 other ranged weapons unlock via Mystery Box!
 var unlocked_weapons: Array[bool] = [true, false, false, true, false, false, false, false, false, false, false]
+var upgraded_weapons: Array[bool] = [false, false, false, false, false, false, false, false, false, false, false]
+var weapon_chambered: Array[bool] = [true, true, true, true, true, true, true, true, true, true, true]
 var ammo_in_mag: Array[int] = [15, 30, 8, 1, 1, 30, 6, 5, 30, 7, 100]
 var ammo_reserve: Array[int] = [90, 180, 48, 0, 24, 180, 42, 35, 180, 42, 300]
 var equipped_melee_id: String = "knife"
@@ -381,9 +395,12 @@ var _bow_draw: float = 0.0
 var _bow_hold_time: float = 0.0
 var _bow_nock_timer: float = 0.0
 var _bow_release_timer: float = 0.0
+var _bow_release_from_draw: float = 0.0
+var _bow_require_repull: bool = false
 var _bow_parts: Dictionary = {}
 var _bow_charge_mats: Array[StandardMaterial3D] = []
 var _arrows: Array[Dictionary] = []
+var _benelli_shell_rig: Node3D = null
 var _revolver_cyl_angle: float = 0.0
 var _revolver_hammer: float = 0.0
 var _hunting_bolt_timer: float = 0.0
@@ -590,7 +607,7 @@ func _build_rig() -> void:
 	head.add_child(camera)
 
 	interact_ray = RayCast3D.new()
-	interact_ray.target_position = Vector3(0, 0, -2.8)
+	interact_ray.target_position = Vector3(0, 0, -3.2)
 	interact_ray.collision_mask = 1 | 16
 	camera.add_child(interact_ray)
 
@@ -740,6 +757,12 @@ func _build_rig() -> void:
 	sfx_gun.volume_db = -1.0
 	sfx_gun.max_polyphony = 6
 	add_child(sfx_gun)
+	_sfx_gun_pool.clear()
+	for _gi in range(6):
+		var gp := AudioStreamPlayer.new()
+		gp.volume_db = -1.0
+		add_child(gp)
+		_sfx_gun_pool.append(gp)
 
 	sfx_misc = AudioStreamPlayer.new()
 	sfx_misc.volume_db = -5.0
@@ -748,6 +771,16 @@ func _build_rig() -> void:
 	sfx_reload = AudioStreamPlayer.new()
 	sfx_reload.volume_db = -3.0
 	add_child(sfx_reload)
+	_sfx_reload_pool.clear()
+	for _ri in range(4):
+		var rp := AudioStreamPlayer.new()
+		rp.volume_db = -3.0
+		add_child(rp)
+		_sfx_reload_pool.append(rp)
+
+	sfx_bow_draw = AudioStreamPlayer.new()
+	sfx_bow_draw.volume_db = -3.5
+	add_child(sfx_bow_draw)
 
 	sfx_step = AudioStreamPlayer.new()
 	sfx_step.stream = load("res://assets/audio/footstep.wav")
@@ -1260,8 +1293,20 @@ func _collect_weapon_parts(n: Node, target_parts: Dictionary = _w_parts) -> void
 			grp = "str_top"
 		elif nl == "stringbot":
 			grp = "str_bot"
+		elif nl == "busscable_0":
+			grp = "buss_0"
+		elif nl == "busscable_1":
+			grp = "buss_1"
 		elif nl == "arrow":
 			grp = "bow_arrow"
+		elif nl == "speedloader":
+			grp = "speed_loader"
+		elif nl == "feedround":
+			grp = "feed_round"
+		elif nl == "lifter":
+			grp = "lifter"
+		elif nl == "quiver":
+			grp = "quiver"
 		elif nl.begins_with("chargebar_"):
 			grp = "charge_bars"
 		if grp != "":
@@ -1530,7 +1575,7 @@ func _clone_tactical_arms(src_idx: int, holder: Node3D, parts: Dictionary,
 func _setup_bow_rig_refs(parts: Dictionary) -> void:
 	_bow_parts.clear()
 	_bow_charge_mats.clear()
-	for k in ["limb_top", "limb_bot", "cam_top", "cam_bot", "str_top", "str_bot"]:
+	for k in ["limb_top", "limb_bot", "cam_top", "cam_bot", "str_top", "str_bot", "buss_0", "buss_1", "quiver"]:
 		if parts.has(k) and not (parts[k] as Array).is_empty():
 			_bow_parts[k] = parts[k][0]
 	if parts.has("bow_arrow") and not (parts["bow_arrow"] as Array).is_empty():
@@ -1831,6 +1876,9 @@ func _build_single_weapon_rig(i: int) -> void:
 	if i == 2:
 		_shotgun_shell_rig = _build_shotgun_shell_rig()
 		holder.add_child(_shotgun_shell_rig)
+	elif i == 9:
+		_benelli_shell_rig = _build_shotgun_shell_rig()
+		holder.add_child(_benelli_shell_rig)
 	_weapon_rigs.append(holder)
 	_w_parts_by_idx.append(parts)
 	var s_a: AudioStream = load(w["audio"]) if ResourceLoader.exists(w["audio"]) else null
@@ -1888,28 +1936,40 @@ func _move_part_group(grp: String, delta_pos: Vector3, delta_rot := Vector3.ZERO
 
 func _apply_idle_bolt_and_cover() -> void:
 	if current_weapon == 0:
-		var empty_g17 := ammo_in_mag[0] <= 0
+		var empty_g17 := ammo_in_mag[0] <= 0 or not weapon_chambered[0]
 		var locked_back := 1.0 if empty_g17 else 0.0
 		var slide_z := maxf(bolt_blowback, locked_back) * 0.034
 		_pose_part("slide", Vector3(0.0, 0.0, slide_z))
 		_pose_part("slidestop", Vector3.ZERO, Vector3(-0.22 * locked_back, 0.0, 0.0), PIVOT_G17_SLIDESTOP)
 		_pose_part("trigger", Vector3.ZERO, Vector3(-0.22 * clampf(bolt_blowback, 0.0, 1.0), 0.0, 0.0), PIVOT_G17_TRIGGER)
-		_pose_part("mag_bullet", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, not empty_g17)
+		_pose_part("mag_bullet", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, ammo_in_mag[0] > 0)
 	elif current_weapon == 1:
-		_pose_part("slide", Vector3(0.0, 0.0, bolt_blowback * 0.052))
-		_pose_part("dust_cover", Vector3.ZERO, Vector3.ZERO if _m16_dust_open else Vector3(0.0, 0.0, 1.48), PIVOT_AR_DUST)
+		var locked_ar := 1.0 if (ammo_in_mag[1] <= 0 or not weapon_chambered[1]) else 0.0
+		_pose_part("slide", Vector3(0.0, 0.0, maxf(bolt_blowback, locked_ar) * 0.052))
+		_pose_part("dust_cover", Vector3.ZERO, Vector3.ZERO if (_m16_dust_open or locked_ar > 0.5) else Vector3(0.0, 0.0, 1.48), PIVOT_AR_DUST)
+	elif current_weapon == 5:
+		var locked_mp5 := 1.0 if (ammo_in_mag[5] <= 0 or not weapon_chambered[5]) else 0.0
+		_pose_part("charge", Vector3(0.0, 0.0, maxf(bolt_blowback * 0.025, locked_mp5 * 0.068)), Vector3(0.0, 0.0, locked_mp5 * 0.52))
+	elif current_weapon == 6:
+		_pose_part("speed_loader", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, false)
+	elif current_weapon == 7:
+		_pose_part("feed_round", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, false)
 
 
 func _reset_weapon_parts() -> void:
 	if is_instance_valid(_shotgun_shell_rig):
 		_shotgun_shell_rig.visible = false
+	if is_instance_valid(_benelli_shell_rig):
+		_benelli_shell_rig.visible = false
 	for grp in _w_parts.keys():
+		var gs := str(grp)
+		var hide_rest: bool = (gs == "speed_loader" or gs == "feed_round")
 		for p: Node3D in _w_parts[grp]:
 			if is_instance_valid(p):
 				var iid := p.get_instance_id()
 				p.position = _w_rest_pos.get(iid, Vector3.ZERO)
 				p.rotation = _w_rest_rot.get(iid, Vector3.ZERO)
-				p.visible = true
+				p.visible = not hide_rest
 	_apply_idle_bolt_and_cover()
 
 
@@ -1918,10 +1978,16 @@ func _equip_weapon(idx: int, force_preview: bool = false) -> void:
 		return
 	if not force_preview and not unlocked_weapons[idx]:
 		return
+	# Pressing the already-equipped weapon's key never cancels an active reload!
+	if not force_preview and idx == current_weapon and not _weapon_rigs.is_empty() and is_instance_valid(_weapon_rigs[idx]) and _weapon_rigs[idx].visible:
+		return
+	if current_weapon == 4:
+		cancel_bow_draw(false)
 	current_weapon = idx
 	is_reloading = false
 	reload_cancel_req = false
 	_shotgun_fire_on_cancel = false
+	_fire_buffer_timer = 0.0
 	reload_pos_off = Vector3.ZERO
 	reload_rot_off = Vector3.ZERO
 	shotgun_pump_timer = 0.0
@@ -1930,6 +1996,7 @@ func _equip_weapon(idx: int, force_preview: bool = false) -> void:
 	_bow_draw = 0.0
 	_bow_hold_time = 0.0
 	_bow_release_timer = 0.0
+	_bow_release_from_draw = 0.0
 	if idx == 4 and ammo_in_mag[4] <= 0 and ammo_reserve[4] > 0:
 		_bow_nock_timer = 0.35
 	else:
@@ -1948,6 +2015,8 @@ func _equip_weapon(idx: int, force_preview: bool = false) -> void:
 			_weapon_rigs[i].visible = (i == idx)
 	_w_parts = _w_parts_by_idx[idx] if idx < _w_parts_by_idx.size() else {}
 	_reset_weapon_parts()
+	if idx == 4:
+		_pose_bow_rig()
 
 	holo_quad.visible = w["has_holo"]
 	holo_quad.position = w["holo_pos"]
@@ -2139,7 +2208,38 @@ func get_current_weapon_name() -> String:
 	if current_weapon == 3:
 		var m: Dictionary = MELEE_CATALOG.get(equipped_melee_id, MELEE_CATALOG["knife"])
 		return str(m["name"])
-	return str(WEAPONS[current_weapon]["name"])
+	var base := str(WEAPONS[current_weapon]["name"])
+	return (base + " MK-II") if is_weapon_upgraded(current_weapon) else base
+
+
+func get_weapon_mag_size(idx: int) -> int:
+	if idx < 0 or idx >= WEAPONS.size():
+		return 1
+	var base := int(WEAPONS[idx]["mag_size"])
+	if is_weapon_upgraded(idx) and not bool(WEAPONS[idx].get("is_bow", false)) and not bool(WEAPONS[idx].get("is_melee", false)):
+		return maxi(base + 1, int(round(float(base) * 1.35)))
+	return base
+
+
+func is_weapon_upgraded(idx: int) -> bool:
+	return idx >= 0 and idx < upgraded_weapons.size() and upgraded_weapons[idx]
+
+
+func upgrade_weapon(idx: int) -> void:
+	if idx < 0 or idx >= WEAPONS.size():
+		return
+	upgraded_weapons[idx] = true
+	ammo_in_mag[idx] = get_weapon_mag_size(idx)
+	ammo_reserve[idx] = int(WEAPONS[idx]["reserve_max"])
+	weapon_chambered[idx] = true
+
+
+func unlock_weapon_silent(idx: int) -> void:
+	if idx >= 0 and idx < WEAPONS.size():
+		unlocked_weapons[idx] = true
+		ammo_in_mag[idx] = get_weapon_mag_size(idx)
+		ammo_reserve[idx] = int(WEAPONS[idx]["reserve_max"])
+		weapon_chambered[idx] = true
 
 
 func acquire_melee_weapon(m_id: String) -> void:
@@ -2155,9 +2255,34 @@ func acquire_melee_weapon(m_id: String) -> void:
 func unlock_and_equip(idx: int) -> void:
 	if idx >= 0 and idx < WEAPONS.size():
 		unlocked_weapons[idx] = true
-		ammo_in_mag[idx] = WEAPONS[idx]["mag_size"]
-		ammo_reserve[idx] = WEAPONS[idx]["reserve_max"]
+		ammo_in_mag[idx] = get_weapon_mag_size(idx)
+		ammo_reserve[idx] = int(WEAPONS[idx]["reserve_max"])
+		weapon_chambered[idx] = true
 		_equip_weapon(idx)
+
+
+func cancel_bow_draw(require_repull: bool = false) -> void:
+	if _bow_drawing:
+		_bow_drawing = false
+		_bow_draw = 0.0
+		_bow_hold_time = 0.0
+		if sfx_bow_draw and sfx_bow_draw.playing:
+			sfx_bow_draw.stop()
+	if require_repull:
+		_bow_require_repull = true
+
+
+func _finish_reload() -> void:
+	if not is_reloading:
+		return
+	_commit_mag_ammo()
+	weapon_chambered[current_weapon] = true
+	is_reloading = false
+	reload_cancel_req = false
+	_shotgun_fire_on_cancel = false
+	reload_pos_off = Vector3.ZERO
+	reload_rot_off = Vector3.ZERO
+	_reset_weapon_parts()
 
 
 func _cycle_owned_weapon(dir: int) -> void:
@@ -2340,6 +2465,49 @@ func _update_casings(delta: float) -> void:
 		i -= 1
 
 
+func _play_surface_footstep(is_land := false) -> void:
+	if sfx_step == null or sfx_step.stream == null:
+		return
+	var surf := "wood"
+	if global_position.z < -28.0:
+		surf = "snow"
+	elif global_position.z < -8.0:
+		surf = "stone"
+	var space := get_world_3d().direct_space_state
+	if space:
+		var fq := PhysicsRayQueryParameters3D.create(global_position + Vector3(0, 0.25, 0), global_position + Vector3(0, -0.55, 0), 1)
+		fq.exclude = [get_rid()]
+		var fhit := space.intersect_ray(fq)
+		if fhit and fhit.has("collider"):
+			var c = fhit["collider"]
+			if c is Object and (c as Object).has_meta(&"surface"):
+				surf = str((c as Object).get_meta(&"surface"))
+	var base_pitch := 1.0
+	var base_vol := -10.5
+	match surf:
+		"snow":
+			base_pitch = 0.78
+			base_vol = -12.0
+		"stone", "brick", "tile":
+			base_pitch = 1.14
+			base_vol = -9.5
+		"metal":
+			base_pitch = 1.28
+			base_vol = -9.0
+		_:
+			base_pitch = 0.96
+			base_vol = -10.5
+	if is_land:
+		base_pitch *= 0.84
+		base_vol += 2.5
+	elif is_crouching:
+		base_pitch *= 0.88
+		base_vol -= 3.5
+	sfx_step.volume_db = base_vol
+	sfx_step.pitch_scale = base_pitch * randf_range(0.90, 1.10)
+	sfx_step.play()
+
+
 func _physics_process(delta: float) -> void:
 	_update_casings(delta)
 	_update_arrows(delta)
@@ -2351,6 +2519,8 @@ func _physics_process(delta: float) -> void:
 		ads_lockout -= delta
 	is_ads = Input.is_action_pressed("aim") and not is_reloading and ads_lockout <= 0.0
 	is_sprinting = Input.is_action_pressed("sprint") and not is_crouching and not is_ads and not is_reloading and Input.get_vector("move_left", "move_right", "move_forward", "move_backward").length() > 0.1
+	if is_sprinting and _bow_drawing:
+		cancel_bow_draw(true)
 
 	var iv := Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
 	var basis_fwd := -global_transform.basis.z
@@ -2370,9 +2540,7 @@ func _physics_process(delta: float) -> void:
 			var imp := clampf(-_pre_land_vy / 9.5, 0.08, 0.42)
 			trauma = minf(1.0, trauma + imp * 0.45)
 			_land_dip = minf(0.11, imp * 0.16)
-			if sfx_step and sfx_step.stream:
-				sfx_step.pitch_scale = randf_range(0.75, 0.90)
-				sfx_step.play()
+			_play_surface_footstep(true)
 		_was_on_floor = true
 		_pre_land_vy = 0.0
 		velocity.y = 0.0
@@ -2395,35 +2563,49 @@ func _physics_process(delta: float) -> void:
 			_melee_hit_done = true
 			_perform_melee_hit()
 
+	# Single authoritative simulation clock for reloads + firing + shell-cancel!
+	if is_reloading:
+		_update_reload(delta)
+
 	if fire_cd > 0.0:
 		fire_cd -= delta
+	if _fire_buffer_timer > 0.0:
+		_fire_buffer_timer = maxf(0.0, _fire_buffer_timer - delta)
+
 	var w: Dictionary = WEAPONS[current_weapon]
-	var wants_fire := Input.is_action_pressed("fire") if w["auto"] else Input.is_action_just_pressed("fire")
+	var is_auto := bool(w["auto"])
+	var just_fire := Input.is_action_just_pressed("fire")
+	if just_fire and not is_auto and not bool(w.get("is_bow", false)):
+		_fire_buffer_timer = 0.22
+	var wants_fire := Input.is_action_pressed("fire") if is_auto else (just_fire or _fire_buffer_timer > 0.0)
 	if bool(w.get("is_melee", false)) and wants_fire:
 		trigger_melee()
+		_fire_buffer_timer = 0.0
 		wants_fire = false
 	if bool(w.get("is_bow", false)):
 		_update_bow_input(delta)
 		wants_fire = false
-	if is_reloading and current_weapon == 2 and ammo_in_mag[2] > 0 and wants_fire:
+	# Interruptible shell/round-by-round reload cancel for M870 (2), Benelli M4 (9), and Springfield (7)!
+	var is_shell_gun := (current_weapon == 2 or current_weapon == 9 or current_weapon == 7)
+	if is_reloading and is_shell_gun and ammo_in_mag[current_weapon] > 0 and wants_fire:
 		reload_cancel_req = true
 		_shotgun_fire_on_cancel = true
-		if reload_shell_phase == 0 and not reload_was_empty:
-			is_reloading = false
-			reload_cancel_req = false
-			_shotgun_fire_on_cancel = false
-			reload_pos_off = Vector3.ZERO
-			reload_rot_off = Vector3.ZERO
-			_reset_weapon_parts()
-		elif reload_shell_phase == 1 and ((reload_shell_timer < 0.16 and not reload_was_empty) or reload_shell_timer >= 0.22):
-			reload_shell_phase = 2
-			reload_shell_timer = 0.0
-			reload_flags = 0
+		_fire_buffer_timer = 0.30
 	if wants_fire and fire_cd <= 0.0 and not is_reloading:
-		if _sprint_blend > 0.25 and _sprint_out_timer <= 0.0:
-			_sprint_out_timer = 0.14 if current_weapon == 0 else (0.18 if current_weapon == 1 else 0.22)
-		if _sprint_out_timer <= 0.0:
-			fire_weapon()
+		# If weapon had an interrupted empty reload and is still unchambered, finish reload/chambering instead of firing!
+		if not weapon_chambered[current_weapon] and ammo_in_mag[current_weapon] > 0:
+			start_reload()
+			_fire_buffer_timer = 0.0
+		else:
+			if _sprint_blend > 0.25 and _sprint_out_timer <= 0.0:
+				_sprint_out_timer = 0.14 if current_weapon == 0 else (0.18 if current_weapon == 1 else 0.22)
+				if not is_auto:
+					_fire_buffer_timer = maxf(_fire_buffer_timer, _sprint_out_timer + 0.08)
+			if _sprint_out_timer <= 0.0:
+				_fire_buffer_timer = 0.0
+				fire_weapon()
+	elif not wants_fire and fire_cd < 0.0:
+		fire_cd = 0.0
 	if _sprint_out_timer > 0.0:
 		_sprint_out_timer = maxf(0.0, _sprint_out_timer - delta)
 
@@ -2511,9 +2693,7 @@ func _process(delta: float) -> void:
 			step_roll_impulse = step_side * (0.015 if is_sprinting else 0.007)
 			_land_dip = maxf(_land_dip, 0.026 if is_sprinting else 0.012)
 			trauma = minf(1.0, trauma + (0.055 if is_sprinting else 0.02))
-			if sfx_step and sfx_step.stream:
-				sfx_step.pitch_scale = randf_range(0.84, 1.16) * (0.85 if is_crouching else 1.0)
-				sfx_step.play()
+			_play_surface_footstep(false)
 	else:
 		bob_phase += delta * 1.3
 
@@ -2534,13 +2714,13 @@ func _process(delta: float) -> void:
 	head.position.y = lerpf(head.position.y, target_h + sin(bob_phase * 2.0) * bob_amp, 1.0 - exp(-delta * 15.0))
 	head.rotation.x = clampf(pitch + recoil_vel.y + hit_pitch_kick + shake_p + breath_y, -1.42, 1.42)
 	head.rotation.y = shake_y + breath_x
-	head.rotation.z = lerpf(head.rotation.z, -iv.x * 0.048 + sin(bob_phase) * bob_amp * 0.72 + step_roll_impulse, 1.0 - exp(-delta * 12.0)) + hit_roll_kick + shake_r
+	# Smooth base roll separately so hit_roll_kick NEVER accumulates across render frames!
+	_base_head_roll = lerpf(_base_head_roll, -iv.x * 0.048 + sin(bob_phase) * bob_amp * 0.72 + step_roll_impulse, 1.0 - exp(-delta * 12.0))
+	head.rotation.z = _base_head_roll + hit_roll_kick + shake_r
 	camera.rotation.z = lerpf(-0.061, -0.042, _ads_blend) + recoil_roll
 
-	# Update reloads, blowback, and sprint low-ready
-	if is_reloading:
-		_update_reload(delta)
-	else:
+	# Reloads advance in _physics_process; smoothly relax offsets when idle
+	if not is_reloading:
 		reload_pos_off = reload_pos_off.lerp(Vector3.ZERO, 1.0 - exp(-delta * 14.0))
 		reload_rot_off = reload_rot_off.lerp(Vector3.ZERO, 1.0 - exp(-delta * 14.0))
 
@@ -2619,38 +2799,62 @@ func _process(delta: float) -> void:
 
 
 func _spawn_dropped_mag(weapon_idx: int) -> void:
-	if _mag_mat_dark == null:
-		_mag_mat_dark = StandardMaterial3D.new()
-		_mag_mat_dark.albedo_color = Color(0.11, 0.12, 0.13)
-		_mag_mat_dark.metallic = 0.28
-		_mag_mat_dark.roughness = 0.54
-	if _mag_mesh_g17 == null:
-		_mag_mesh_g17 = BoxMesh.new()
-		_mag_mesh_g17.size = Vector3(0.024, 0.112, 0.036)
-		_mag_mesh_g17.material = _mag_mat_dark
-	if _mag_mesh_ar == null:
-		var ar_box := BoxMesh.new()
-		ar_box.size = Vector3(0.026, 0.162, 0.066)
-		ar_box.material = _mag_mat_dark
-		_mag_mesh_ar = ar_box
 	if _casings.size() >= 18:
 		var old: Dictionary = _casings.pop_front()
 		if is_instance_valid(old["node"]):
 			(old["node"] as Node).queue_free()
 	var mi := MeshInstance3D.new()
-	mi.mesh = _mag_mesh_g17 if weapon_idx == 0 else _mag_mesh_ar
-	if weapon_idx == 1 and _mag_mat_ar != null:
-		mi.set_surface_override_material(0, _mag_mat_ar)
+	# Hand off the ACTUAL visible magazine mesh, material, and current world transform!
+	var src_mi: MeshInstance3D = null
+	if _w_parts.has("mag"):
+		for pn in _w_parts["mag"]:
+			if pn is MeshInstance3D and (pn as MeshInstance3D).mesh != null:
+				src_mi = pn as MeshInstance3D
+				break
+			elif pn is Node:
+				var found := (pn as Node).find_children("*", "MeshInstance3D", true, false)
+				if not found.is_empty():
+					src_mi = found[0] as MeshInstance3D
+					break
+	if src_mi != null and src_mi.mesh != null:
+		mi.mesh = src_mi.mesh
+		for si in range(src_mi.mesh.get_surface_count()):
+			var sm := src_mi.get_active_material(si)
+			if sm != null:
+				mi.set_surface_override_material(si, sm)
+	else:
+		if _mag_mat_dark == null:
+			_mag_mat_dark = StandardMaterial3D.new()
+			_mag_mat_dark.albedo_color = Color(0.11, 0.12, 0.13)
+			_mag_mat_dark.metallic = 0.28
+			_mag_mat_dark.roughness = 0.54
+		if _mag_mesh_g17 == null:
+			_mag_mesh_g17 = BoxMesh.new()
+			_mag_mesh_g17.size = Vector3(0.024, 0.112, 0.036)
+			_mag_mesh_g17.material = _mag_mat_dark
+		if _mag_mesh_ar == null:
+			var ar_box := BoxMesh.new()
+			ar_box.size = Vector3(0.026, 0.162, 0.066)
+			ar_box.material = _mag_mat_dark
+			_mag_mesh_ar = ar_box
+		mi.mesh = _mag_mesh_g17 if weapon_idx == 0 else _mag_mesh_ar
+		if weapon_idx == 1 and _mag_mat_ar != null:
+			mi.set_surface_override_material(0, _mag_mat_ar)
 	mi.layers = 1 | 2
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_fx_parent().add_child(mi)
-	var local_spawn := (Vector3(0.0, -0.04, -0.145) + EJECT_G17 * 0.20) if weapon_idx == 0 else (Vector3(0.0, -0.11, -0.135) + EJECT_AR * 0.20)
-	var spawn_p := weapon_pivot.to_global(local_spawn)
-	mi.global_position = spawn_p
-	mi.global_rotation = weapon_pivot.global_rotation + Vector3(-0.36 if weapon_idx == 0 else -0.17, 0.0, 0.0)
+	var spawn_p: Vector3
+	if src_mi != null and src_mi.is_inside_tree():
+		mi.global_transform = src_mi.global_transform
+		spawn_p = src_mi.global_position
+	else:
+		var local_spawn := (Vector3(0.0, -0.04, -0.145) + EJECT_G17 * 0.20) if weapon_idx == 0 else (Vector3(0.0, -0.11, -0.135) + EJECT_AR * 0.20)
+		spawn_p = weapon_pivot.to_global(local_spawn)
+		mi.global_position = spawn_p
+		mi.global_rotation = weapon_pivot.global_rotation + Vector3(-0.36 if weapon_idx == 0 else -0.17, 0.0, 0.0)
 	var local_eject := (EJECT_G17 if weapon_idx == 0 else EJECT_AR).normalized()
 	var world_dir := (weapon_pivot.global_transform.basis * local_eject).normalized()
-	var ej_vel := world_dir * randf_range(1.3, 1.85) + velocity * 0.35
+	var ej_vel := world_dir * randf_range(1.15, 1.65) + velocity * 0.35
 	var floor_y := global_position.y + 0.020
 	var space := get_world_3d().direct_space_state
 	if space:
@@ -2733,15 +2937,45 @@ func _update_weapon_mechanics(delta: float) -> void:
 
 
 func _play_reload_sfx(stream: AudioStream, pitch_sc := 1.0) -> void:
-	if sfx_reload and stream:
+	if stream == null:
+		return
+	if not _sfx_reload_pool.is_empty():
+		var p: AudioStreamPlayer = _sfx_reload_pool[_sfx_reload_pool_idx]
+		_sfx_reload_pool_idx = (_sfx_reload_pool_idx + 1) % _sfx_reload_pool.size()
+		p.stream = stream
+		p.pitch_scale = pitch_sc
+		p.play()
+	elif sfx_reload:
 		sfx_reload.stream = stream
 		sfx_reload.pitch_scale = pitch_sc
 		sfx_reload.play()
 
 
+func _play_gun_sfx(stream: AudioStream, pitch_sc := 1.0) -> void:
+	if stream == null:
+		return
+	if not _sfx_gun_pool.is_empty():
+		var p: AudioStreamPlayer = _sfx_gun_pool[_sfx_gun_pool_idx]
+		_sfx_gun_pool_idx = (_sfx_gun_pool_idx + 1) % _sfx_gun_pool.size()
+		p.stream = stream
+		p.pitch_scale = pitch_sc
+		p.play()
+	elif sfx_gun:
+		sfx_gun.stream = stream
+		sfx_gun.pitch_scale = pitch_sc
+		sfx_gun.play()
+
+
+func _reload_event(ts: float, bit: int) -> bool:
+	if (reload_flags & bit) == 0 and reload_elapsed >= ts:
+		reload_flags |= bit
+		return true
+	return false
+
+
 func _commit_mag_ammo() -> void:
-	var w: Dictionary = WEAPONS[current_weapon]
-	var need: int = w["mag_size"] - ammo_in_mag[current_weapon]
+	var mag_cap := get_weapon_mag_size(current_weapon)
+	var need: int = mag_cap - ammo_in_mag[current_weapon]
 	var take: int = mini(need, ammo_reserve[current_weapon])
 	ammo_in_mag[current_weapon] += take
 	ammo_reserve[current_weapon] -= take
@@ -2751,41 +2985,53 @@ func start_reload() -> bool:
 	var w: Dictionary = WEAPONS[current_weapon]
 	if bool(w.get("is_melee", false)) or bool(w.get("is_bow", false)):
 		return false
-	if is_reloading or ammo_in_mag[current_weapon] >= w["mag_size"] or ammo_reserve[current_weapon] <= 0:
+	var mag_cap := get_weapon_mag_size(current_weapon)
+	var needs_chamber_only := (not weapon_chambered[current_weapon] and ammo_in_mag[current_weapon] > 0)
+	if is_reloading:
+		return false
+	if not needs_chamber_only and (ammo_in_mag[current_weapon] >= mag_cap or ammo_reserve[current_weapon] <= 0):
 		return false
 	is_reloading = true
 	reload_elapsed = 0.0
+	_reload_prev_t = -0.001
 	reload_flags = 0
-	reload_was_empty = (ammo_in_mag[current_weapon] <= 0)
+	reload_was_empty = (ammo_in_mag[current_weapon] <= 0) or not weapon_chambered[current_weapon]
+	if ammo_in_mag[current_weapon] <= 0:
+		weapon_chambered[current_weapon] = false
 	reload_shell_timer = 0.0
 	reload_shell_phase = 0
 	reload_cancel_req = false
 	_shotgun_fire_on_cancel = false
+	_shotgun_exit_arm_p = Vector3.ZERO
+	_shotgun_exit_arm_r = Vector3.ZERO
 	shotgun_pump_timer = 0.0
+	_sniper_pending_eject = (current_weapon == 7 and _hunting_bolt_timer > 0.0 and not _hunting_bolt_did_sfx)
 	_hunting_bolt_timer = 0.0
+	_magnum_spent_count = clampi(mag_cap - ammo_in_mag[6], 1, 6) if current_weapon == 6 else 0
 
 	if current_weapon == 0:
-		reload_dur = 1.72 if reload_was_empty else 1.32
+		reload_dur = 1.66 if reload_was_empty else 1.28
 	elif current_weapon == 1:
-		reload_dur = 2.42 if reload_was_empty else 1.96
+		reload_dur = 2.28 if reload_was_empty else 1.88
 	elif current_weapon == 5:
-		reload_dur = 2.05 if reload_was_empty else 1.58
+		reload_dur = 2.08 if reload_was_empty else 1.56
 	elif current_weapon == 6:
-		reload_dur = 2.15
+		reload_dur = 2.20
 	elif current_weapon == 7:
-		reload_dur = 2.35
+		reload_dur = 1.2 # Managed by per-round feed loop phases
 	elif current_weapon == 8:
-		reload_dur = 2.25 if reload_was_empty else 1.75
+		reload_dur = 2.24 if reload_was_empty else 1.72
 	elif current_weapon == 9:
-		reload_dur = 1.75
+		reload_dur = 1.2 # Managed by interruptible shell loop phases
 	elif current_weapon == 10:
-		reload_dur = 3.20
+		reload_dur = 3.35
 	else:
 		reload_dur = 1.2 # Managed by shell loop phases
 	return true
 
 
 func _update_reload(delta: float) -> void:
+	_reload_prev_t = reload_elapsed
 	reload_elapsed += delta
 	if current_weapon == 0:
 		_update_reload_pistol()
@@ -2796,11 +3042,11 @@ func _update_reload(delta: float) -> void:
 	elif current_weapon == 6:
 		_update_reload_magnum()
 	elif current_weapon == 7:
-		_update_reload_hunting()
+		_update_reload_hunting(delta)
 	elif current_weapon == 8:
 		_update_reload_ak74()
 	elif current_weapon == 9:
-		_update_reload_benelli()
+		_update_reload_benelli(delta)
 	elif current_weapon == 10:
 		_update_reload_m249()
 	else:
@@ -2812,79 +3058,91 @@ func _update_reload_mp5() -> void:
 	var cant_p := Vector3(-0.052, 0.148, -0.062)
 	var cant_r := Vector3(0.28, 0.44, -0.52)
 	var eject_dir := Vector3(-0.05, -0.94, -0.33).normalized()
-	var hand_mag_p := Vector3(0.014, -0.150, 0.148)
-	var hand_mag_r := Vector3(-0.48, 0.28, 0.36)
-	var hand_pouch_p := hand_mag_p + eject_dir * 0.25 + Vector3(-0.04, -0.06, 0.03)
-	var hand_slap_hi := Vector3(-0.085, 0.115, 0.12)
-	var hand_slap_hit := Vector3(-0.045, 0.025, 0.10)
+	var hand_mag_p := Vector3(0.036, -0.072, 0.088)
+	var hand_mag_r := Vector3(-0.34, 0.22, 0.28)
+	var hand_extract_end := hand_mag_p + eject_dir * 0.24
+	var hand_pouch_p := hand_extract_end + Vector3(-0.04, -0.06, 0.03)
+	var hand_slap_hi := Vector3(-0.072, 0.118, 0.115)
+	var hand_slap_hit := Vector3(-0.038, 0.034, 0.105)
+	var hand_slap_r := Vector3(0.16, 0.12, -0.24)
+
+	# Timestamp-crossing authoritative events (never skipped on long frames!)
+	if _reload_event(0.24, 1):
+		_play_reload_sfx(_sfx_mag_out, 1.12)
+	if _reload_event(0.56, 32):
+		_spawn_dropped_mag(5)
+	if _reload_event(1.08, 2):
+		_play_reload_sfx(_sfx_mag_in, 1.14)
+	if _reload_event(1.18, 4):
+		_commit_mag_ammo()
+		if not reload_was_empty:
+			weapon_chambered[5] = true
+		trauma = minf(1.0, trauma + 0.08)
+	if reload_was_empty and _reload_event(1.54, 8):
+		# Strictly on palm contact at 1.54s!
+		weapon_chambered[5] = true
+		_play_reload_sfx(_sfx_bolt, 1.18)
+		trauma = minf(1.0, trauma + 0.12)
+
+	# Charging handle stays locked rearward until palm strikes at 1.54s!
+	if reload_was_empty:
+		var ch_u := 1.0 if t < 1.54 else (1.0 - smoothstep(1.54, 1.60, t))
+		_pose_part("charge", Vector3(0.0, 0.0, 0.068 * ch_u), Vector3(0.0, 0.0, 0.52 * ch_u))
+	else:
+		_pose_part("charge", Vector3.ZERO)
 
 	if t < 0.22:
 		var u := smoothstep(0.0, 0.22, t)
 		reload_pos_off = cant_p * u
 		reload_rot_off = cant_r * u
 		_pose_part("mag", Vector3.ZERO)
-		_pose_part("charge", Vector3(0.0, 0.0, 0.068 * u) if reload_was_empty else Vector3.ZERO, Vector3(0.0, 0.0, 0.52 * u) if reload_was_empty else Vector3.ZERO)
 		_pose_part("arm_left", hand_mag_p * u, hand_mag_r * u)
 	elif t < 0.64:
-		if not (reload_flags & 1):
-			reload_flags |= 1
-			_play_reload_sfx(_sfx_mag_out, 1.12)
 		var u := smoothstep(0.22, 0.58, t)
-		if t >= 0.56 and not (reload_flags & 32):
-			reload_flags |= 32
-			_spawn_dropped_mag(1)
 		reload_pos_off = cant_p + Vector3(0, -0.018 * sin(u * PI), 0)
 		reload_rot_off = cant_r + Vector3(0.05 * sin(u * PI), 0, -0.06 * sin(u * PI))
 		var mp := eject_dir * (0.24 * u)
-		_pose_part("mag", mp, Vector3(0.26 * u, 0.0, -0.10 * u), Vector3.ZERO, u < 0.94)
-		_pose_part("arm_left", hand_mag_p + mp, hand_mag_r + Vector3(-0.14 * u, 0.08 * u, 0.0))
+		_pose_part("mag", mp, Vector3(0.24 * u, 0.0, -0.08 * u), Vector3.ZERO, t < 0.56)
+		_pose_part("arm_left", hand_mag_p + mp, hand_mag_r + Vector3(-0.12 * u, 0.06 * u, 0.0))
 	elif t < 0.90:
+		# Continuous hand dip to pouch and return (ZERO snap at 0.64s!)
 		var u := smoothstep(0.64, 0.90, t)
 		var dip := sin(u * PI)
 		reload_pos_off = cant_p + Vector3(-0.008 * dip, -0.024 * dip, 0.01)
 		reload_rot_off = cant_r
 		_pose_part("mag", eject_dir * 0.24, Vector3.ZERO, Vector3.ZERO, false)
-		_pose_part("arm_left", hand_pouch_p.lerp(hand_mag_p + eject_dir * 0.22, smoothstep(0.50, 1.0, u)), hand_mag_r)
-	elif t < 1.26:
-		var u := smoothstep(0.90, 1.16, t)
-		var slap := sin(smoothstep(1.14, 1.26, t) * PI)
+		var arm_p := hand_extract_end.lerp(hand_pouch_p, smoothstep(0.0, 0.45, u)) if u < 0.5 else hand_pouch_p.lerp(hand_mag_p + eject_dir * 0.22, smoothstep(0.5, 1.0, u))
+		_pose_part("arm_left", arm_p, hand_mag_r + Vector3(-0.12 * (1.0 - u), 0.06 * (1.0 - u), 0.0))
+	elif t < 1.28:
+		var u := smoothstep(0.90, 1.18, t)
+		var slap := sin(smoothstep(1.16, 1.28, t) * PI)
 		reload_pos_off = cant_p + Vector3(0, 0.024 * slap, -0.01 * slap)
 		reload_rot_off = cant_r + Vector3(0.07 * slap, 0, 0.05 * slap)
 		var mp := eject_dir * lerpf(0.22, 0.0, u)
 		_pose_part("mag", mp, Vector3(lerpf(0.22, 0.0, u), 0.0, 0.0), Vector3.ZERO, true)
 		_pose_part("arm_left", hand_mag_p + mp + Vector3(0.0, 0.018 * slap, 0.0), hand_mag_r)
-		if t >= 1.06 and not (reload_flags & 2):
-			reload_flags |= 2
-			_play_reload_sfx(_sfx_mag_in, 1.14)
-		if t >= 1.14 and not (reload_flags & 4):
-			reload_flags |= 4
-			_commit_mag_ammo()
-			trauma = minf(1.0, trauma + 0.08)
-	elif reload_was_empty and t < 1.74:
-		# Iconic visible left-hand HK slap!
-		var u := smoothstep(1.26, 1.74, t)
-		var wind := smoothstep(1.26, 1.44, t)
-		var strike := smoothstep(1.44, 1.54, t)
-		var slap_hit := sin(smoothstep(1.44, 1.62, t) * PI)
-		reload_pos_off = cant_p.lerp(Vector3.ZERO, u) + Vector3(0.018 * slap_hit, -0.024 * slap_hit, 0.0)
-		reload_rot_off = cant_r.lerp(Vector3.ZERO, u) + Vector3(0.0, 0.0, -0.18 * slap_hit)
-		var ch_u := 1.0 - smoothstep(1.46, 1.52, t)
-		_pose_part("charge", Vector3(0.0, 0.0, 0.068 * ch_u), Vector3(0.0, 0.0, 0.52 * ch_u))
-		var arm_p := hand_mag_p.lerp(hand_slap_hi, wind) if t < 1.44 else hand_slap_hi.lerp(hand_slap_hit, strike)
-		_pose_part("arm_left", arm_p, hand_mag_r.lerp(Vector3(0.18, 0.12, -0.25), wind))
-		if t >= 1.46 and not (reload_flags & 8):
-			reload_flags |= 8
-			_play_reload_sfx(_sfx_bolt, 1.18)
-			trauma = minf(1.0, trauma + 0.11)
-	else:
-		var s0 := 1.74 if reload_was_empty else 1.26
-		var u := smoothstep(s0, reload_dur, t)
-		reload_pos_off = (Vector3.ZERO if reload_was_empty else cant_p).lerp(Vector3.ZERO, u)
-		reload_rot_off = (Vector3.ZERO if reload_was_empty else cant_r).lerp(Vector3.ZERO, u)
+	elif reload_was_empty and t < 1.78:
+		# Iconic HK slap: palm winds up (1.28..1.46) -> strikes down on handle at 1.54s -> follows through!
+		var u := smoothstep(1.28, 1.78, t)
+		var wind := smoothstep(1.28, 1.46, t)
+		var strike := smoothstep(1.46, 1.56, t)
+		var slap_hit := sin(smoothstep(1.52, 1.68, t) * PI)
+		reload_pos_off = cant_p.lerp(Vector3(-0.015, 0.03, -0.015), u) + Vector3(0.018 * slap_hit, -0.024 * slap_hit, 0.0)
+		reload_rot_off = cant_r.lerp(Vector3(0.06, 0.12, -0.14), u) + Vector3(0.0, 0.0, -0.18 * slap_hit)
 		_pose_part("mag", Vector3.ZERO)
-		_pose_part("charge", Vector3.ZERO)
+		var arm_p := hand_mag_p.lerp(hand_slap_hi, wind) if t < 1.46 else hand_slap_hi.lerp(hand_slap_hit, strike)
+		_pose_part("arm_left", arm_p, hand_mag_r.lerp(hand_slap_r, wind))
+	else:
+		var s0 := 1.78 if reload_was_empty else 1.28
+		var u := smoothstep(s0, reload_dur, t)
+		var prev_p := Vector3(-0.015, 0.03, -0.015) if reload_was_empty else cant_p
+		var prev_r := Vector3(0.06, 0.12, -0.14) if reload_was_empty else cant_r
+		reload_pos_off = prev_p.lerp(Vector3.ZERO, u)
+		reload_rot_off = prev_r.lerp(Vector3.ZERO, u)
+		_pose_part("mag", Vector3.ZERO)
 		var prev_arm := hand_slap_hit if reload_was_empty else hand_mag_p
-		_pose_part("arm_left", prev_arm.lerp(Vector3.ZERO, u), hand_mag_r.lerp(Vector3.ZERO, u))
+		var prev_ar := hand_slap_r if reload_was_empty else hand_mag_r
+		_pose_part("arm_left", prev_arm.lerp(Vector3.ZERO, u), prev_ar.lerp(Vector3.ZERO, u))
 	if t >= reload_dur:
 		is_reloading = false
 		_reset_weapon_parts()
@@ -2896,232 +3154,454 @@ func _update_reload_ak74() -> void:
 	var cant_r := Vector3(0.28, 0.44, -0.48)
 	var hand_mag_p := Vector3(0.015, -0.155, 0.155)
 	var hand_mag_r := Vector3(-0.52, 0.28, 0.38)
+	var hand_bolt_p := Vector3(0.072, -0.042, 0.175)
+	var hand_bolt_r := Vector3(-0.28, 0.42, 0.62)
+	var rack_rot := Vector3(0.12, -0.22, 0.34)
+
+	if _reload_event(0.24, 1):
+		_play_reload_sfx(_sfx_mag_out, 0.94)
+	if _reload_event(0.58, 32):
+		_spawn_dropped_mag(8)
+	if _reload_event(1.14, 2):
+		_play_reload_sfx(_sfx_mag_in, 0.92)
+	if _reload_event(1.24, 4):
+		_commit_mag_ammo()
+		if not reload_was_empty:
+			weapon_chambered[8] = true
+		trauma = minf(1.0, trauma + 0.10)
+	if reload_was_empty and _reload_event(1.56, 8):
+		weapon_chambered[8] = true
+		_play_reload_sfx(_sfx_bolt, 0.92)
+		trauma = minf(1.0, trauma + 0.11)
+
 	if t < 0.24:
 		var u := smoothstep(0.0, 0.24, t)
 		reload_pos_off = cant_p * u
 		reload_rot_off = cant_r * u
+		_pose_part("mag", Vector3.ZERO)
 		_pose_part("arm_left", hand_mag_p * u, hand_mag_r * u)
 	elif t < 0.68:
-		if not (reload_flags & 1):
-			reload_flags |= 1
-			_play_reload_sfx(_sfx_mag_out, 0.94)
-		var u := smoothstep(0.24, 0.62, t)
-		if t >= 0.58 and not (reload_flags & 32):
-			reload_flags |= 32
-			_spawn_dropped_mag(1)
-		var mp := Vector3(0.0, -0.24 * u, -0.08 * u)
-		_pose_part("mag", mp, Vector3(0.42 * u, 0, 0), Vector3.ZERO, u < 0.94)
+		var u := smoothstep(0.24, 0.58, t)
+		# Rock forward off front lug, then pull down!
+		var mp := Vector3(0.0, -0.22 * smoothstep(0.22, 1.0, u), -0.05 * u)
+		var mr := Vector3(0.46 * smoothstep(0.0, 0.65, u), 0.0, 0.0)
+		_pose_part("mag", mp, mr, Vector3.ZERO, t < 0.58)
 		_pose_part("arm_left", hand_mag_p + mp, hand_mag_r)
 	elif t < 1.32:
-		var u := smoothstep(0.88, 1.22, t)
-		var rock := sin(smoothstep(1.18, 1.32, t) * PI)
-		reload_pos_off = cant_p + Vector3(0, 0.025 * rock, 0)
-		reload_rot_off = cant_r + Vector3(0.08 * rock, 0, 0)
-		var mp := Vector3(0.0, lerpf(-0.24, 0.0, u), lerpf(-0.08, 0.0, u))
-		_pose_part("mag", mp, Vector3(lerpf(0.42, 0.0, u), 0, 0), Vector3.ZERO, t >= 0.82)
-		_pose_part("arm_left", hand_mag_p + mp, hand_mag_r)
-		if t >= 1.12 and not (reload_flags & 2):
-			reload_flags |= 2
-			_play_reload_sfx(_sfx_mag_in, 0.92)
-		if t >= 1.22 and not (reload_flags & 4):
-			reload_flags |= 4
-			_commit_mag_ammo()
-			trauma = minf(1.0, trauma + 0.10)
+		# Bring fresh plum mag up, hook front lug, rock backward into latch!
+		var u_up := smoothstep(0.76, 1.08, t)
+		var u_rock := smoothstep(1.08, 1.24, t)
+		var rock_bump := sin(smoothstep(1.20, 1.32, t) * PI)
+		reload_pos_off = cant_p + Vector3(0, 0.025 * rock_bump, 0)
+		reload_rot_off = cant_r + Vector3(0.08 * rock_bump, 0, 0)
+		var mp := Vector3(0.0, lerpf(-0.22, 0.0, u_up), lerpf(-0.05, 0.0, u_up))
+		var mr := Vector3(lerpf(0.46, 0.0, u_rock), 0.0, 0.0)
+		_pose_part("mag", mp, mr, Vector3.ZERO, t >= 0.74)
+		_pose_part("arm_left", hand_mag_p + mp + Vector3(0.0, 0.015 * rock_bump, 0.0), hand_mag_r)
 	elif reload_was_empty and t < 1.88:
-		var u := smoothstep(1.32, 1.88, t)
-		var pull := sin(smoothstep(1.42, 1.78, t) * PI)
-		reload_pos_off = cant_p.lerp(Vector3.ZERO, u)
-		reload_rot_off = cant_r.lerp(Vector3(0.10, -0.25, 0.35), sin(u * PI))
-		_pose_part("bolt", Vector3(0.0, 0.0, 0.075 * pull))
-		if t >= 1.48 and not (reload_flags & 8):
-			reload_flags |= 8
-			_play_reload_sfx(_sfx_bolt, 0.92)
-			trauma = minf(1.0, trauma + 0.11)
+		# Support hand reaches under receiver to right-side AK charging handle and racks it cleanly!
+		var reach := smoothstep(1.32, 1.50, t)
+		var pull := sin(smoothstep(1.50, 1.82, t) * PI)
+		reload_pos_off = cant_p.lerp(Vector3(-0.025, 0.06, -0.03), reach)
+		reload_rot_off = cant_r.lerp(rack_rot, reach)
+		_pose_part("mag", Vector3.ZERO)
+		_pose_part("bolt", Vector3(0.0, 0.0, 0.078 * pull))
+		_pose_part("arm_left", hand_mag_p.lerp(hand_bolt_p, reach) + Vector3(0.0, 0.0, 0.072 * pull), hand_mag_r.lerp(hand_bolt_r, reach))
 	else:
+		# Smooth continuous return from exact previous pose (ZERO roll snap at 1.88s!)
 		var s0 := 1.88 if reload_was_empty else 1.32
 		var u := smoothstep(s0, reload_dur, t)
-		reload_pos_off = (Vector3.ZERO if reload_was_empty else cant_p).lerp(Vector3.ZERO, u)
-		reload_rot_off = (Vector3.ZERO if reload_was_empty else cant_r).lerp(Vector3.ZERO, u)
+		var prev_p := Vector3(-0.025, 0.06, -0.03) if reload_was_empty else cant_p
+		var prev_r := rack_rot if reload_was_empty else cant_r
+		var prev_ap := hand_bolt_p if reload_was_empty else hand_mag_p
+		var prev_ar := hand_bolt_r if reload_was_empty else hand_mag_r
+		reload_pos_off = prev_p.lerp(Vector3.ZERO, u)
+		reload_rot_off = prev_r.lerp(Vector3.ZERO, u)
 		_pose_part("mag", Vector3.ZERO)
 		_pose_part("bolt", Vector3.ZERO)
-		_pose_part("arm_left", hand_mag_p.lerp(Vector3.ZERO, u), hand_mag_r.lerp(Vector3.ZERO, u))
+		_pose_part("arm_left", prev_ap.lerp(Vector3.ZERO, u), prev_ar.lerp(Vector3.ZERO, u))
 	if t >= reload_dur:
 		is_reloading = false
 		_reset_weapon_parts()
 
 
-func _update_reload_benelli() -> void:
-	var t := reload_elapsed
-	var cant_p := Vector3(-0.03, 0.095, -0.05)
-	var cant_r := Vector3(0.28, 0.22, -1.05)
-	var hand_p := Vector3(0.025, -0.08, 0.14)
-	if t < 0.28:
-		var u := smoothstep(0.0, 0.28, t)
+func _update_reload_benelli(delta: float) -> void:
+	# Real interruptible shell-by-shell loading with visible 12ga shell + chrome Lifter + Bolt chambering!
+	reload_shell_timer += delta
+	var cant_p := Vector3(-0.028, 0.092, -0.048)
+	var cant_r := Vector3(0.26, 0.22, -1.08)
+	var hand_caddy_p := Vector3(-0.015, -0.150, 0.160)
+	var hand_caddy_r := Vector3(0.20, 0.08, 0.20)
+	var hand_port_p := Vector3(0.026, -0.056, 0.148)
+	var hand_port_r := Vector3(0.12, 0.06, 0.14)
+	var hand_push_p := Vector3(0.030, -0.024, 0.106)
+	var hand_push_r := Vector3(0.05, 0.04, 0.06)
+	var hand_bolt_p := Vector3(0.055, 0.010, 0.140)
+	var mag_cap := get_weapon_mag_size(9)
+
+	var p_start := Vector3(0.0, -0.145, -0.105)
+	var p_port := Vector3(0.0, -0.042, -0.128)
+	var p_enter := Vector3(0.0, -0.016, -0.158)
+	var p_seat := Vector3(0.0, -0.008, -0.195)
+
+	if reload_shell_phase == 0:
+		if is_instance_valid(_benelli_shell_rig):
+			_benelli_shell_rig.visible = false
+		_pose_part("lifter", Vector3.ZERO)
+		if reload_cancel_req and ammo_in_mag[9] > 0:
+			reload_shell_phase = 2
+			reload_shell_timer = 0.0
+			reload_flags = 0
+			_shotgun_exit_arm_p = hand_caddy_p * smoothstep(0.0, 0.24, reload_shell_timer)
+			_shotgun_exit_arm_r = hand_caddy_r * smoothstep(0.0, 0.24, reload_shell_timer)
+			return
+		var u := smoothstep(0.0, 0.24, reload_shell_timer)
 		reload_pos_off = cant_p * u
 		reload_rot_off = cant_r * u
-		_pose_part("arm_left", hand_p * u)
-	elif t < 1.38:
-		var u := smoothstep(0.28, 1.38, t)
-		var push := absf(sin(u * PI * 3.0))
-		reload_pos_off = cant_p + Vector3(0.0, 0.016 * push, 0.0)
-		reload_rot_off = cant_r
-		_pose_part("arm_left", hand_p + Vector3(0.0, 0.045 * push, -0.03 * push))
-		if t >= 0.52 and not (reload_flags & 1):
-			reload_flags |= 1; _play_reload_sfx(_sfx_shell_in, 1.02)
-		if t >= 0.88 and not (reload_flags & 2):
-			reload_flags |= 2; _play_reload_sfx(_sfx_shell_in, 1.06)
-		if t >= 1.22 and not (reload_flags & 4):
-			reload_flags |= 4; _play_reload_sfx(_sfx_shell_in, 1.10); _commit_mag_ammo()
-	else:
-		var u := smoothstep(1.38, reload_dur, t)
+		_pose_part("arm_left", hand_caddy_p * u, hand_caddy_r * u)
+		if reload_shell_timer >= 0.24:
+			reload_shell_phase = 1
+			reload_shell_timer = 0.0
+			reload_flags = 0
+	elif reload_shell_phase == 1:
+		var st := reload_shell_timer
+		var push := sin(smoothstep(0.13, 0.31, st) * PI)
+		reload_pos_off = cant_p + Vector3(0.0, 0.016 * push, -0.010 * push)
+		reload_rot_off = cant_r + Vector3(-0.05 * push, 0.0, 0.07 * push)
+		var lift_u := sin(smoothstep(0.13, 0.31, st) * PI) if (st >= 0.13 and st < 0.31) else 0.0
+		_pose_part("lifter", Vector3(0.0, 0.012 * lift_u, 0.0), Vector3(0.24 * lift_u, 0.0, 0.0))
+
+		var cur_ap := hand_caddy_p
+		var cur_ar := hand_caddy_r
+		if st < 0.14:
+			var a := smoothstep(0.0, 0.14, st)
+			cur_ap = hand_caddy_p.lerp(hand_port_p, a)
+			cur_ar = hand_caddy_r.lerp(hand_port_r, a)
+			if is_instance_valid(_benelli_shell_rig):
+				_benelli_shell_rig.visible = true
+				_benelli_shell_rig.position = p_start.lerp(p_port, a)
+				_benelli_shell_rig.rotation = Vector3(0.38, 0.18, 0.14).lerp(Vector3(0.22, 0.0, 0.0), a)
+		elif st < 0.22:
+			var b := smoothstep(0.14, 0.22, st)
+			cur_ap = hand_port_p.lerp(hand_push_p, b * 0.55)
+			cur_ar = hand_port_r.lerp(hand_push_r, b * 0.55)
+			if is_instance_valid(_benelli_shell_rig):
+				_benelli_shell_rig.visible = true
+				_benelli_shell_rig.position = p_port.lerp(p_enter, b)
+				_benelli_shell_rig.rotation = Vector3(lerpf(0.22, 0.08, b), 0.0, 0.0)
+		elif st < 0.30:
+			var c := smoothstep(0.22, 0.30, st)
+			cur_ap = hand_port_p.lerp(hand_push_p, lerpf(0.55, 1.0, c))
+			cur_ar = hand_port_r.lerp(hand_push_r, lerpf(0.55, 1.0, c))
+			if is_instance_valid(_benelli_shell_rig):
+				_benelli_shell_rig.visible = c < 0.90
+				_benelli_shell_rig.position = p_enter.lerp(p_seat, c)
+				_benelli_shell_rig.rotation = Vector3(lerpf(0.08, 0.0, c), 0.0, 0.0)
+		else:
+			var d := smoothstep(0.30, 0.38, st)
+			cur_ap = hand_push_p.lerp(hand_caddy_p, d)
+			cur_ar = hand_push_r.lerp(hand_caddy_r, d)
+			if is_instance_valid(_benelli_shell_rig):
+				_benelli_shell_rig.visible = false
+		_pose_part("arm_left", cur_ap, cur_ar)
+
+		# Single unified shell-commit event at seating (0.28s) so sound, visual vanish, and ammo count match 100%!
+		if st >= 0.28 and not (reload_flags & 1):
+			reload_flags |= 1
+			_play_reload_sfx(_sfx_shell_in, randf_range(1.00, 1.08))
+			if ammo_in_mag[9] < mag_cap and ammo_reserve[9] > 0:
+				ammo_in_mag[9] += 1
+				ammo_reserve[9] -= 1
+				trauma = minf(1.0, trauma + 0.05)
+
+		if st >= 0.38 or (reload_cancel_req and ammo_in_mag[9] > 0 and (st >= 0.30 or (st < 0.14 and not reload_was_empty))):
+			if reload_cancel_req or ammo_in_mag[9] >= mag_cap or ammo_reserve[9] <= 0:
+				_shotgun_exit_arm_p = cur_ap
+				_shotgun_exit_arm_r = cur_ar
+				reload_shell_phase = 2
+				reload_shell_timer = 0.0
+				reload_flags = 0
+				_pose_part("lifter", Vector3.ZERO)
+				if is_instance_valid(_benelli_shell_rig):
+					_benelli_shell_rig.visible = false
+			else:
+				reload_shell_timer = 0.0
+				reload_flags = 0
+	elif reload_shell_phase == 2:
+		if is_instance_valid(_benelli_shell_rig):
+			_benelli_shell_rig.visible = false
+		_pose_part("lifter", Vector3.ZERO)
+		var exit_dur := 0.36 if reload_was_empty else (0.14 if reload_cancel_req else 0.24)
+		var u := smoothstep(0.0, exit_dur, reload_shell_timer)
+		if reload_was_empty:
+			var rack := sin(smoothstep(0.08, exit_dur * 0.80, reload_shell_timer) * PI)
+			_pose_part("bolt", Vector3(0.0, 0.0, 0.068 * rack))
+			var arm_p := _shotgun_exit_arm_p.lerp(hand_bolt_p, smoothstep(0.0, 0.12, reload_shell_timer)).lerp(Vector3.ZERO, smoothstep(exit_dur * 0.65, exit_dur, reload_shell_timer))
+			_pose_part("arm_left", arm_p, _shotgun_exit_arm_r.lerp(Vector3.ZERO, u))
+			if reload_shell_timer >= exit_dur * 0.42 and not (reload_flags & 4):
+				reload_flags |= 4
+				weapon_chambered[9] = true
+				_play_reload_sfx(_sfx_bolt, 0.96)
+				trauma = minf(1.0, trauma + 0.10)
+		else:
+			_pose_part("arm_left", _shotgun_exit_arm_p.lerp(Vector3.ZERO, u), _shotgun_exit_arm_r.lerp(Vector3.ZERO, u))
 		reload_pos_off = cant_p.lerp(Vector3.ZERO, u)
 		reload_rot_off = cant_r.lerp(Vector3.ZERO, u)
-		_pose_part("arm_left", hand_p.lerp(Vector3.ZERO, u))
-	if t >= reload_dur:
-		is_reloading = false
-		_reset_weapon_parts()
+		if reload_shell_timer >= exit_dur:
+			weapon_chambered[9] = true
+			is_reloading = false
+			reload_cancel_req = false
+			_reset_weapon_parts()
 
 
 func _update_reload_m249() -> void:
+	# Fixed hinge sign (-1.15 rad X lifts TopCover UP cleanly revealing FeedTray!),
+	# hand reaches lid -> sweeps belt -> swaps box mag -> drapes fresh brass belt -> slams lid -> racks Charge!
 	var t := reload_elapsed
 	var cant_p := Vector3(-0.04, 0.09, -0.04)
 	var cant_r := Vector3(0.20, 0.26, -0.28)
-	var hand_p := Vector3(0.02, -0.14, 0.14)
-	if t < 0.45:
-		var u := smoothstep(0.0, 0.45, t)
+	var hand_lid_p := Vector3(-0.02, 0.05, 0.14)
+	var hand_box_p := Vector3(0.015, -0.145, 0.14)
+	var hand_belt_p := Vector3(-0.02, 0.02, 0.16)
+	var hand_charge_p := Vector3(0.075, -0.02, 0.16)
+
+	if _reload_event(0.24, 1):
+		_play_reload_sfx(_sfx_bolt, 0.72)
+	if _reload_event(0.62, 2):
+		_play_reload_sfx(_sfx_mag_out, 0.78)
+	if _reload_event(1.02, 32):
+		_spawn_dropped_mag(10)
+	if _reload_event(1.94, 4):
+		_play_reload_sfx(_sfx_mag_in, 0.76)
+		trauma = minf(1.0, trauma + 0.10)
+	if _reload_event(2.26, 16):
+		_play_reload_sfx(_sfx_shell_in, 0.84)
+	if _reload_event(2.62, 8):
+		_commit_mag_ammo()
+		_play_reload_sfx(_sfx_bolt, 0.76)
+		trauma = minf(1.0, trauma + 0.14)
+	if _reload_event(2.96, 64):
+		weapon_chambered[10] = true
+		_play_reload_sfx(_sfx_bolt, 0.88)
+		trauma = minf(1.0, trauma + 0.10)
+
+	if t < 0.48:
+		# Left hand reaches up & pops TopCover UP (-1.15 rad X)!
+		var u := smoothstep(0.0, 0.48, t)
+		var lid_u := smoothstep(0.18, 0.46, t)
 		reload_pos_off = cant_p * u
 		reload_rot_off = cant_r * u
-		_pose_part("top_cover", Vector3.ZERO, Vector3(1.15 * smoothstep(0.15, 0.45, t), 0.0, 0.0))
-		if t >= 0.22 and not (reload_flags & 1):
-			reload_flags |= 1; _play_reload_sfx(_sfx_bolt, 0.72)
+		_pose_part("top_cover", Vector3.ZERO, Vector3(-1.15 * lid_u, 0.0, 0.0))
+		_pose_part("ammo_belt", Vector3.ZERO)
+		_pose_part("arm_left", hand_lid_p * smoothstep(0.0, 0.22, t) + Vector3(0.0, 0.09 * lid_u, 0.0))
 	elif t < 1.15:
-		var u := smoothstep(0.45, 1.05, t)
-		_pose_part("top_cover", Vector3.ZERO, Vector3(1.15, 0.0, 0.0))
+		# Sweep old belt off tray and pull 100-rd box mag down & drop it
+		var u := smoothstep(0.55, 1.05, t)
+		reload_pos_off = cant_p
+		reload_rot_off = cant_r
+		_pose_part("top_cover", Vector3.ZERO, Vector3(-1.15, 0.0, 0.0))
 		var mp := Vector3(-0.04 * u, -0.24 * u, 0.0)
-		_pose_part("mag", mp, Vector3.ZERO, Vector3.ZERO, u < 0.92)
-		_pose_part("arm_left", hand_p + mp)
-		if t >= 0.55 and not (reload_flags & 2):
-			reload_flags |= 2; _play_reload_sfx(_sfx_mag_out, 0.78)
-	elif t < 2.25:
-		var u := smoothstep(1.35, 2.05, t)
-		_pose_part("top_cover", Vector3.ZERO, Vector3(1.15, 0.0, 0.0))
+		_pose_part("mag", mp, Vector3.ZERO, Vector3.ZERO, t < 1.02)
+		_pose_part("ammo_belt", Vector3(-0.08 * u, -0.14 * u, 0.0), Vector3(0.0, 0.0, 0.45 * u), Vector3.ZERO, t < 0.92)
+		var arm_to_box := (hand_lid_p + Vector3(0.0, 0.09, 0.0)).lerp(hand_box_p, smoothstep(0.48, 0.62, t))
+		_pose_part("arm_left", arm_to_box + mp)
+	elif t < 2.08:
+		# Bring fresh box mag up and lock under receiver
+		var u := smoothstep(1.32, 1.98, t)
+		reload_pos_off = cant_p + Vector3(0.0, 0.018 * sin(smoothstep(1.90, 2.08, t) * PI), 0.0)
+		reload_rot_off = cant_r
+		_pose_part("top_cover", Vector3.ZERO, Vector3(-1.15, 0.0, 0.0))
 		var mp := Vector3(lerpf(-0.04, 0.0, u), lerpf(-0.24, 0.0, u), 0.0)
-		_pose_part("mag", mp, Vector3.ZERO, Vector3.ZERO, t >= 1.30)
-		_pose_part("arm_left", hand_p + mp)
-		if t >= 1.92 and not (reload_flags & 4):
-			reload_flags |= 4; _play_reload_sfx(_sfx_mag_in, 0.76); _commit_mag_ammo(); trauma = minf(1.0, trauma + 0.12)
-	elif t < 2.85:
-		var u := smoothstep(2.25, 2.75, t)
-		_pose_part("top_cover", Vector3.ZERO, Vector3(1.15 * (1.0 - smoothstep(2.25, 2.52, t)), 0.0, 0.0))
-		_pose_part("arm_left", hand_p.lerp(Vector3.ZERO, u))
-		if t >= 2.50 and not (reload_flags & 8):
-			reload_flags |= 8; _play_reload_sfx(_sfx_bolt, 0.80); trauma = minf(1.0, trauma + 0.14)
-	else:
-		var u := smoothstep(2.85, reload_dur, t)
-		reload_pos_off = cant_p.lerp(Vector3.ZERO, u)
-		reload_rot_off = cant_r.lerp(Vector3.ZERO, u)
-		_pose_part("top_cover", Vector3.ZERO)
+		_pose_part("mag", mp, Vector3.ZERO, Vector3.ZERO, t >= 1.28)
+		_pose_part("ammo_belt", Vector3(-0.06, -0.12, 0.0), Vector3(0.0, 0.0, 0.55), Vector3.ZERO, false)
+		_pose_part("arm_left", hand_box_p + mp)
+	elif t < 2.42:
+		# Left hand drapes fresh brass AmmoBelt cleanly across the exposed steel FeedTray!
+		var u := smoothstep(2.08, 2.38, t)
+		reload_pos_off = cant_p
+		reload_rot_off = cant_r
+		_pose_part("top_cover", Vector3.ZERO, Vector3(-1.15, 0.0, 0.0))
 		_pose_part("mag", Vector3.ZERO)
-		_pose_part("arm_left", Vector3.ZERO)
+		var bp := Vector3(lerpf(-0.06, 0.0, u), lerpf(-0.08, 0.0, u), 0.0)
+		_pose_part("ammo_belt", bp, Vector3(0.0, 0.0, lerpf(0.48, 0.0, u)), Vector3.ZERO, true)
+		_pose_part("arm_left", hand_box_p.lerp(hand_belt_p, u))
+	elif t < 2.76:
+		# Left hand slams TopCover shut (-1.15 -> 0.0 rad X)!
+		var close_u := smoothstep(2.46, 2.66, t)
+		var slam := sin(smoothstep(2.60, 2.74, t) * PI)
+		reload_pos_off = cant_p + Vector3(0.0, -0.022 * slam, 0.0)
+		reload_rot_off = cant_r + Vector3(-0.06 * slam, 0.0, 0.0)
+		_pose_part("top_cover", Vector3.ZERO, Vector3(-1.15 * (1.0 - close_u), 0.0, 0.0))
+		_pose_part("mag", Vector3.ZERO)
+		_pose_part("ammo_belt", Vector3.ZERO)
+		_pose_part("arm_left", hand_belt_p.lerp(hand_lid_p + Vector3(0.0, 0.02, 0.0), close_u))
+	elif t < 3.12:
+		# Rack right-side charging handle to chamber 5.56mm belt!
+		var reach := smoothstep(2.76, 2.90, t)
+		var pull := sin(smoothstep(2.88, 3.10, t) * PI)
+		reload_pos_off = cant_p.lerp(Vector3(-0.02, 0.04, -0.02), reach)
+		reload_rot_off = cant_r.lerp(Vector3(0.08, 0.10, -0.10), reach)
+		_pose_part("top_cover", Vector3.ZERO)
+		_pose_part("charge", Vector3(0.0, 0.0, 0.072 * pull))
+		_pose_part("arm_left", hand_lid_p.lerp(hand_charge_p, reach) + Vector3(0.0, 0.0, 0.065 * pull))
+	else:
+		var u := smoothstep(3.12, reload_dur, t)
+		reload_pos_off = Vector3(-0.02, 0.04, -0.02).lerp(Vector3.ZERO, u)
+		reload_rot_off = Vector3(0.08, 0.10, -0.10).lerp(Vector3.ZERO, u)
+		_pose_part("top_cover", Vector3.ZERO)
+		_pose_part("charge", Vector3.ZERO)
+		_pose_part("mag", Vector3.ZERO)
+		_pose_part("ammo_belt", Vector3.ZERO)
+		_pose_part("arm_left", hand_charge_p.lerp(Vector3.ZERO, u))
 	if t >= reload_dur:
 		is_reloading = false
 		_reset_weapon_parts()
 
 
 func _update_reload_magnum() -> void:
+	# FIXED Crane sign: +1.28 rad Z swings Cylinder LEFT & OUT cleanly from the open frame window!
+	# Ejects exact spent count from cylinder world pos, animates visible SpeedLoader + support hand!
 	var t := reload_elapsed
-	var cant_p := Vector3(-0.04, 0.075, -0.04)
-	var cant_r := Vector3(0.32, 0.24, 0.58)
+	var cant_p := Vector3(-0.035, 0.082, -0.045)
+	var cant_r := Vector3(0.28, 0.24, -0.44)
+	var load_r := Vector3(-0.16, 0.20, -0.38)
+	var hand_cyl_p := Vector3(-0.04, -0.02, 0.04)
+	var hand_load_p := Vector3(-0.05, -0.03, 0.11)
+
+	if _reload_event(0.14, 1):
+		_play_reload_sfx(_sfx_mag_out, 0.90)
+	if _reload_event(0.46, 2):
+		var cyl_w := weapon_pivot.to_global(Vector3(-0.045, 0.015, -0.130))
+		if _w_parts.has("cylinder") and not (_w_parts["cylinder"] as Array).is_empty():
+			var cn := _w_parts["cylinder"][0] as Node3D
+			if is_instance_valid(cn) and cn.is_inside_tree():
+				cyl_w = cn.global_position
+		for _c in range(maxi(1, _magnum_spent_count)):
+			_eject_brass_casing(WEAPONS[6], false, cyl_w)
+	if _reload_event(1.18, 4):
+		_play_reload_sfx(_sfx_shell_in, 0.88)
+	if _reload_event(1.66, 8):
+		_commit_mag_ammo()
+		weapon_chambered[6] = true
+		_play_reload_sfx(_sfx_mag_in, 0.92)
+		trauma = minf(1.0, trauma + 0.12)
+
 	if t < 0.28:
 		var u := smoothstep(0.0, 0.28, t)
 		reload_pos_off = cant_p * u
 		reload_rot_off = cant_r * u
-		_pose_part("crane", Vector3.ZERO, Vector3(0.0, 0.0, -1.25 * u))
-		if t >= 0.14 and not (reload_flags & 1):
-			reload_flags |= 1
-			_play_reload_sfx(_sfx_mag_out, 0.90)
-	elif t < 0.72:
-		# Tilt up to dump spent brass
-		var u := smoothstep(0.28, 0.72, t)
+		_pose_part("crane", Vector3.ZERO, Vector3(0.0, 0.0, 1.28 * u))
+		_pose_part("speed_loader", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, false)
+		_pose_part("arm_left", hand_cyl_p * u)
+	elif t < 0.74:
+		var u := smoothstep(0.28, 0.74, t)
 		var dump := sin(u * PI)
 		reload_pos_off = cant_p + Vector3(0, 0.03 * dump, 0.02 * dump)
-		reload_rot_off = cant_r + Vector3(0.55 * dump, 0.0, 0.15 * dump)
-		_pose_part("crane", Vector3.ZERO, Vector3(0.0, 0.0, -1.25))
-		if t >= 0.45 and not (reload_flags & 2):
-			reload_flags |= 2
-			for _c in range(3):
-				_eject_brass_casing(WEAPONS[6], false)
+		reload_rot_off = cant_r + Vector3(0.52 * dump, 0.0, -0.14 * dump)
+		_pose_part("crane", Vector3.ZERO, Vector3(0.0, 0.0, 1.28))
+		_pose_part("speed_loader", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, false)
+		_pose_part("arm_left", hand_cyl_p + Vector3(0.0, 0.03 * dump, -0.04 * dump))
 	elif t < 1.50:
-		# Speedloader insertion
-		var u := smoothstep(0.72, 1.45, t)
-		var seat := sin(smoothstep(1.10, 1.40, t) * PI)
-		reload_pos_off = cant_p + Vector3(0.0, -0.02 + 0.022 * seat, 0.0)
-		reload_rot_off = Vector3(-0.18, 0.20, 0.48)
-		_pose_part("crane", Vector3.ZERO, Vector3(0.0, 0.0, -1.25))
-		_pose_part("cylinder", Vector3.ZERO, Vector3(0.0, 0.0, _revolver_cyl_angle + u * TAU))
-		if t >= 1.15 and not (reload_flags & 4):
-			reload_flags |= 4
-			_play_reload_sfx(_sfx_shell_in, 0.88)
-			_commit_mag_ammo()
+		# Support hand brings visible 6-shot SpeedLoader straight into the swung-out cylinder!
+		var u_in := smoothstep(0.74, 1.18, t)
+		var u_out := smoothstep(1.26, 1.48, t)
+		var seat := sin(smoothstep(1.12, 1.32, t) * PI)
+		reload_pos_off = cant_p + Vector3(0.0, -0.015 + 0.020 * seat, 0.0)
+		reload_rot_off = cant_r.lerp(load_r, smoothstep(0.74, 0.95, t))
+		_pose_part("crane", Vector3.ZERO, Vector3(0.0, 0.0, 1.28))
+		_pose_part("cylinder", Vector3.ZERO, Vector3(0.0, 0.0, _revolver_cyl_angle + u_in * TAU))
+		var sl_z := lerpf(0.14, 0.0, u_in) + 0.16 * u_out
+		_pose_part("speed_loader", Vector3(0.0, 0.0, sl_z), Vector3(0.0, 0.0, u_out * 0.6), Vector3.ZERO, t < 1.44)
+		_pose_part("arm_left", hand_load_p + Vector3(0.0, -0.02 * u_out, sl_z))
 	else:
-		# Wrist flick snaps cylinder shut!
 		var u := smoothstep(1.50, reload_dur, t)
-		var snap := smoothstep(1.54, 1.72, t)
+		var snap := smoothstep(1.54, 1.70, t)
 		var flick := sin(smoothstep(1.52, 1.78, t) * PI)
-		reload_pos_off = cant_p.lerp(Vector3.ZERO, u) + Vector3(0.025 * flick, 0.0, 0.0)
-		reload_rot_off = Vector3(-0.18, 0.20, 0.48).lerp(Vector3.ZERO, u) + Vector3(0.0, 0.0, -0.32 * flick)
-		_pose_part("crane", Vector3.ZERO, Vector3(0.0, 0.0, -1.25 * (1.0 - snap)))
-		if t >= 1.66 and not (reload_flags & 8):
-			reload_flags |= 8
-			_play_reload_sfx(_sfx_mag_in, 0.92)
-			trauma = minf(1.0, trauma + 0.12)
+		reload_pos_off = cant_p.lerp(Vector3.ZERO, u) + Vector3(-0.022 * flick, 0.0, 0.0)
+		reload_rot_off = load_r.lerp(Vector3.ZERO, u) + Vector3(0.0, 0.0, 0.30 * flick)
+		_pose_part("crane", Vector3.ZERO, Vector3(0.0, 0.0, 1.28 * (1.0 - snap)))
+		_pose_part("speed_loader", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, false)
+		_pose_part("arm_left", hand_cyl_p.lerp(Vector3.ZERO, u))
 	if t >= reload_dur:
 		is_reloading = false
 		_reset_weapon_parts()
 
 
-func _update_reload_hunting() -> void:
-	var t := reload_elapsed
-	var cant_p := Vector3(-0.045, 0.085, -0.05)
-	var cant_r := Vector3(0.20, 0.28, -0.44)
-	if t < 0.35:
-		var u := smoothstep(0.0, 0.35, t)
+func _update_reload_hunting(delta: float) -> void:
+	# Interruptible per-round Springfield M1903 reload through OPEN receiver with visible FeedRound + animated hand!
+	reload_shell_timer += delta
+	var cant_p := Vector3(-0.045, 0.088, -0.052)
+	var cant_r := Vector3(0.18, 0.26, -0.38)
+	var hand_bolt_p := Vector3(0.055, 0.042, 0.095)
+	var hand_feed_p := Vector3(0.025, 0.068, 0.045)
+	var mag_cap := get_weapon_mag_size(7)
+
+	if reload_shell_phase == 0:
+		# Open bolt (and eject any pending spent casing if player reloaded right after firing!)
+		var u := smoothstep(0.0, 0.34, reload_shell_timer)
 		reload_pos_off = cant_p * u
 		reload_rot_off = cant_r * u
-		_pose_part("bolt", Vector3(0.0, 0.0, 0.085 * smoothstep(0.15, 0.35, t)), Vector3(0.0, 0.0, 1.05 * smoothstep(0.0, 0.22, t)))
-		if t >= 0.14 and not (reload_flags & 1):
+		var lift := smoothstep(0.0, 0.18, reload_shell_timer)
+		var pull := smoothstep(0.14, 0.34, reload_shell_timer)
+		_pose_part("bolt", Vector3(0.0, 0.0, 0.085 * pull), Vector3(0.0, 0.0, 1.05 * lift))
+		_pose_part("feed_round", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, false)
+		_pose_part("arm_right", hand_bolt_p * lift + Vector3(0.0, 0.0, 0.082 * pull))
+		if reload_shell_timer >= 0.14 and not (reload_flags & 1):
 			reload_flags |= 1
 			_play_reload_sfx(_sfx_bolt, 0.78)
-	elif t < 1.65:
-		var u := smoothstep(0.35, 1.65, t)
-		var push := sin(u * PI * 3.0)
-		reload_pos_off = cant_p + Vector3(0.0, 0.012 * absf(push), 0.0)
+			if _sniper_pending_eject:
+				_sniper_pending_eject = false
+				_eject_brass_casing(WEAPONS[7], false)
+		if reload_shell_timer >= 0.34:
+			reload_shell_phase = 1
+			reload_shell_timer = 0.0
+			reload_flags = 0
+	elif reload_shell_phase == 1:
+		var st := reload_shell_timer
+		var push := sin(smoothstep(0.10, 0.28, st) * PI)
+		reload_pos_off = cant_p + Vector3(0.0, 0.014 * push, 0.0)
 		reload_rot_off = cant_r
 		_pose_part("bolt", Vector3(0.0, 0.0, 0.085), Vector3(0.0, 0.0, 1.05))
-		if t >= 0.65 and not (reload_flags & 2):
+		var u_in := smoothstep(0.0, 0.26, st)
+		var fp := Vector3(lerpf(0.045, 0.0, u_in), lerpf(0.075, -0.012, u_in), 0.0)
+		_pose_part("feed_round", fp, Vector3(-0.22 * (1.0 - u_in), 0.0, 0.0), Vector3.ZERO, st < 0.26)
+		_pose_part("arm_right", hand_feed_p + fp)
+		if st >= 0.24 and not (reload_flags & 2):
 			reload_flags |= 2
-			_play_reload_sfx(_sfx_shell_in, 1.06)
-		if t >= 1.05 and not (reload_flags & 4):
-			reload_flags |= 4
-			_play_reload_sfx(_sfx_shell_in, 1.12)
-		if t >= 1.45 and not (reload_flags & 8):
-			reload_flags |= 8
-			_play_reload_sfx(_sfx_shell_in, 1.16)
-			_commit_mag_ammo()
-	else:
-		var u := smoothstep(1.65, reload_dur, t)
-		var close_u := smoothstep(1.65, 1.98, t)
-		var lock_u := smoothstep(1.92, 2.15, t)
+			_play_reload_sfx(_sfx_shell_in, randf_range(1.06, 1.16))
+			if ammo_in_mag[7] < mag_cap and ammo_reserve[7] > 0:
+				ammo_in_mag[7] += 1
+				ammo_reserve[7] -= 1
+				trauma = minf(1.0, trauma + 0.04)
+		if st >= 0.34 or (reload_cancel_req and ammo_in_mag[7] > 0 and st >= 0.26):
+			if reload_cancel_req or ammo_in_mag[7] >= mag_cap or ammo_reserve[7] <= 0:
+				reload_shell_phase = 2
+				reload_shell_timer = 0.0
+				reload_flags = 0
+				_pose_part("feed_round", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, false)
+			else:
+				reload_shell_timer = 0.0
+				reload_flags = 0
+	elif reload_shell_phase == 2:
+		var exit_dur := 0.50
+		var u := smoothstep(0.0, exit_dur, reload_shell_timer)
+		var close_u := smoothstep(0.0, 0.26, reload_shell_timer)
+		var lock_u := smoothstep(0.22, 0.38, reload_shell_timer)
 		reload_pos_off = cant_p.lerp(Vector3.ZERO, u)
 		reload_rot_off = cant_r.lerp(Vector3.ZERO, u)
 		_pose_part("bolt", Vector3(0.0, 0.0, 0.085 * (1.0 - close_u)), Vector3(0.0, 0.0, 1.05 * (1.0 - lock_u)))
-		if t >= 1.85 and not (reload_flags & 16):
-			reload_flags |= 16
+		_pose_part("feed_round", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, false)
+		_pose_part("arm_right", (hand_bolt_p + Vector3(0.0, 0.0, 0.082 * (1.0 - close_u))).lerp(Vector3.ZERO, smoothstep(0.32, exit_dur, reload_shell_timer)))
+		if reload_shell_timer >= 0.22 and not (reload_flags & 4):
+			reload_flags |= 4
+			weapon_chambered[7] = true
 			_play_reload_sfx(_sfx_bolt, 0.88)
 			trauma = minf(1.0, trauma + 0.10)
-	if t >= reload_dur:
-		is_reloading = false
-		_reset_weapon_parts()
+		if reload_shell_timer >= exit_dur:
+			weapon_chambered[7] = true
+			is_reloading = false
+			reload_cancel_req = false
+			_reset_weapon_parts()
 
 
 func _update_reload_rifle() -> void:
@@ -3131,12 +3611,39 @@ func _update_reload_rifle() -> void:
 	var hand_mag_p := Vector3(0.008, -0.172, 0.168)
 	var hand_mag_r := Vector3(-0.64, 0.34, 0.52)
 	var hand_drop_r := Vector3(-0.78, 0.42, 0.62)
-	var hand_pouch_p := hand_mag_p + EJECT_AR * 0.25 + Vector3(-0.035, -0.065, 0.030)
-	var hand_ch_p := Vector3(0.036, 0.055, 0.256)
-	var hand_ch_r := Vector3(-0.14, 0.16, 0.20)
+	var hand_extract_end := hand_mag_p + EJECT_AR * 0.25
+	var hand_pouch_p := hand_extract_end + Vector3(-0.035, -0.065, 0.030)
+	var hand_catch_p := Vector3(-0.025, 0.015, 0.145)
+	var hand_catch_r := Vector3(-0.24, 0.22, 0.28)
 	var round_vis := (not reload_was_empty) if t < 0.80 else true
-	_pose_part("dust_cover", Vector3.ZERO, Vector3.ZERO if _m16_dust_open else Vector3(0.0, 0.0, 1.48), PIVOT_AR_DUST)
+	_pose_part("dust_cover", Vector3.ZERO, Vector3.ZERO if (_m16_dust_open or reload_was_empty) else Vector3(0.0, 0.0, 1.48), PIVOT_AR_DUST)
 	_pose_part("mag_bullet", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, round_vis)
+
+	# Authoritative timestamp-crossing events
+	if _reload_event(0.24, 1):
+		_play_reload_sfx(_sfx_mag_out, 1.0)
+	if _reload_event(0.58, 32):
+		_spawn_dropped_mag(1)
+	if _reload_event(1.18, 2):
+		_play_reload_sfx(_sfx_mag_in, 1.0)
+	if _reload_event(1.28, 4):
+		_commit_mag_ammo()
+		if not reload_was_empty:
+			weapon_chambered[1] = true
+		trauma = minf(1.0, trauma + 0.09)
+	if reload_was_empty and _reload_event(1.66, 8):
+		# Clean single M16 bolt-release paddle slap!
+		weapon_chambered[1] = true
+		_m16_dust_open = true
+		_play_reload_sfx(_sfx_bolt, 1.04)
+		trauma = minf(1.0, trauma + 0.11)
+
+	# Keep bolt locked back cleanly until bolt-catch slap at 1.66s!
+	if reload_was_empty:
+		var bolt_u := 1.0 if t < 1.66 else (1.0 - smoothstep(1.66, 1.73, t))
+		_pose_part("slide", Vector3(0.0, 0.0, 0.052 * bolt_u))
+	else:
+		_pose_part("slide", Vector3.ZERO)
 
 	if t < 0.22:
 		var u := smoothstep(0.0, 0.22, t)
@@ -3145,26 +3652,21 @@ func _update_reload_rifle() -> void:
 		_pose_part("mag", Vector3.ZERO)
 		_pose_part("arm_left", hand_mag_p * u, hand_mag_r * u, PIVOT_AR_HAND)
 	elif t < 0.66:
-		if t >= 0.24 and not (reload_flags & 1):
-			reload_flags |= 1
-			_play_reload_sfx(_sfx_mag_out, 1.0)
 		var u := smoothstep(0.24, 0.62, t)
-		if t >= 0.58 and not (reload_flags & 32):
-			reload_flags |= 32
-			_spawn_dropped_mag(1)
 		reload_pos_off = base_cant_p + Vector3(0.0, -0.022 * sin(u * PI), 0.012)
 		reload_rot_off = base_cant_r + Vector3(0.06 * sin(u * PI), 0.0, -0.08 * sin(u * PI))
 		var mp := EJECT_AR * (0.25 * u)
-		_pose_part("mag", mp, Vector3(-0.22 * u, 0.0, 0.0), PIVOT_AR_MAG, u < 0.96)
+		_pose_part("mag", mp, Vector3(-0.22 * u, 0.0, 0.0), PIVOT_AR_MAG, t < 0.58)
 		_pose_part("arm_left", hand_mag_p + mp, hand_mag_r.lerp(hand_drop_r, u), PIVOT_AR_HAND)
 	elif t < 0.92:
+		# Continuous hand dip from hand_extract_end -> pouch -> align (ZERO jump at 0.66s!)
 		var u := smoothstep(0.66, 0.92, t)
 		var dip := sin(u * PI)
 		reload_pos_off = base_cant_p + Vector3(-0.008 * dip, -0.024 * dip, 0.012)
 		reload_rot_off = base_cant_r + Vector3(-0.05 * dip, 0.03, 0.04)
 		_pose_part("mag", EJECT_AR * 0.25, Vector3.ZERO, PIVOT_AR_MAG, false)
-		var fetch_p := hand_pouch_p.lerp(hand_mag_p + EJECT_AR * 0.24, smoothstep(0.55, 1.0, u))
-		_pose_part("arm_left", fetch_p + Vector3(-0.015 * dip, -0.028 * dip, 0.012 * dip), hand_drop_r, PIVOT_AR_HAND)
+		var fetch_p := hand_extract_end.lerp(hand_pouch_p, smoothstep(0.0, 0.45, u)) if u < 0.5 else hand_pouch_p.lerp(hand_mag_p + EJECT_AR * 0.24, smoothstep(0.5, 1.0, u))
+		_pose_part("arm_left", fetch_p, hand_drop_r, PIVOT_AR_HAND)
 	elif t < 1.40:
 		var mp := Vector3.ZERO
 		var mrot := Vector3.ZERO
@@ -3175,60 +3677,36 @@ func _update_reload_rifle() -> void:
 			mrot = Vector3(lerpf(-0.22, -0.07, u_align), 0.0, 0.0)
 			_pose_part("arm_left", hand_mag_p + mp, hand_drop_r.lerp(hand_mag_r, u_align), PIVOT_AR_HAND)
 		else:
-			var u_seat := smoothstep(1.12, 1.29, t)
-			slap = sin(smoothstep(1.27, 1.40, t) * PI)
+			var u_seat := smoothstep(1.12, 1.28, t)
+			slap = sin(smoothstep(1.26, 1.40, t) * PI)
 			mp = EJECT_AR * lerpf(0.085, 0.0, u_seat)
 			mrot = Vector3(lerpf(-0.07, 0.0, u_seat), 0.0, 0.0)
 			_pose_part("arm_left", hand_mag_p + mp + Vector3(0.0, 0.018 * slap, 0.0), hand_mag_r, PIVOT_AR_HAND)
 		reload_pos_off = base_cant_p + Vector3(0.0, 0.026 * slap, -0.012 * slap)
 		reload_rot_off = base_cant_r + Vector3(0.09 * slap, 0.0, 0.07 * slap)
 		_pose_part("mag", mp, mrot, PIVOT_AR_MAG, true)
-		if t >= 1.16 and not (reload_flags & 2):
-			reload_flags |= 2
-			_play_reload_sfx(_sfx_mag_in, 1.0)
-		if t >= 1.27 and not (reload_flags & 4):
-			reload_flags |= 4
-			_commit_mag_ammo()
-			trauma = minf(1.0, trauma + 0.09)
-	elif reload_was_empty and t < 1.90:
-		_m16_dust_open = true
-		_pose_part("dust_cover", Vector3.ZERO)
-		if t >= 1.48 and not (reload_flags & 8):
-			reload_flags |= 8
-			_play_reload_sfx(_sfx_bolt, 1.0)
-		if t >= 1.64 and not (reload_flags & 16):
-			reload_flags |= 16
-			trauma = minf(1.0, trauma + 0.11)
-		var u := smoothstep(1.40, 1.90, t)
-		var reach := smoothstep(0.0, 0.24, u)
-		var pull := sin(smoothstep(0.20, 0.78, u) * PI)
-		var latch_u := sin(smoothstep(0.14, 0.72, u) * PI)
-		var fa_tap := sin(smoothstep(0.72, 0.96, u) * PI)
-		reload_pos_off = base_cant_p.lerp(Vector3(-0.02, 0.03, -0.02), u) + Vector3(-0.012 * pull, 0.012 * pull, 0.032 * pull)
-		reload_rot_off = base_cant_r.lerp(Vector3(0.10, 0.18, -0.24), smoothstep(0.0, 0.35, u))
-		var ch := pull * 0.068
-		_pose_part("charge", Vector3(0.0, 0.0, ch))
-		_pose_part("charge_latch", Vector3(0.0, 0.0, ch), Vector3(0.0, 0.26 * latch_u, 0.0), PIVOT_AR_LATCH)
-		_pose_part("slide", Vector3(0.0, 0.0, ch))
-		_pose_part("bolt_catch", Vector3.ZERO, Vector3(0.0, 0.0, 0.22 * pull), PIVOT_AR_CATCH)
-		_pose_part("fwd_assist", AXIS_AR_ASSIST * (0.012 * fa_tap))
+	elif reload_was_empty and t < 1.88:
+		# Clean single bolt-catch ping-pong paddle slap (no simultaneous charge/forward-assist clutter!)
+		var u := smoothstep(1.40, 1.88, t)
+		var reach := smoothstep(1.40, 1.62, t)
+		var slap := sin(smoothstep(1.62, 1.76, t) * PI)
+		reload_pos_off = base_cant_p.lerp(Vector3(-0.02, 0.03, -0.02), u) + Vector3(0.015 * slap, 0.0, 0.0)
+		reload_rot_off = base_cant_r.lerp(Vector3(0.10, 0.16, -0.22), u) + Vector3(0.0, 0.0, -0.08 * slap)
+		_pose_part("mag", Vector3.ZERO)
+		_pose_part("bolt_catch", Vector3.ZERO, Vector3(0.0, 0.0, 0.28 * slap), PIVOT_AR_CATCH)
 		var h_eff_start := hand_mag_p + (PIVOT_AR_HAND - Basis.from_euler(hand_mag_r) * PIVOT_AR_HAND)
-		_pose_part("arm_left", h_eff_start.lerp(hand_ch_p, reach) + Vector3(0.0, 0.0, ch), hand_mag_r.lerp(hand_ch_r, reach))
+		_pose_part("arm_left", h_eff_start.lerp(hand_catch_p, reach) + Vector3(0.025 * slap, 0.0, 0.0), hand_mag_r.lerp(hand_catch_r, reach))
 	else:
-		var start_s := 1.90 if reload_was_empty else 1.40
+		var start_s := 1.88 if reload_was_empty else 1.40
 		var u := smoothstep(start_s, reload_dur, t)
 		var prev_p := Vector3(-0.02, 0.03, -0.02) if reload_was_empty else base_cant_p
-		var prev_r := Vector3(0.10, 0.18, -0.24) if reload_was_empty else base_cant_r
+		var prev_r := Vector3(0.10, 0.16, -0.22) if reload_was_empty else base_cant_r
 		reload_pos_off = prev_p.lerp(Vector3.ZERO, u)
 		reload_rot_off = prev_r.lerp(Vector3.ZERO, u)
-		_pose_part("charge", Vector3.ZERO)
-		_pose_part("charge_latch", Vector3.ZERO)
-		_pose_part("slide", Vector3.ZERO)
 		_pose_part("bolt_catch", Vector3.ZERO)
-		_pose_part("fwd_assist", Vector3.ZERO)
 		_pose_part("mag", Vector3.ZERO)
 		if reload_was_empty:
-			_pose_part("arm_left", hand_ch_p.lerp(Vector3.ZERO, u), hand_ch_r.lerp(Vector3.ZERO, u))
+			_pose_part("arm_left", hand_catch_p.lerp(Vector3.ZERO, u), hand_catch_r.lerp(Vector3.ZERO, u))
 		else:
 			_pose_part("arm_left", hand_mag_p.lerp(Vector3.ZERO, u), hand_mag_r.lerp(Vector3.ZERO, u), PIVOT_AR_HAND)
 
@@ -3245,9 +3723,30 @@ func _update_reload_pistol() -> void:
 	var hand_drop_r := Vector3(-0.28, 0.22, 0.26)
 	var hand_seat_p := Vector3(-0.018, -0.072, 0.036)
 	var hand_seat_r := Vector3(-0.14, 0.10, 0.14)
-	var snap_t := 1.0 - smoothstep(1.16, 1.24, t) if reload_was_empty else 0.0
-	_pose_part("slide", Vector3(0.0, 0.0, (0.034 if t < 1.16 else 0.034 * snap_t) if reload_was_empty else 0.0))
-	_pose_part("slidestop", Vector3.ZERO, Vector3(-0.22 * (1.0 if t < 1.12 else (1.0 - smoothstep(1.12, 1.20, t))) if reload_was_empty else 0.0, 0.0, 0.0), PIVOT_G17_SLIDESTOP)
+	var hand_slide_p := Vector3(-0.026, 0.018, 0.022)
+	var hand_slide_r := Vector3(-0.06, 0.05, 0.08)
+
+	# Authoritative timestamp-crossing events (fixes 0.42-0.46s frame-skip bug!)
+	if _reload_event(0.16, 1):
+		_play_reload_sfx(_sfx_mag_out, 1.18)
+	if _reload_event(0.42, 32):
+		if reload_was_empty:
+			_spawn_dropped_mag(0)
+	if _reload_event(0.86, 2):
+		_play_reload_sfx(_sfx_mag_in, 1.16)
+	if _reload_event(0.95, 4):
+		_commit_mag_ammo()
+		if not reload_was_empty:
+			weapon_chambered[0] = true
+		trauma = minf(1.0, trauma + 0.08)
+	if reload_was_empty and _reload_event(1.18, 8):
+		weapon_chambered[0] = true
+		_play_reload_sfx(_sfx_bolt, 1.24)
+		trauma = minf(1.0, trauma + 0.09)
+
+	var snap_t := 1.0 - smoothstep(1.18, 1.25, t) if reload_was_empty else 0.0
+	_pose_part("slide", Vector3(0.0, 0.0, (0.034 if t < 1.18 else 0.034 * snap_t) if reload_was_empty else 0.0))
+	_pose_part("slidestop", Vector3.ZERO, Vector3(-0.22 * (1.0 if t < 1.16 else (1.0 - smoothstep(1.16, 1.22, t))) if reload_was_empty else 0.0, 0.0, 0.0), PIVOT_G17_SLIDESTOP)
 	var bullet_vis := (not reload_was_empty) or t >= 0.76
 
 	if t < 0.16:
@@ -3258,18 +3757,12 @@ func _update_reload_pistol() -> void:
 		_pose_part("mag_bullet", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, not reload_was_empty)
 		_pose_part("arm_left", hand_drop_p * u, hand_drop_r * u)
 	elif t < 0.46:
-		if not (reload_flags & 1):
-			reload_flags |= 1
-			_play_reload_sfx(_sfx_mag_out, 1.18)
 		var u := smoothstep(0.16, 0.44, t)
-		if t >= 0.42 and reload_was_empty and not (reload_flags & 32):
-			reload_flags |= 32
-			_spawn_dropped_mag(0)
 		reload_pos_off = cant_p + Vector3(0.0, -0.015 * sin(u * PI), 0.0)
 		reload_rot_off = cant_r + Vector3(0.06 * sin(u * PI), 0.0, 0.0)
 		var mp := EJECT_G17 * (0.22 * u)
-		_pose_part("mag", mp, Vector3.ZERO, Vector3.ZERO, u < 0.90)
-		_pose_part("mag_bullet", mp, Vector3.ZERO, Vector3.ZERO, (not reload_was_empty) and u < 0.90)
+		_pose_part("mag", mp, Vector3.ZERO, Vector3.ZERO, t < 0.42 if reload_was_empty else u < 0.92)
+		_pose_part("mag_bullet", mp, Vector3.ZERO, Vector3.ZERO, (not reload_was_empty) and u < 0.92)
 		_pose_part("arm_left", hand_drop_p + Vector3(-0.025 * u, -0.065 * u, 0.02 * u), hand_drop_r)
 	elif t < 0.76:
 		var u := smoothstep(0.46, 0.76, t)
@@ -3281,7 +3774,7 @@ func _update_reload_pistol() -> void:
 		var fetch_p := (hand_drop_p + Vector3(-0.025, -0.065, 0.02)).lerp(hand_seat_p + EJECT_G17 * 0.20, u)
 		_pose_part("arm_left", fetch_p, hand_drop_r.lerp(hand_seat_r, u))
 	elif t < 1.02:
-		var u := smoothstep(0.76, 0.96, t)
+		var u := smoothstep(0.76, 0.95, t)
 		var slap := sin(smoothstep(0.90, 1.02, t) * PI)
 		reload_pos_off = cant_p + Vector3(0.0, 0.022 * slap, 0.0)
 		reload_rot_off = cant_r + Vector3(0.08 * slap, 0.0, 0.0)
@@ -3289,34 +3782,27 @@ func _update_reload_pistol() -> void:
 		_pose_part("mag", mp, Vector3.ZERO, Vector3.ZERO, true)
 		_pose_part("mag_bullet", mp, Vector3.ZERO, Vector3.ZERO, bullet_vis)
 		_pose_part("arm_left", hand_seat_p + mp + Vector3(0.0, 0.016 * slap, 0.0), hand_seat_r)
-		if t >= 0.84 and not (reload_flags & 2):
-			reload_flags |= 2
-			_play_reload_sfx(_sfx_mag_in, 1.16)
-		if t >= 0.92 and not (reload_flags & 4):
-			reload_flags |= 4
-			_commit_mag_ammo()
-			trauma = minf(1.0, trauma + 0.08)
-	elif reload_was_empty and t < 1.40:
-		if t >= 1.16 and not (reload_flags & 8):
-			reload_flags |= 8
-			_play_reload_sfx(_sfx_bolt, 1.24)
-			trauma = minf(1.0, trauma + 0.09)
-		var u := smoothstep(1.02, 1.40, t)
-		var dip := sin(u * PI)
-		reload_pos_off = cant_p.lerp(Vector3.ZERO, u) + Vector3(0.0, -0.014 * dip, 0.014 * dip)
-		reload_rot_off = cant_r.lerp(Vector3.ZERO, u) + Vector3(-0.08 * dip, 0.0, -0.10 * dip)
+	elif reload_was_empty and t < 1.36:
+		# Support hand stays engaged to thumb the slide stop cleanly at 1.18s while holding partial cant!
+		var reach := smoothstep(1.02, 1.18, t)
+		var dip := sin(smoothstep(1.16, 1.30, t) * PI)
+		reload_pos_off = cant_p.lerp(cant_p * 0.45, reach) + Vector3(0.0, -0.012 * dip, 0.012 * dip)
+		reload_rot_off = cant_r.lerp(cant_r * 0.45, reach) + Vector3(-0.06 * dip, 0.0, -0.08 * dip)
 		_pose_part("mag", Vector3.ZERO)
 		_pose_part("mag_bullet", Vector3.ZERO)
-		_pose_part("arm_left", hand_seat_p.lerp(Vector3.ZERO, u), hand_seat_r.lerp(Vector3.ZERO, u))
+		_pose_part("arm_left", hand_seat_p.lerp(hand_slide_p, reach), hand_seat_r.lerp(hand_slide_r, reach))
 	else:
-		var start_s := 1.40 if reload_was_empty else 1.02
+		# Smooth continuous settle from exact previous cant (ZERO snap back to full cant at 1.40s!)
+		var start_s := 1.36 if reload_was_empty else 1.02
 		var u := smoothstep(start_s, reload_dur, t)
-		reload_pos_off = cant_p.lerp(Vector3.ZERO, u)
-		reload_rot_off = cant_r.lerp(Vector3.ZERO, u)
+		var prev_p := (cant_p * 0.45) if reload_was_empty else cant_p
+		var prev_r := (cant_r * 0.45) if reload_was_empty else cant_r
+		var prev_hp := hand_slide_p if reload_was_empty else hand_seat_p
+		var prev_hr := hand_slide_r if reload_was_empty else hand_seat_r
+		reload_pos_off = prev_p.lerp(Vector3.ZERO, u)
+		reload_rot_off = prev_r.lerp(Vector3.ZERO, u)
 		_pose_part("mag", Vector3.ZERO)
 		_pose_part("mag_bullet", Vector3.ZERO)
-		var prev_hp := Vector3.ZERO if reload_was_empty else hand_seat_p
-		var prev_hr := Vector3.ZERO if reload_was_empty else hand_seat_r
 		_pose_part("arm_left", prev_hp.lerp(Vector3.ZERO, u), prev_hr.lerp(Vector3.ZERO, u))
 
 	if t >= reload_dur:
@@ -3334,17 +3820,20 @@ func _update_reload_shotgun(delta: float) -> void:
 	var hand_port_r := Vector3(0.14, 0.06, 0.16)
 	var hand_push_p := Vector3(0.036, -0.026, 0.118)
 	var hand_push_r := Vector3(0.06, 0.04, 0.08)
+	var mag_cap := get_weapon_mag_size(2)
 
 	if reload_shell_phase == 0:
 		if is_instance_valid(_shotgun_shell_rig):
 			_shotgun_shell_rig.visible = false
 		_pose_part("lifter", Vector3.ZERO)
+		var u := smoothstep(0.0, 0.26, reload_shell_timer)
 		if reload_cancel_req and ammo_in_mag[2] > 0:
+			_shotgun_exit_arm_p = hand_caddy_p * u
+			_shotgun_exit_arm_r = hand_caddy_r * u
 			reload_shell_phase = 2
 			reload_shell_timer = 0.0
 			reload_flags = 0
 			return
-		var u := smoothstep(0.0, 0.26, reload_shell_timer)
 		reload_pos_off = cant_p * u
 		reload_rot_off = cant_r * u
 		_pose_part("arm_left", hand_caddy_p * u, hand_caddy_r * u)
@@ -3354,78 +3843,77 @@ func _update_reload_shotgun(delta: float) -> void:
 			reload_flags = 0
 	elif reload_shell_phase == 1:
 		var st := reload_shell_timer
-		var u := smoothstep(0.0, 0.42, st)
 		var push := sin(smoothstep(0.14, 0.34, st) * PI)
 		reload_pos_off = cant_p + Vector3(0.0, 0.018 * push, -0.012 * push)
 		reload_rot_off = cant_r + Vector3(-0.06 * push, 0.0, 0.08 * push)
-
-		# Lifter opens inward (+Y) strictly while shell enters the 24mm loading port
-		var lift_u := 0.0
-		if st >= 0.14 and st < 0.34:
-			lift_u = sin(smoothstep(0.14, 0.34, st) * PI)
+		var lift_u := sin(smoothstep(0.14, 0.34, st) * PI) if (st >= 0.14 and st < 0.34) else 0.0
 		_pose_part("lifter", Vector3(0.0, 0.012 * lift_u, 0.0), Vector3(-0.16 * lift_u, 0.0, 0.0), PIVOT_M870_LIFTER)
 
-		# Left hand & 12ga shell choreography: approach strictly below receiver belly (y < -0.046),
-		# align under port, push cleanly through open lifter slot into mag tube, hide inside tube
+		var cur_ap := hand_caddy_p
+		var cur_ar := hand_caddy_r
 		if st < 0.16:
 			var a := smoothstep(0.0, 0.16, st)
-			_pose_part("arm_left", hand_caddy_p.lerp(hand_port_p, a), hand_caddy_r.lerp(hand_port_r, a))
+			cur_ap = hand_caddy_p.lerp(hand_port_p, a)
+			cur_ar = hand_caddy_r.lerp(hand_port_r, a)
 			if is_instance_valid(_shotgun_shell_rig):
 				_shotgun_shell_rig.visible = true
 				_shotgun_shell_rig.position = SHELL_M870_START.lerp(PORT_M870, a)
 				_shotgun_shell_rig.rotation = Vector3(0.42, 0.22, 0.18).lerp(Vector3(0.26, 0.0, 0.0), a)
 		elif st < 0.25:
 			var b := smoothstep(0.16, 0.25, st)
-			_pose_part("arm_left", hand_port_p.lerp(hand_push_p, b * 0.55), hand_port_r.lerp(hand_push_r, b * 0.55))
+			cur_ap = hand_port_p.lerp(hand_push_p, b * 0.55)
+			cur_ar = hand_port_r.lerp(hand_push_r, b * 0.55)
 			if is_instance_valid(_shotgun_shell_rig):
 				_shotgun_shell_rig.visible = true
 				_shotgun_shell_rig.position = PORT_M870.lerp(SHELL_M870_ENTER, b)
 				_shotgun_shell_rig.rotation = Vector3(lerpf(0.26, 0.10, b), 0.0, 0.0)
 		elif st < 0.33:
 			var c := smoothstep(0.25, 0.33, st)
-			_pose_part("arm_left", hand_port_p.lerp(hand_push_p, lerpf(0.55, 1.0, c)), hand_port_r.lerp(hand_push_r, lerpf(0.55, 1.0, c)))
+			cur_ap = hand_port_p.lerp(hand_push_p, lerpf(0.55, 1.0, c))
+			cur_ar = hand_port_r.lerp(hand_push_r, lerpf(0.55, 1.0, c))
 			if is_instance_valid(_shotgun_shell_rig):
-				var vis := c < 0.90
-				_shotgun_shell_rig.visible = vis
+				_shotgun_shell_rig.visible = c < 0.90
 				_shotgun_shell_rig.position = SHELL_M870_ENTER.lerp(SHELL_M870_SEAT, c)
 				_shotgun_shell_rig.rotation = Vector3(lerpf(0.10, 0.0, c), 0.0, 0.0)
 		else:
 			var d := smoothstep(0.33, 0.42, st)
-			_pose_part("arm_left", hand_push_p.lerp(hand_caddy_p, d), hand_push_r.lerp(hand_caddy_r, d))
+			cur_ap = hand_push_p.lerp(hand_caddy_p, d)
+			cur_ar = hand_push_r.lerp(hand_caddy_r, d)
 			if is_instance_valid(_shotgun_shell_rig):
 				_shotgun_shell_rig.visible = false
+		_pose_part("arm_left", cur_ap, cur_ar)
 
-		if st >= 0.18 and not (reload_flags & 1):
+		# Single unified commit event at seating (0.31s): audio + ammo + visual hide all agree!
+		if st >= 0.31 and not (reload_flags & 1):
 			reload_flags |= 1
 			_play_reload_sfx(_sfx_shell_in, randf_range(0.96, 1.04))
-		if st >= 0.24 and not (reload_flags & 2):
-			reload_flags |= 2
-			if ammo_in_mag[2] < WEAPONS[2]["mag_size"] and ammo_reserve[2] > 0:
+			if ammo_in_mag[2] < mag_cap and ammo_reserve[2] > 0:
 				ammo_in_mag[2] += 1
 				ammo_reserve[2] -= 1
 				trauma = minf(1.0, trauma + 0.05)
-		if reload_cancel_req and ammo_in_mag[2] > 0 and ((st < 0.16 and not reload_was_empty) or st >= 0.24):
-			reload_shell_phase = 2
-			reload_shell_timer = 0.0
-			reload_flags = 0
-			_pose_part("lifter", Vector3.ZERO)
-			if is_instance_valid(_shotgun_shell_rig):
-				_shotgun_shell_rig.visible = false
-			return
-		if st >= 0.42:
-			reload_shell_timer = 0.0
-			reload_flags = 0
-			if reload_cancel_req or ammo_in_mag[2] >= WEAPONS[2]["mag_size"] or ammo_reserve[2] <= 0:
+
+		if st >= 0.42 or (reload_cancel_req and ammo_in_mag[2] > 0 and (st >= 0.33 or (st < 0.15 and not reload_was_empty))):
+			if reload_cancel_req or ammo_in_mag[2] >= mag_cap or ammo_reserve[2] <= 0:
+				_shotgun_exit_arm_p = cur_ap
+				_shotgun_exit_arm_r = cur_ar
 				reload_shell_phase = 2
+				reload_shell_timer = 0.0
+				reload_flags = 0
+				_pose_part("lifter", Vector3.ZERO)
+				if is_instance_valid(_shotgun_shell_rig):
+					_shotgun_shell_rig.visible = false
+			else:
+				reload_shell_timer = 0.0
+				reload_flags = 0
 	elif reload_shell_phase == 2:
 		if is_instance_valid(_shotgun_shell_rig):
 			_shotgun_shell_rig.visible = false
 		_pose_part("lifter", Vector3.ZERO)
-		var exit_dur := (0.22 if reload_cancel_req else 0.40) if reload_was_empty else (0.11 if reload_cancel_req else 0.26)
+		var exit_dur := (0.24 if reload_cancel_req else 0.40) if reload_was_empty else (0.12 if reload_cancel_req else 0.26)
 		var u := smoothstep(0.0, exit_dur, reload_shell_timer)
-		var hand_ret := smoothstep(0.0, exit_dur * 0.45, reload_shell_timer)
-		var arm_p := hand_caddy_p.lerp(Vector3.ZERO, hand_ret)
-		var arm_r := hand_caddy_r.lerp(Vector3.ZERO, hand_ret)
+		var hand_ret := smoothstep(0.0, exit_dur * 0.50, reload_shell_timer)
+		var arm_p := _shotgun_exit_arm_p.lerp(Vector3.ZERO, hand_ret)
+		var arm_r := _shotgun_exit_arm_r.lerp(Vector3.ZERO, hand_ret)
 		if reload_was_empty:
 			var pull := sin(smoothstep(exit_dur * 0.20, exit_dur * 0.88, reload_shell_timer) * PI)
 			var pz := pull * 0.072
@@ -3435,21 +3923,22 @@ func _update_reload_shotgun(delta: float) -> void:
 			arm_p += Vector3(0, 0, pz)
 			if reload_shell_timer >= exit_dur * 0.38 and not (reload_flags & 4):
 				reload_flags |= 4
+				weapon_chambered[2] = true
 				_play_reload_sfx(_sfx_bolt, 0.84)
 				trauma = minf(1.0, trauma + 0.12)
 		_pose_part("arm_left", arm_p, arm_r)
 		reload_pos_off = cant_p.lerp(Vector3.ZERO, u)
 		reload_rot_off = cant_r.lerp(Vector3.ZERO, u)
 		if reload_shell_timer >= exit_dur:
+			weapon_chambered[2] = true
 			is_reloading = false
 			reload_cancel_req = false
 			_reset_weapon_parts()
 			if _shotgun_fire_on_cancel:
 				_shotgun_fire_on_cancel = false
+				_fire_buffer_timer = maxf(_fire_buffer_timer, 0.24)
 				reload_pos_off = Vector3.ZERO
 				reload_rot_off = Vector3.ZERO
-				if ammo_in_mag[2] > 0 and fire_cd <= 0.0:
-					fire_weapon()
 
 
 func _align_bow_string_segment(seg: Node3D, p0: Vector3, p1: Vector3) -> void:
@@ -3470,12 +3959,13 @@ func _align_bow_string_segment(seg: Node3D, p0: Vector3, p1: Vector3) -> void:
 func _pose_bow_rig() -> void:
 	if _bow_parts.is_empty():
 		return
-	var d_vis := 1.0 - pow(1.0 - _bow_draw, 1.65)
+	var d_vis := 1.0 - pow(1.0 - _bow_draw, 1.45)
 	var vib := 0.0
 	if _bow_release_timer > 0.0:
 		var rt := 0.14 - _bow_release_timer
-		d_vis = maxf(d_vis, (1.0 - smoothstep(0.0, 0.04, rt)) * 0.65)
-		vib = sin(rt * 95.0) * 0.004 * exp(-rt * 28.0)
+		# Snap smoothly FROM the actual release draw percentage (never jumping to 0.65!)
+		d_vis = maxf(d_vis, (1.0 - smoothstep(0.0, 0.042, rt)) * _bow_release_from_draw)
+		vib = sin(rt * 98.0) * 0.0042 * _bow_release_from_draw * exp(-rt * 28.0)
 
 	var limb_top: Node3D = _bow_parts.get("limb_top")
 	var limb_bot: Node3D = _bow_parts.get("limb_bot")
@@ -3483,48 +3973,68 @@ func _pose_bow_rig() -> void:
 	var cam_bot: Node3D = _bow_parts.get("cam_bot")
 	var str_top: Node3D = _bow_parts.get("str_top")
 	var str_bot: Node3D = _bow_parts.get("str_bot")
+	var buss_0: Node3D = _bow_parts.get("buss_0")
+	var buss_1: Node3D = _bow_parts.get("buss_1")
 	var arrow: Node3D = _bow_parts.get("arrow")
 	var arm_draw: Node3D = _bow_parts.get("arm_draw")
 
 	if is_instance_valid(limb_top):
-		limb_top.rotation.x = 0.15 * d_vis
+		limb_top.rotation.x = 0.16 * d_vis
 	if is_instance_valid(limb_bot):
-		limb_bot.rotation.x = -0.15 * d_vis
+		limb_bot.rotation.x = -0.16 * d_vis
 	if is_instance_valid(cam_top):
-		cam_top.rotation.x = 0.66 * d_vis
+		cam_top.rotation.x = 0.68 * d_vis
 	if is_instance_valid(cam_bot):
-		cam_bot.rotation.x = -0.66 * d_vis
+		cam_bot.rotation.x = -0.68 * d_vis
 
-	# Sequential glowing charge bars (Bocek-style sight feedback!)
-	var thresholds: Array[float] = [0.22, 0.48, 0.74, 0.96]
+	# Sequential glowing charge bars starting right at minimum release threshold (16% -> 96%)!
+	var thresholds: Array[float] = [0.16, 0.42, 0.70, 0.96]
 	for bi in range(_bow_charge_mats.size()):
 		var lit: bool = _bow_draw >= thresholds[mini(bi, 3)]
-		_bow_charge_mats[bi].emission_energy_multiplier = (4.2 if _bow_draw >= 0.96 else 2.8) if lit else 0.15
+		_bow_charge_mats[bi].emission_energy_multiplier = (5.8 if _bow_draw >= 0.96 else 3.8) if lit else 0.30
 
-	var nock_rest := Vector3(0.012, 0.036, 0.068)
-	var nock_full := Vector3(0.032, 0.024, 0.215)
+	# Aligned nock & arrow-rest plane (x = -0.022) so arrow shaft points straight down -Z!
+	var arrow_rest := Vector3(-0.022, 0.036, -0.055)
+	var nock_rest := Vector3(-0.020, 0.036, 0.090)
+	var nock_full := Vector3(-0.020, 0.034, 0.228)
 	var nock_pos := nock_rest.lerp(nock_full, d_vis) + Vector3(vib, 0.0, 0.0)
-	var top_cam_p := limb_top.transform * Vector3(0.0, 0.150, 0.080) if is_instance_valid(limb_top) else Vector3(0.0, 0.315, 0.068)
-	var bot_cam_p := limb_bot.transform * Vector3(0.0, -0.150, 0.080) if is_instance_valid(limb_bot) else Vector3(0.0, -0.305, 0.068)
-	_align_bow_string_segment(str_top, top_cam_p, nock_pos)
-	_align_bow_string_segment(str_bot, bot_cam_p, nock_pos)
 
-	var arrow_rest := Vector3(-0.030, 0.036, -0.055)
-	if _bow_nock_timer > 0.0:
-		# Quiver re-nock sweep (0.35s)
+	# Anchor working bowstring on outer REAR pulley rims (not axle centers!) and drive dynamic buss cables!
+	var top_rim_p := limb_top.transform * Vector3(0.0, 0.152, 0.104) if is_instance_valid(limb_top) else Vector3(0.0, 0.315, 0.090)
+	var bot_rim_p := limb_bot.transform * Vector3(0.0, -0.152, 0.104) if is_instance_valid(limb_bot) else Vector3(0.0, -0.305, 0.090)
+	_align_bow_string_segment(str_top, top_rim_p, nock_pos)
+	_align_bow_string_segment(str_bot, bot_rim_p, nock_pos)
+
+	var top_buss_p := limb_top.transform * Vector3(0.005, 0.135, 0.064) if is_instance_valid(limb_top) else Vector3(0.005, 0.295, 0.056)
+	var bot_buss_p := limb_bot.transform * Vector3(0.005, -0.135, 0.052) if is_instance_valid(limb_bot) else Vector3(0.005, -0.285, 0.044)
+	_align_bow_string_segment(buss_0, top_buss_p, bot_buss_p)
+	var top_buss_l := limb_top.transform * Vector3(-0.005, 0.135, 0.052) if is_instance_valid(limb_top) else Vector3(-0.005, 0.295, 0.044)
+	var bot_buss_l := limb_bot.transform * Vector3(-0.005, -0.135, 0.064) if is_instance_valid(limb_bot) else Vector3(-0.005, -0.285, 0.056)
+	_align_bow_string_segment(buss_1, top_buss_l, bot_buss_l)
+
+	if _bow_nock_timer > 0.0 and ammo_reserve[4] > 0:
+		# Synchronized 0.35s quiver-pickup re-nock constrained to actual right-side Quiver (0.048, -0.02, -0.02)!
 		var nu := clampf(1.0 - _bow_nock_timer / 0.35, 0.0, 1.0)
-		var quiv_p := Vector3(0.095, -0.12, 0.12)
+		var quiv_p := Vector3(0.048, -0.025, 0.025)
+		var hand_nock_off := Vector3.ZERO
 		if is_instance_valid(arrow):
-			arrow.visible = nu >= 0.30
+			arrow.visible = nu >= 0.28
 			if arrow.visible:
-				var au := smoothstep(0.30, 0.85, nu)
+				var au := smoothstep(0.28, 0.86, nu)
 				arrow.position = quiv_p.lerp(nock_rest, au)
-				if arrow.is_inside_tree():
-					arrow.look_at(arrow.global_position + (arrow.get_parent() as Node3D).global_transform.basis * (arrow_rest - arrow.position).normalized(), Vector3.UP)
+				var dir_a := (arrow_rest - arrow.position).normalized()
+				if dir_a.length_squared() > 0.01:
+					var rl := dir_a.cross(Vector3.UP).normalized()
+					var ul := rl.cross(dir_a).normalized()
+					arrow.basis = Basis(rl, ul, -dir_a)
+				hand_nock_off = arrow.position - nock_rest
 		if is_instance_valid(arm_draw):
 			var rp: Vector3 = _w_rest_pos.get(arm_draw.get_instance_id(), Vector3.ZERO)
+			var rr: Vector3 = _w_rest_rot.get(arm_draw.get_instance_id(), Vector3.ZERO)
 			var reach := sin(nu * PI)
-			arm_draw.position = rp + Vector3(0.07 * reach, -0.14 * reach, 0.08 * reach)
+			var dp := (Vector3(0.065, -0.08, -0.04) * smoothstep(0.0, 0.28, nu)) if nu < 0.28 else hand_nock_off
+			arm_draw.position = rp + dp
+			arm_draw.rotation = rr + Vector3(0.14 * reach, -0.18 * reach, 0.12 * reach)
 	else:
 		if is_instance_valid(arrow):
 			var has_arrow := ammo_in_mag[4] > 0
@@ -3532,13 +4042,14 @@ func _pose_bow_rig() -> void:
 			arrow.position = nock_pos
 			var dir_l := (arrow_rest - nock_pos).normalized()
 			if dir_l.length_squared() > 0.01:
-				var up_r := Vector3.UP
-				var right_l := dir_l.cross(up_r).normalized()
+				var right_l := dir_l.cross(Vector3.UP).normalized()
 				var up_l := right_l.cross(dir_l).normalized()
 				arrow.basis = Basis(right_l, up_l, -dir_l)
 		if is_instance_valid(arm_draw):
 			var rp: Vector3 = _w_rest_pos.get(arm_draw.get_instance_id(), Vector3.ZERO)
-			arm_draw.position = rp + Vector3(0.02 * d_vis, -0.01 * d_vis, 0.14 * d_vis)
+			var rr: Vector3 = _w_rest_rot.get(arm_draw.get_instance_id(), Vector3.ZERO)
+			arm_draw.position = rp + (nock_pos - nock_rest)
+			arm_draw.rotation = rr + Vector3(0.08 * d_vis, -0.16 * d_vis, 0.14 * d_vis)
 
 
 func _update_bow_input(delta: float) -> void:
@@ -3549,34 +4060,50 @@ func _update_bow_input(delta: float) -> void:
 		if _bow_nock_timer <= 0.0 and ammo_in_mag[4] <= 0 and ammo_reserve[4] > 0:
 			ammo_in_mag[4] = 1
 			ammo_reserve[4] -= 1
-			if sfx_misc and _sfx_shell_in:
-				sfx_misc.stream = _sfx_shell_in
-				sfx_misc.pitch_scale = 1.45
-				sfx_misc.play()
+			_play_reload_sfx(_sfx_shell_in, 1.45)
+
 	var holding := Input.is_action_pressed("fire")
-	if holding and not _bow_drawing and ammo_in_mag[4] > 0 and _bow_nock_timer <= 0.0 and fire_cd <= 0.0:
+	if _bow_require_repull:
+		if not holding:
+			_bow_require_repull = false
+		return
+
+	if Input.is_action_just_pressed("fire") and ammo_in_mag[4] <= 0 and ammo_reserve[4] <= 0 and _bow_nock_timer <= 0.0:
+		# Audible dry-click cue when out of arrows
+		_play_reload_sfx(_sfx_mag_out, 1.55)
+		return
+
+	if holding and not _bow_drawing and ammo_in_mag[4] > 0 and _bow_nock_timer <= 0.0 and fire_cd <= 0.0 and not is_sprinting:
 		_bow_drawing = true
 		_bow_draw = 0.0
 		_bow_hold_time = 0.0
-		if sfx_reload and _sfx_bow_draw:
-			sfx_reload.stream = _sfx_bow_draw
-			sfx_reload.pitch_scale = randf_range(0.95, 1.05)
-			sfx_reload.play()
+		if sfx_bow_draw and _sfx_bow_draw:
+			sfx_bow_draw.stream = _sfx_bow_draw
+			sfx_bow_draw.pitch_scale = randf_range(0.95, 1.05)
+			sfx_bow_draw.play()
 	elif _bow_drawing:
 		if holding:
 			_bow_draw = minf(1.0, _bow_draw + delta / 0.58)
 			if _bow_draw >= 0.99:
 				_bow_hold_time += delta
-				sway_offset.x = clampf(sway_offset.x + sin(_bow_hold_time * 3.4) * delta * 0.020, -0.065, 0.065)
-				sway_offset.y = clampf(sway_offset.y + cos(_bow_hold_time * 2.7) * delta * 0.016, -0.055, 0.055)
+				sway_offset.x = clampf(sway_offset.x + sin(_bow_hold_time * 3.4) * delta * 0.018, -0.055, 0.055)
+				sway_offset.y = clampf(sway_offset.y + cos(_bow_hold_time * 2.7) * delta * 0.014, -0.045, 0.045)
 		else:
 			var power := _bow_draw
 			_bow_drawing = false
 			_bow_draw = 0.0
 			_bow_hold_time = 0.0
+			if sfx_bow_draw and sfx_bow_draw.playing:
+				sfx_bow_draw.stop()
 			if power >= 0.16:
+				_bow_release_from_draw = power
 				_bow_release_timer = 0.14
 				_fire_bow_arrow(power)
+			else:
+				# Deliberate soft let-down cue (no silent snap!)
+				_bow_release_from_draw = power * 0.4
+				_bow_release_timer = 0.06
+				_play_reload_sfx(_sfx_shell_in, 0.82)
 
 
 func _build_world_arrow_node() -> Node3D:
@@ -3603,15 +4130,14 @@ func _build_world_arrow_node() -> Node3D:
 
 func _fire_bow_arrow(power: float) -> void:
 	ammo_in_mag[4] = maxi(0, ammo_in_mag[4] - 1)
-	_bow_nock_timer = 0.38
+	# Only start 0.35s quiver re-nock if we actually have reserve arrows!
+	_bow_nock_timer = 0.35 if ammo_reserve[4] > 0 else 0.0
 	fire_cd = 0.36
 	recoil_vel.y += 0.024 * power
 	recoil_z += 0.022 * power
 	trauma = minf(1.0, trauma + 0.07 * power)
-	if sfx_gun and _sfx_bow_release:
-		sfx_gun.stream = _sfx_bow_release
-		sfx_gun.pitch_scale = lerpf(0.88, 1.06, power)
-		sfx_gun.play()
+	if _sfx_bow_release:
+		_play_gun_sfx(_sfx_bow_release, lerpf(0.88, 1.06, power))
 
 	if _arrows.size() >= 24:
 		var old: Dictionary = _arrows.pop_front()
@@ -3620,18 +4146,52 @@ func _fire_bow_arrow(power: float) -> void:
 
 	var arrow_node := _build_world_arrow_node()
 	_fx_parent().add_child(arrow_node)
-	var fwd := -camera.global_transform.basis.z
-	var start_pos := camera.global_position + fwd * 0.48 + camera.global_transform.basis.x * 0.04 - camera.global_transform.basis.y * 0.03
-	var speed := lerpf(22.0, 56.0, power)
-	var vel := fwd * speed
+	var cam_orig := camera.global_position
+	var cam_fwd := -camera.global_transform.basis.z
+	var speed := lerpf(24.0, 62.0, power)
+
+	# Unified zeroed ballistic solution:
+	# 1. Sweep from camera eye along cam_fwd to find true aim target (zeroed cleanly at 25m for full draw!).
+	var space := get_world_3d().direct_space_state
+	var aim_dist := 25.0
+	if space:
+		var aq := PhysicsRayQueryParameters3D.create(cam_orig, cam_orig + cam_fwd * 40.0, 1)
+		aq.exclude = [get_rid()]
+		var ahit := space.intersect_ray(aq)
+		if ahit:
+			aim_dist = clampf(cam_orig.distance_to(ahit["position"]), 1.2, 40.0)
+	var z_aim := ZombieAI.raycast_all_zombies(cam_orig, cam_fwd, aim_dist)
+	if not z_aim.is_empty():
+		aim_dist = clampf(float(z_aim["dist"]), 1.0, aim_dist)
+	var zero_dist := minf(aim_dist, 25.0)
+	var flight_t := zero_dist / maxf(speed, 10.0)
+	var drop_comp := 0.5 * 9.8 * flight_t * flight_t * clampf(power, 0.25, 1.0)
+	var target_pt := cam_orig + cam_fwd * zero_dist + Vector3(0.0, drop_comp, 0.0)
+
+	# 2. Launch from muzzle-side arrow rest (clamped behind any close cover so nearby walls intercept cleanly!)
+	var rest_w := weapon_pivot.to_global(Vector3(-0.022, 0.036, -0.34))
+	var start_pos := rest_w
+	if space:
+		var cq := PhysicsRayQueryParameters3D.create(cam_orig, rest_w, 1)
+		cq.exclude = [get_rid()]
+		var chit := space.intersect_ray(cq)
+		if chit:
+			start_pos = (chit["position"] as Vector3) - (rest_w - cam_orig).normalized() * 0.08
+	var launch_dir := (target_pt - start_pos).normalized()
+	if launch_dir.length_squared() < 0.01:
+		launch_dir = cam_fwd
+	var vel := launch_dir * speed
 	arrow_node.global_position = start_pos
-	arrow_node.look_at(start_pos + fwd, Vector3.UP)
+	arrow_node.look_at(start_pos + launch_dir, Vector3.UP)
+	var upg_mult := 1.45 if is_weapon_upgraded(4) else 1.0
 	_arrows.append({
 		"node": arrow_node,
 		"vel": vel,
-		"dmg": lerpf(48.0, 165.0, power),
+		"dmg": lerpf(28.0, 170.0, pow(power, 1.15)) * upg_mult,
+		"total_dist": 0.0,
 		"stuck": false,
 		"stuck_zombie": null,
+		"stuck_bone": -1,
 		"stuck_local_pos": Vector3.ZERO,
 		"stuck_local_rot": Basis.IDENTITY,
 		"age": 0.0,
@@ -3642,6 +4202,7 @@ func _update_arrows(delta: float) -> void:
 	if _arrows.is_empty():
 		return
 	var space := get_world_3d().direct_space_state
+	var can_recover := not dead and input_enabled
 	var i := _arrows.size() - 1
 	while i >= 0:
 		var a: Dictionary = _arrows[i]
@@ -3657,25 +4218,35 @@ func _update_arrows(delta: float) -> void:
 			var sz: ZombieAI = a["stuck_zombie"]
 			if sz != null:
 				if is_instance_valid(sz):
-					node.global_position = sz.global_transform * (a["stuck_local_pos"] as Vector3)
-					node.global_transform.basis = sz.global_transform.basis * (a["stuck_local_rot"] as Basis)
+					var sb := int(a.get("stuck_bone", -1))
+					if sz.skeleton and sb >= 0:
+						var b_glob := sz.skeleton.global_transform * sz.skeleton.get_bone_global_pose(sb)
+						node.global_position = b_glob * (a["stuck_local_pos"] as Vector3)
+						node.global_transform.basis = (b_glob.basis.orthonormalized()) * (a["stuck_local_rot"] as Basis)
+					else:
+						node.global_position = sz.global_transform * (a["stuck_local_pos"] as Vector3)
+						node.global_transform.basis = sz.global_transform.basis * (a["stuck_local_rot"] as Basis)
 				else:
 					node.queue_free()
 					_arrows.remove_at(i)
 					i -= 1
 					continue
-			# Walk-over arrow retrieval!
-			if float(a["age"]) > 0.65 and node.global_position.distance_to(global_position + Vector3(0, 0.9, 0)) < 1.85:
-				if ammo_in_mag[4] <= 0:
-					ammo_in_mag[4] = 1
-				else:
-					ammo_reserve[4] = mini(WEAPONS[4]["reserve_max"], ammo_reserve[4] + 1)
-				if sfx_misc and _sfx_shell_in:
-					sfx_misc.stream = _sfx_shell_in
-					sfx_misc.pitch_scale = 1.35
-					sfx_misc.play()
-				node.queue_free()
-				_arrows.remove_at(i)
+			# Guarded, line-of-sight-checked walk-over arrow recovery into reserve!
+			if can_recover and float(a["age"]) > 0.65:
+				var p_eye := global_position + Vector3(0.0, 1.05, 0.0)
+				if node.global_position.distance_to(p_eye) < 1.85:
+					var blocked := false
+					if space:
+						var rq := PhysicsRayQueryParameters3D.create(p_eye, node.global_position + Vector3(0, 0.08, 0), 1)
+						rq.exclude = [get_rid()]
+						blocked = not space.intersect_ray(rq).is_empty()
+					if not blocked and ammo_reserve[4] < int(WEAPONS[4]["reserve_max"]):
+						ammo_reserve[4] = mini(int(WEAPONS[4]["reserve_max"]), ammo_reserve[4] + 1)
+						if current_weapon == 4 and ammo_in_mag[4] <= 0 and _bow_nock_timer <= 0.0:
+							_bow_nock_timer = 0.35
+						_play_reload_sfx(_sfx_shell_in, 1.35)
+						node.queue_free()
+						_arrows.remove_at(i)
 			i -= 1
 			continue
 
@@ -3699,17 +4270,18 @@ func _update_arrows(delta: float) -> void:
 		var z_hit := ZombieAI.raycast_all_zombies(prev_pos, dir, max_d)
 		if not z_hit.is_empty():
 			var z := z_hit["zombie"] as ZombieAI
-			if is_instance_valid(z):
+			if is_instance_valid(z) and not z.dead:
 				var hpos: Vector3 = z_hit["pos"]
-				var res := z.apply_shot([{"zone": str(z_hit["zone"]), "pos": hpos, "dir": dir, "dmg": float(a["dmg"]), "dist": float(z_hit["dist"])}], 4)
+				var hz := str(z_hit["zone"])
+				var true_dist := float(a["total_dist"]) + float(z_hit["dist"])
+				var res := z.apply_shot([{"zone": hz, "pos": hpos, "dir": dir, "dmg": float(a["dmg"]), "dist": true_dist}], 4)
 				var is_hs := bool(res.get("headshot", false))
 				var killed := bool(res.get("killed", false))
-				if not bool(res.get("corpse_hit", false)):
-					emit_signal("hit_confirmed", is_hs, killed)
-					if sfx_hit_tick and _sfx_hit_confirm:
-						sfx_hit_tick.stream = _sfx_hit_confirm
-						sfx_hit_tick.pitch_scale = 1.18 if is_hs else 0.96
-						sfx_hit_tick.play()
+				emit_signal("hit_confirmed", is_hs, killed)
+				if sfx_hit_tick and _sfx_hit_confirm:
+					sfx_hit_tick.stream = _sfx_hit_confirm
+					sfx_hit_tick.pitch_scale = 1.18 if is_hs else 0.96
+					sfx_hit_tick.play()
 				if sfx_hit and _sfx_arrow_impact:
 					sfx_hit.stream = _sfx_arrow_impact
 					sfx_hit.pitch_scale = randf_range(0.92, 1.08)
@@ -3718,8 +4290,16 @@ func _update_arrows(delta: float) -> void:
 				node.look_at(node.global_position + dir, Vector3.UP)
 				a["stuck"] = true
 				a["stuck_zombie"] = z
-				a["stuck_local_pos"] = z.global_transform.affine_inverse() * node.global_position
-				a["stuck_local_rot"] = z.global_transform.basis.inverse() * node.global_transform.basis
+				var b_idx := z.get_bone_for_zone(hz) if z.has_method("get_bone_for_zone") else -1
+				if z.skeleton and b_idx >= 0 and not z.dismembered.has(hz):
+					var b_glob := z.skeleton.global_transform * z.skeleton.get_bone_global_pose(b_idx)
+					a["stuck_bone"] = b_idx
+					a["stuck_local_pos"] = b_glob.affine_inverse() * node.global_position
+					a["stuck_local_rot"] = b_glob.basis.orthonormalized().inverse() * node.global_transform.basis
+				else:
+					a["stuck_bone"] = -1
+					a["stuck_local_pos"] = z.global_transform.affine_inverse() * node.global_position
+					a["stuck_local_rot"] = z.global_transform.basis.inverse() * node.global_transform.basis
 				i -= 1
 				continue
 
@@ -3727,8 +4307,6 @@ func _update_arrows(delta: float) -> void:
 			node.global_position = (wall_hit["position"] as Vector3) - dir * 0.04
 			node.look_at(node.global_position + dir, Vector3.UP)
 			a["stuck"] = true
-			if VFXManager.instance:
-				VFXManager.instance.spawn_surface_impact(wall_hit["position"], wall_hit["normal"], dir, wall_hit["collider"], 4)
 			if sfx_misc and _sfx_arrow_impact:
 				sfx_misc.stream = _sfx_arrow_impact
 				sfx_misc.pitch_scale = randf_range(0.86, 1.04)
@@ -3737,6 +4315,7 @@ func _update_arrows(delta: float) -> void:
 			continue
 
 		a["vel"] = vel
+		a["total_dist"] = float(a["total_dist"]) + step_len
 		node.global_position = next_pos
 		if step_len > 0.001:
 			node.look_at(next_pos + dir, Vector3.UP)
@@ -3758,7 +4337,7 @@ func toggle_flashlight() -> void:
 		sfx_misc.play()
 
 
-func _eject_brass_casing(w: Dictionary, is_hull := false) -> void:
+func _eject_brass_casing(w: Dictionary, is_hull := false, override_world_pos := Vector3.ZERO) -> void:
 	if _casings.size() >= 18:
 		var old: Dictionary = _casings.pop_front()
 		if is_instance_valid(old["node"]):
@@ -3767,13 +4346,13 @@ func _eject_brass_casing(w: Dictionary, is_hull := false) -> void:
 	mi.mesh = _hull_mesh if is_hull else _casing_mesh
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_fx_parent().add_child(mi)
-	var spawn_p := weapon_pivot.to_global(w["ejection"])
+	var spawn_p := override_world_pos if override_world_pos != Vector3.ZERO else weapon_pivot.to_global(w["ejection"])
 	mi.global_position = spawn_p
 	mi.global_rotation = weapon_pivot.global_rotation + Vector3(PI * 0.5, 0, 0)
 	var right := weapon_pivot.global_transform.basis.x
 	var up := weapon_pivot.global_transform.basis.y
 	var back := weapon_pivot.global_transform.basis.z
-	var ej_vel := right * randf_range(2.0, 3.2) + up * randf_range(1.6, 2.5) + back * randf_range(0.35, 1.0)
+	var ej_vel := (Vector3(randf_range(-0.6, 0.2), randf_range(-0.4, 0.2), randf_range(-0.4, 0.4)) if override_world_pos != Vector3.ZERO else (right * randf_range(2.0, 3.2) + up * randf_range(1.6, 2.5) + back * randf_range(0.35, 1.0)))
 	var floor_y := global_position.y + 0.012
 	var space := get_world_3d().direct_space_state
 	if space:
@@ -3796,6 +4375,8 @@ func _eject_brass_casing(w: Dictionary, is_hull := false) -> void:
 func trigger_melee() -> bool:
 	if _melee_timer > 0.08 or dead:
 		return false
+	if _bow_drawing:
+		cancel_bow_draw(true)
 	if is_reloading:
 		is_reloading = false
 		reload_cancel_req = false
@@ -3855,14 +4436,14 @@ func _perform_melee_hit() -> void:
 	var any_live_hs := false
 	for z_key in z_hits.keys():
 		var z := z_key as ZombieAI
-		var res := z.apply_shot(z_hits[z_key], 2)
+		# Use weapon_idx = 3 (dedicated MELEE class — NOT M870 shotgun class 2!)
+		var res := z.apply_shot(z_hits[z_key], 3)
 		var is_hs := bool(res.get("headshot", false))
 		var killed := bool(res.get("killed", false))
 		if not bool(res.get("corpse_hit", false)):
 			any_live = true
 			any_live_hs = any_live_hs or is_hs
 			emit_signal("hit_confirmed", is_hs, killed)
-			# Extra melee shove so quick-melee reliably creates breathing room!
 			if not z.dead:
 				z.velocity += fwd * 4.2
 
@@ -3883,9 +4464,14 @@ func fire_weapon() -> bool:
 		start_reload()
 		return false
 	ammo_in_mag[current_weapon] -= 1
-	fire_cd = w["fire_rate"]
+	if ammo_in_mag[current_weapon] <= 0:
+		weapon_chambered[current_weapon] = false
+	# Carry cooldown overshoot on automatic weapons so MP5 (0.068s) fires at true RPM instead of quantizing to 60Hz ticks!
+	if bool(w["auto"]):
+		fire_cd = maxf(0.0, fire_cd) + float(w["fire_rate"])
+	else:
+		fire_cd = float(w["fire_rate"])
 
-	# Smooth exponential muzzle flash pulse (clamped inside close corridors, no volumetric fog flood!)
 	muzzle_elapsed = 0.0
 	muzzle_peak_e = 2.8 * float(w["flash_scale"]) * randf_range(0.88, 1.15)
 	muzzle_light.visible = true
@@ -3919,7 +4505,7 @@ func fire_weapon() -> bool:
 		fm.set_shader_parameter("cool_t", 0.0)
 
 	if VFXManager.instance:
-		VFXManager.instance.spawn_muzzle_sparks(muzzle_flash_rig.global_position, -camera.global_transform.basis.z, current_weapon == 2)
+		VFXManager.instance.spawn_muzzle_sparks(muzzle_flash_rig.global_position, -camera.global_transform.basis.z, current_weapon == 2 or current_weapon == 9)
 
 	if muzzle_smoke:
 		if OS.has_feature("web"):
@@ -3950,31 +4536,35 @@ func fire_weapon() -> bool:
 	recoil_z += w["recoil_kick"]
 	recoil_roll += randf_range(-0.018, 0.018) * (0.5 if is_ads else 1.0)
 	recoil_fov = 1.15
-	trauma = minf(1.0, trauma + (0.28 if current_weapon == 2 else (0.14 if current_weapon == 1 else 0.11)))
+	trauma = minf(1.0, trauma + (0.28 if (current_weapon == 2 or current_weapon == 9) else (0.14 if current_weapon == 1 else 0.11)))
 	pitch = clamp(pitch + w["recoil_pitch"] * 0.32, -1.35, 1.35)
 
-	if sfx_gun:
-		if current_weapon < _weapon_audio_vars.size():
-			var vars_arr: Array = _weapon_audio_vars[current_weapon]
-			if not vars_arr.is_empty():
-				_gun_alt_flip = (_gun_alt_flip + 1) % vars_arr.size()
-				sfx_gun.stream = vars_arr[_gun_alt_flip]
-		if sfx_gun.stream:
-			sfx_gun.pitch_scale = randf_range(0.95, 1.04)
-			sfx_gun.play()
+	# Pooled polyphonic gunshot playback (NEVER swaps stream on an active voice, preserving 100% of reverb tails!)
+	var shot_stream: AudioStream = null
+	if current_weapon < _weapon_audio_vars.size():
+		var vars_arr: Array = _weapon_audio_vars[current_weapon]
+		if not vars_arr.is_empty():
+			_gun_alt_flip = (_gun_alt_flip + 1) % vars_arr.size()
+			shot_stream = vars_arr[_gun_alt_flip]
+	elif current_weapon < _weapon_audio.size():
+		shot_stream = _weapon_audio[current_weapon]
+	if shot_stream:
+		_play_gun_sfx(shot_stream, randf_range(0.95, 1.04))
 
 	var origin := camera.global_position
 	var fwd := -camera.global_transform.basis.z
 	var right := camera.global_transform.basis.x
 	var up := camera.global_transform.basis.y
-	var spread_mult := (0.55 if is_ads else 1.0) if current_weapon == 2 else (0.14 if is_ads else 0.72)
+	# Consistent shotgun buckshot spread for BOTH M870 (2) and Benelli M4 (9)!
+	var is_shotgun := (current_weapon == 2 or current_weapon == 9)
+	var spread_mult := (0.55 if is_ads else 1.0) if is_shotgun else (0.14 if is_ads else 0.72)
 	var spread: float = w["spread"] * spread_mult
+	var dmg_per_hit: float = float(w["damage"]) * (1.45 if is_weapon_upgraded(current_weapon) else 1.0)
 	var impact_fx_budget := 3 if int(w["pellets"]) > 1 else 1
 	var z_hits := {}
 
 	for _p in range(w["pellets"]):
 		var dir := (fwd + right * randf_range(-spread, spread) + up * randf_range(-spread, spread)).normalized()
-		# Step 1: World wall raycast to find exact solid occlusion distance (pass through window barricades!)
 		var wall_excl: Array[RID] = [get_rid()]
 		var wall_hit := {}
 		for _retry in range(3):
@@ -3993,7 +4583,6 @@ func fire_weapon() -> bool:
 			break
 		var max_dist := origin.distance_to(wall_hit["position"]) if not wall_hit.is_empty() else 75.0
 
-		# Step 2: Exact analytical bone-capsule raycast against all live, dying, AND dead zombies (zero physics lag!)
 		var z_hit := ZombieAI.raycast_all_zombies(origin, dir, max_dist)
 		if not z_hit.is_empty():
 			var z := z_hit["zombie"] as ZombieAI
@@ -4006,7 +4595,7 @@ func fire_weapon() -> bool:
 					"zone": hz,
 					"pos": hpos,
 					"dir": dir,
-					"dmg": w["damage"],
+					"dmg": dmg_per_hit,
 					"dist": float(z_hit["dist"]),
 				})
 				continue
@@ -4072,6 +4661,8 @@ func take_damage(amount: float, from_pos: Vector3 = Vector3.ZERO) -> void:
 	if dead or damage_invuln > 0.0:
 		return
 	damage_invuln = 0.35
+	if _bow_drawing:
+		cancel_bow_draw(true)
 	health = max(0.0, health - amount)
 	damage_flash = min(1.0, damage_flash + 0.72)
 	ads_lockout = 0.22
@@ -4112,14 +4703,24 @@ func heal_full(reset_unlocks: bool = false) -> void:
 	damage_invuln = 0.0
 	hit_glitch = 0.0
 	hit_ca_boost = 0.0
+	_base_head_roll = 0.0
 	head.rotation.z = 0.0
+	cancel_bow_draw(false)
+	# Clear all live/stuck world arrows cleanly on restart!
+	for a: Dictionary in _arrows:
+		if is_instance_valid(a.get("node")):
+			(a["node"] as Node).queue_free()
+	_arrows.clear()
 	if reset_unlocks:
 		unlocked_weapons = [true, false, false, true, false, false, false, false, false, false, false]
+		upgraded_weapons = [false, false, false, false, false, false, false, false, false, false, false]
+		weapon_chambered = [true, true, true, true, true, true, true, true, true, true, true]
 		equipped_melee_id = "knife"
 		for k in _melee_nodes.keys():
 			if is_instance_valid(_melee_nodes[k]):
 				(_melee_nodes[k] as Node3D).visible = (str(k) == "knife")
-		_equip_weapon(0)
+		_equip_weapon(0, true)
 	for i in range(WEAPONS.size()):
-		ammo_in_mag[i] = WEAPONS[i]["mag_size"]
+		ammo_in_mag[i] = get_weapon_mag_size(i)
 		ammo_reserve[i] = WEAPONS[i]["reserve_max"]
+		weapon_chambered[i] = true

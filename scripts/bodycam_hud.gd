@@ -498,7 +498,7 @@ func show_hit(is_headshot: bool, killed: bool = false) -> void:
 	hit_marker.trigger(is_headshot, killed)
 
 
-func update_hud(delta: float, player: PlayerBodycam, wave: int, points: int, zombies_left: int) -> void:
+func update_hud(delta: float, player: PlayerBodycam, wave: int, points: int, zombies_left: int, active_zombies: int = -1) -> void:
 	if toast_timer > 0.0:
 		toast_timer -= delta
 		if toast_timer <= 0.0:
@@ -513,14 +513,21 @@ func update_hud(delta: float, player: PlayerBodycam, wave: int, points: int, zom
 	if scope_overlay:
 		var sa: float = player.sniper_scope_alpha if not player.dead else 0.0
 		var ir: float = player.sniper_iris_scale if not player.dead else 1.0
-		scope_overlay.update_scope(sa, ir, Vector2(-player.sway_offset.x * 260.0, player.sway_offset.y * 260.0))
+		# Reticle center tracks exact camera aim (breathing sway is already applied to head/camera rotation, so reticle & shot ray agree 100%!)
+		scope_overlay.update_scope(sa, ir, Vector2.ZERO)
 		post_mat.set_shader_parameter("fisheye_strength", lerpf(0.212, 0.035, sa))
 
 	if not rec_label.visible:
 		return
+
+	# Update interaction focus prompt EVERY frame (never throttled by 0.20s stats cache!)
+	var obj := player.get_looked_interactable()
+	prompt_label.text = obj.get_prompt(points, player) if obj else ""
+
 	var mag: int = player.ammo_in_mag[player.current_weapon]
 	var res: int = player.ammo_reserve[player.current_weapon]
-	var sig := player.current_weapon * 1000000 + mag * 10000 + res * 100 + int(player.health) + (1 if player.is_reloading else 0) + zombies_left * 7 + wave * 13 + points
+	var act_sig := active_zombies if active_zombies >= 0 else zombies_left
+	var sig := player.current_weapon * 1000000 + mag * 10000 + res * 100 + int(player.health) + (1 if player.is_reloading else 0) + zombies_left * 7 + act_sig * 17 + wave * 13 + points
 	_hud_text_accum += delta
 	if sig == _last_ammo_sig and _hud_text_accum < 0.20:
 		return
@@ -538,9 +545,7 @@ func update_hud(delta: float, player: PlayerBodycam, wave: int, points: int, zom
 	var is_melee: bool = bool(PlayerBodycam.WEAPONS[player.current_weapon].get("is_melee", false))
 	var reload_tag := " [RELOADING]" if player.is_reloading else ""
 	var ammo_str := "MELEE" if is_melee else ("%02d / %03d" % [mag, res])
-	stats_label.text = "[%s] %s%s  %s\nHP %d%%  •  PTS %d  •  HOSTILES %d" % [
-		wkey, wname, reload_tag, ammo_str, int(player.health), points, zombies_left
+	var hostile_str := ("HOSTILES %d (%d ACTIVE)" % [zombies_left, active_zombies]) if (active_zombies >= 0 and active_zombies < zombies_left) else ("HOSTILES %d" % zombies_left)
+	stats_label.text = "[%s] %s%s  %s\nHP %d%%  •  PTS %d  •  %s" % [
+		wkey, wname, reload_tag, ammo_str, int(player.health), points, hostile_str
 	]
-
-	var obj := player.get_looked_interactable()
-	prompt_label.text = obj.get_prompt(points) if obj else ""

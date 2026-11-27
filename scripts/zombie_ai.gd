@@ -50,9 +50,13 @@ var _impulse_scale: float = 1.0
 var _model_scale_val: float = 1.0
 var _is_tactical: bool = false
 
-# Staggered navigation state
+# Staggered navigation & stuck-recovery state
 var _nav_ray_tick: int = 0
 var _cached_steer_dir: Vector3 = Vector3.FORWARD
+var _stuck_timer: float = 0.0
+var _stuck_anchor: Vector3 = Vector3.ZERO
+var _barricade_cd: float = 0.0
+var _runner_telegraphed: bool = false
 
 # Ragdoll & corpse settlement state
 var death_floor_y: float = 0.0
@@ -666,7 +670,7 @@ func _build_body() -> void:
 			mod.setup(self)
 			skeleton.add_child(mod)
 			sk_mod = mod
-		_play_horror_anim("walk" if _is_tactical else "spot", randf() * 1.4)
+		_play_horror_anim("walk", randf() * 1.4)
 
 
 func _collect_shadow_meshes() -> void:
@@ -1373,36 +1377,96 @@ func _request_token() -> bool:
 	return true
 
 
+func get_bone_for_zone(zone: String) -> int:
+	match zone:
+		"HEAD": return head_bone if head_bone >= 0 else spine2_bone
+		"ARM_L": return l_arm_bone if l_arm_bone >= 0 else spine2_bone
+		"ARM_R": return r_arm_bone if r_arm_bone >= 0 else spine2_bone
+		"LEG_L": return l_upleg_bone if l_upleg_bone >= 0 else hips_bone
+		"LEG_R": return r_upleg_bone if r_upleg_bone >= 0 else hips_bone
+		_: return spine2_bone if spine2_bone >= 0 else hips_bone
+
+
 func _choose_nav_dir(to_target: Vector3) -> Vector3:
 	var tp := target.global_position
 	var gp := global_position
 	var way := tp
-	var p_out := tp.z < -27.5
+	var p_saw := tp.z < -66.0
+	var p_out := tp.z < -27.5 and tp.z >= -66.0
 	var p_tun := tp.z <= -8.0 and tp.z >= -27.5
 	var p_in := tp.z > -8.0
-	var z_out := gp.z < -27.5
+	var z_saw := gp.z < -66.0
+	var z_out := gp.z < -27.5 and gp.z >= -66.0
 	var z_tun := gp.z <= -8.0 and gp.z >= -27.5
 	var z_in := gp.z > -8.0
 
-	if z_in and p_out:
+	# 1. Cross-zone bidirectional route graph (Lobby <-> Tunnel <-> Courtyard <-> Sawmill Gate <-> Watchtower!)
+	if z_in and (p_out or p_saw):
 		way = Vector3(0.0, 0.0, -9.5)
 	elif z_in and p_tun:
 		way = Vector3(0.0, 0.0, -8.5)
-	elif z_out and (p_in or p_tun):
-		way = Vector3(0.0, 0.0, -28.0)
+	elif (z_out or z_saw) and (p_in or p_tun):
+		if z_saw:
+			way = Vector3(8.0, 0.0, -64.0)
+		else:
+			way = Vector3(0.0, 0.0, -28.0)
 	elif z_tun and p_in:
 		way = Vector3(0.0, 0.0, -7.2)
-	elif z_tun and p_out:
+	elif z_tun and (p_out or p_saw):
 		way = Vector3(0.0, 0.0, -28.5)
-	elif gp.y > 2.2 and tp.y < 1.8:
-		# Route upstairs zombies cleanly along landing to top of oak flight instead of onto dead-end arch gallery
+	elif z_out and p_saw:
+		# Route cleanly through Sawmill Breach Gate opening at X = 8.0, Z = -66.0
+		way = Vector3(8.0, 0.0, -68.5)
+	elif z_saw and p_out:
+		way = Vector3(8.0, 0.0, -63.5)
+	elif z_in and gp.y > 2.2 and tp.y < 1.8:
+		# Upstairs Asylum balcony -> oak stair flight descending to lobby
 		way = Vector3(-7.55, 0.0, -1.60) if (gp.z < -2.0 or gp.x > -4.8) else Vector3(-7.55, 0.0, 3.85)
+	elif z_in and gp.y < 1.8 and tp.y > 2.4:
+		# Ground lobby -> oak stair flight ascending to Asylum balcony
+		way = Vector3(-7.55, 0.0, 3.85) if gp.z > 2.8 else Vector3(-7.55, 0.0, -1.60)
+	elif z_saw and gp.y < 3.0 and tp.y > 3.2 and tp.x < -7.5:
+		# Ground Sawmill -> climb Watchtower 2-flight ramp (foot at (-18.2, -82.2) -> landing (-17.0, -72.5) -> deck (-15.0, -81.0))
+		if gp.y < 1.4 and gp.z > -80.0 and gp.x > -16.5:
+			way = Vector3(-18.2, 0.0, -82.2)
+		elif gp.y < 3.2:
+			way = Vector3(-17.8, 3.65, -72.5)
+		else:
+			way = Vector3(-15.8, 7.0, -81.4)
+	elif z_saw and gp.y >= 3.0 and tp.y > 4.8 and tp.x < -7.5:
+		# Mid-landing -> upper Watchtower ramp to deck
+		if gp.y < 6.2:
+			way = Vector3(-15.8, 7.0, -81.4)
+	elif z_saw and gp.y > 4.2 and tp.y < 2.2:
+		# Watchtower deck -> descend upper ramp to mid-landing -> lower ramp to snow
+		if gp.z < -79.5 and gp.x > -15.6:
+			way = Vector3(-15.8, 7.0, -81.4)
+		else:
+			way = Vector3(-17.0, 3.65, -72.5)
+	elif z_saw and gp.y > 2.2 and gp.y <= 4.2 and tp.y < 2.0:
+		way = Vector3(-18.2, 0.2, -82.2)
 
 	var d_vec := way - gp
 	d_vec.y = 0.0
 	if d_vec.length_squared() < 0.04:
 		d_vec = to_target
 	var dir := d_vec.normalized()
+
+	# Local zombie-to-zombie avoidance + gentle flank spread when waiting for an attack token
+	var sep := Vector3.ZERO
+	for oz in _all_zombies:
+		if oz == self or not is_instance_valid(oz) or oz.dead:
+			continue
+		var diff := gp - oz.global_position
+		diff.y = 0.0
+		var d2 := diff.length_squared()
+		if d2 > 0.001 and d2 < 1.35:
+			sep += diff.normalized() * (1.15 - sqrt(d2))
+	if not has_attack_token and to_target.length_squared() < 20.0 and to_target.length_squared() > 1.8:
+		var side_s := 1.0 if (int(get_instance_id()) % 2 == 0) else -1.0
+		sep += Vector3(-dir.z, 0.0, dir.x) * (0.42 * side_s)
+	if sep.length_squared() > 0.001:
+		dir = (dir + sep * 0.72).normalized()
 
 	# Stagger whisker raycasts to every 4th physics frame
 	_nav_ray_tick = (_nav_ray_tick + 1) & 3
@@ -1412,10 +1476,10 @@ func _choose_nav_dir(to_target: Vector3) -> Vector3:
 			var eye := gp + Vector3(0, 1.05, 0)
 			var q_fwd := PhysicsRayQueryParameters3D.create(eye, eye + dir * 1.45, 1)
 			if space.intersect_ray(q_fwd):
-				var l_dir := dir.rotated(Vector3.UP, 0.72)
-				var r_dir := dir.rotated(Vector3.UP, -0.72)
-				var l_hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(eye, eye + l_dir * 1.7, 1))
-				var r_hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(eye, eye + r_dir * 1.7, 1))
+				var l_dir := dir.rotated(Vector3.UP, 0.78)
+				var r_dir := dir.rotated(Vector3.UP, -0.78)
+				var l_hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(eye, eye + l_dir * 1.75, 1))
+				var r_hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(eye, eye + r_dir * 1.75, 1))
 				if not l_hit and r_hit:
 					dir = l_dir
 				elif not r_hit and l_hit:
@@ -1824,7 +1888,45 @@ func _physics_process(delta: float) -> void:
 			var steer_yaw := atan2(steer_dir.x, steer_dir.z)
 			rotation.y = lerp_angle(rotation.y, desired_yaw if dist < 4.0 else steer_yaw, delta * 6.5)
 
-			var effective_speed := move_speed * (0.52 if crippled_side != 0 else 1.0)
+			var effective_speed := move_speed * (0.34 if crippled_side != 0 else 1.0)
+			if anim_player and not deterministic_pose:
+				anim_player.speed_scale = clampf(effective_speed / 2.15, 0.45, 1.85)
+			# Runner approach telegraph snarl when closing inside 7.5m
+			if variant == Variant.RUNNER and not _runner_telegraphed and dist < 7.5 and _has_clear_los_to_player():
+				_runner_telegraphed = true
+				if growl_player and not _snarl_streams.is_empty():
+					growl_player.stream = _snarl_streams[randi() % _snarl_streams.size()]
+					growl_player.pitch_scale = randf_range(1.12, 1.28)
+					growl_player.volume_db = 0.5
+					growl_player.play()
+			# Periodically tear down nearby window barricade planks
+			if _barricade_cd > 0.0:
+				_barricade_cd -= delta
+			elif global_position.z > -4.0 and global_position.x > 7.2:
+				var gm_b := _get_game_manager()
+				if gm_b and gm_b.world:
+					for inter in gm_b.world.interactables:
+						if inter is InteractableObject and inter.kind == InteractableObject.Kind.BARRICADE and inter.plank_count > 0:
+							if global_position.distance_to(inter.global_position) < 2.6:
+								inter.damage_barricade()
+								_barricade_cd = 2.4
+								break
+			# Stuck-zombie watchdog -> relocate off-camera so waves NEVER stall!
+			if dist > 2.8:
+				if _stuck_anchor == Vector3.ZERO:
+					_stuck_anchor = global_position
+				elif global_position.distance_to(_stuck_anchor) > 0.65:
+					_stuck_anchor = global_position
+					_stuck_timer = 0.0
+				else:
+					_stuck_timer += delta
+					if _stuck_timer >= 6.0:
+						_stuck_timer = 0.0
+						var gm_s := _get_game_manager()
+						if gm_s and gm_s.has_method("relocate_stuck_zombie"):
+							gm_s.relocate_stuck_zombie(self)
+							_stuck_anchor = global_position
+
 			var can_windup := dist <= _trigger_range and absf(dy_player) < 1.35 and attack_cd <= 0.0
 			if can_windup and _has_clear_los_to_player() and _request_token():
 				state = State.WINDUP
@@ -1844,9 +1946,10 @@ func _physics_process(delta: float) -> void:
 				velocity.x = steer_dir.x * effective_speed
 				velocity.z = steer_dir.z * effective_speed
 				anim_phase += delta * effective_speed * 3.4
-				var sway_amp := 0.085 if crippled_side != 0 else 0.055
-				rig_root.rotation.z = lerpf(rig_root.rotation.z, sin(anim_phase) * sway_amp, delta * 8.0)
-				rig_root.position.y = lerpf(rig_root.position.y, absf(sin(anim_phase * 2.0)) * 0.032, delta * 8.0)
+				var sway_amp := 0.14 if crippled_side != 0 else 0.055
+				var cripple_drop := -0.14 if crippled_side != 0 else 0.0
+				rig_root.rotation.z = lerpf(rig_root.rotation.z, sin(anim_phase) * sway_amp + float(crippled_side) * 0.10, delta * 8.0)
+				rig_root.position.y = lerpf(rig_root.position.y, cripple_drop + absf(sin(anim_phase * 2.0)) * 0.032, delta * 8.0)
 
 	move_and_slide()
 	rig_root.rotation.x = lerp(rig_root.rotation.x, 0.09, delta * 6.0)
@@ -2037,26 +2140,35 @@ func apply_shot(hits: Array, weapon_idx: int) -> Dictionary:
 		bend_axis = Vector3.RIGHT
 	bend_axis = bend_axis.normalized()
 
-	# Live dismemberment across ALL hit zones in the blast (supports multi-pellet shotgun hits cleanly!)
+	# Weapon-weighted dismemberment & genuine leg-crippling (bow pins without popping heads on weak shots; leg hits cripple instead of instant-killing at 48 dmg!)
+	var is_shotgun := (weapon_idx == 2 or weapon_idx == 9)
+	var is_heavy_melee := (weapon_idx == 3)
+	var is_bow := (weapon_idx == 4)
+	var head_thresh := 125.0 if is_bow else (44.0 if (is_shotgun and min_dist < 6.5) else 62.0)
+	var limb_thresh := 42.0 if (is_shotgun and min_dist < 6.5) else (58.0 if is_heavy_melee else 78.0)
 	var did_dismember := false
 	for hz_k in zone_pos.keys():
 		var hz_s := str(hz_k)
 		var z_pt: Vector3 = zone_pos[hz_k]
-		if hz_s == "HEAD" and not dismembered.has("HEAD") and (health <= 0.0 or head_dmg >= 55.0 or (weapon_idx == 2 and min_dist < 6.0 and head_dmg >= 48.0)):
+		if hz_s == "HEAD" and not dismembered.has("HEAD") and ((health <= 0.0 and not is_bow) or head_dmg >= head_thresh):
 			did_dismember = _dismember_zone("HEAD", z_pt, hd_world) or did_dismember
 			health = 0.0
-		elif hz_s == "ARM_L" and not dismembered.has("ARM_L") and l_arm_dmg >= 45.0:
+		elif hz_s == "ARM_L" and not dismembered.has("ARM_L") and l_arm_dmg >= limb_thresh:
 			did_dismember = _dismember_zone("ARM_L", z_pt, hd_world) or did_dismember
 			poise = poise_max
-		elif hz_s == "ARM_R" and not dismembered.has("ARM_R") and r_arm_dmg >= 45.0:
+		elif hz_s == "ARM_R" and not dismembered.has("ARM_R") and r_arm_dmg >= limb_thresh:
 			did_dismember = _dismember_zone("ARM_R", z_pt, hd_world) or did_dismember
 			poise = poise_max
-		elif hz_s == "LEG_L" and not dismembered.has("LEG_L") and left_leg_dmg >= 48.0:
+		elif hz_s == "LEG_L" and not dismembered.has("LEG_L") and left_leg_dmg >= limb_thresh and (is_shotgun or is_heavy_melee or health <= 0.0):
 			did_dismember = _dismember_zone("LEG_L", z_pt, hd_world) or did_dismember
-			health = 0.0
-		elif hz_s == "LEG_R" and not dismembered.has("LEG_R") and right_leg_dmg >= 48.0:
+			crippled_side = -1
+			if is_shotgun and min_dist < 5.5:
+				health = 0.0
+		elif hz_s == "LEG_R" and not dismembered.has("LEG_R") and right_leg_dmg >= limb_thresh and (is_shotgun or is_heavy_melee or health <= 0.0):
 			did_dismember = _dismember_zone("LEG_R", z_pt, hd_world) or did_dismember
-			health = 0.0
+			crippled_side = 1
+			if is_shotgun and min_dist < 5.5:
+				health = 0.0
 	if dismembered.has("ARM_L") and dismembered.has("ARM_R"):
 		health = 0.0
 
