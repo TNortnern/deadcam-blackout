@@ -304,7 +304,11 @@ func get_prompt(player_points: int, player: Node = null) -> String:
 				var cur: int = player.current_weapon
 				var is_melee := bool(PlayerBodycam.WEAPONS[cur].get("is_melee", false))
 				if is_melee:
-					return "EQUIP A FIREARM OR BOW TO UPGRADE"
+					if str(player.equipped_melee_id) == "bat" and not player.owned_melee.has("bat_spiked"):
+						if player_points < 750:
+							return "[E] DRIVE SPIKES INTO BASEBALL BAT (750 PTS NEEDED)"
+						return "[E] DRIVE SPIKES INTO BASEBALL BAT (750 PTS — +40% DMG & BLEED)"
+					return "EQUIP A FIREARM, BOW, OR BASEBALL BAT TO UPGRADE"
 				var already_up: bool = player.has_method("is_weapon_upgraded") and player.is_weapon_upgraded(cur)
 				if already_up:
 					var full_a: bool = player.ammo_in_mag[cur] >= player.get_weapon_mag_size(cur) and player.ammo_reserve[cur] >= int(PlayerBodycam.WEAPONS[cur]["reserve_max"])
@@ -434,7 +438,15 @@ func interact(game_manager: Node, player: Node) -> String:
 				return ""
 			var cur: int = player.current_weapon
 			if bool(PlayerBodycam.WEAPONS[cur].get("is_melee", false)):
-				return "Equip a firearm or bow to upgrade!"
+				if str(player.equipped_melee_id) == "bat" and not player.owned_melee.has("bat_spiked"):
+					if game_manager and game_manager.points < 750:
+						return "Need 750 points to spike the Baseball Bat!"
+					if game_manager:
+						game_manager.add_points(-750)
+					player.acquire_melee_weapon("bat_spiked")
+					_play_spatial(_sfx_reveal, 0.90)
+					return "UPGRADED: SPIKED BASEBALL BAT (+40% DMG & BLEED DOT!)"
+				return "Equip a firearm, bow, or Baseball Bat to upgrade!"
 			var already_up: bool = player.has_method("is_weapon_upgraded") and player.is_weapon_upgraded(cur)
 			if already_up:
 				var max_m: int = player.get_weapon_mag_size(cur) if player.has_method("get_weapon_mag_size") else int(PlayerBodycam.WEAPONS[cur]["mag_size"])

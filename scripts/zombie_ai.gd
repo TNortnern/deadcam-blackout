@@ -1,7 +1,7 @@
 extends CharacterBody3D
 class_name ZombieAI
 
-enum Variant { TACTICAL_SOLDIER, ASYLUM_PATIENT, RUNNER }
+enum Variant { TACTICAL_SOLDIER, ASYLUM_PATIENT, RUNNER, BRUISER, EXPLODER }
 enum State { SPAWNING, CHASE, WINDUP, STRIKE, RECOVER, STAGGER, TRIPPED, DEAD }
 
 @export var variant: Variant = Variant.TACTICAL_SOLDIER
@@ -32,6 +32,7 @@ var right_leg_dmg: float = 0.0
 var dismembered: Dictionary = {} # zone -> true ("HEAD", "ARM_L", "ARM_R", "LEG_L", "LEG_R")
 var _frozen_rest_rot: Dictionary = {} # bone_idx -> Quaternion
 var crippled_side: int = 0 # -1 left, +1 right, 0 none
+var is_crawler: bool = false
 var disabled_arm_side: int = 0 # -1 left, +1 right
 var disabled_arm_timer: float = 0.0
 var burn_timer: float = 0.0
@@ -39,7 +40,16 @@ var burn_dps: float = 26.0
 var _burn_tick: float = 0.0
 var shock_timer: float = 0.0
 var _shock_tick: float = 0.0
+var bleed_timer: float = 0.0
+var bleed_dps: float = 20.0
+var _bleed_tick: float = 0.0
 var _status_light: OmniLight3D = null
+var _body_col: CollisionShape3D = null
+var _exploder_light: OmniLight3D = null
+var _exploder_sac: Node3D = null
+var _exploder_attach: BoneAttachment3D = null
+var _exploder_detonated: bool = false
+var _knockback_vel: Vector3 = Vector3.ZERO
 
 # Melee telegraph state
 var attack_side: int = 1 # -1 left arm, +1 right arm
@@ -127,6 +137,8 @@ const BAKED_PATHS := {
 	Variant.TACTICAL_SOLDIER: "res://assets/baked/zombie_tactical.scn",
 	Variant.ASYLUM_PATIENT: "res://assets/baked/zombie_patient.scn",
 	Variant.RUNNER: "res://assets/baked/zombie_runner.scn",
+	Variant.BRUISER: "res://assets/baked/zombie_tactical.scn",
+	Variant.EXPLODER: "res://assets/baked/zombie_patient.scn",
 }
 
 var _shadow_meshes: Array[GeometryInstance3D] = []
@@ -204,7 +216,7 @@ class ZombieSkeletonModifier extends SkeletonModifier3D:
 
 		var has_springs := not _spring_vel.is_empty() or not _spring_rot.is_empty() or absf(_pelvis_spring_y) > 0.002 or absf(_pelvis_vel_y) > 0.01
 		var is_attack := zombie.state == State.WINDUP or zombie.state == State.STRIKE or zombie.state == State.RECOVER
-		var has_limp := zombie.crippled_side != 0 or zombie.disabled_arm_timer > 0.0
+		var has_limp := zombie.crippled_side != 0 or zombie.disabled_arm_timer > 0.0 or zombie.is_crawler
 		var has_dismember := not zombie.dismembered.is_empty()
 		if not has_springs and not is_attack and not has_limp and not has_dismember:
 			return
@@ -288,7 +300,11 @@ class ZombieSkeletonModifier extends SkeletonModifier3D:
 
 		var leg_l_mod := Vector3.ZERO
 		var leg_r_mod := Vector3.ZERO
-		if zombie.crippled_side < 0:
+		if zombie.is_crawler:
+			# Trail legs flat behind crawler instead of bicycle-pedaling underground!
+			leg_l_mod = Vector3(-0.35, 0.0, -0.10)
+			leg_r_mod = Vector3(-0.35, 0.0, 0.10)
+		elif zombie.crippled_side < 0:
 			var drag := maxf(0.0, sin(zombie.anim_phase))
 			leg_l_mod = Vector3(0.28 + 0.35 * drag, 0.0, -0.14)
 		elif zombie.crippled_side > 0:
@@ -297,6 +313,11 @@ class ZombieSkeletonModifier extends SkeletonModifier3D:
 
 		var arm_droop_l := Vector3(0.65, 0.0, 0.45) if (zombie.dismembered.has("ARM_L") or (zombie.disabled_arm_timer > 0.0 and zombie.disabled_arm_side < 0)) else Vector3.ZERO
 		var arm_droop_r := Vector3(0.65, 0.0, -0.45) if (zombie.dismembered.has("ARM_R") or (zombie.disabled_arm_timer > 0.0 and zombie.disabled_arm_side > 0)) else Vector3.ZERO
+		if zombie.is_crawler:
+			var cp := sin(zombie.anim_phase * 1.45)
+			arm_droop_l += Vector3(-1.35 + cp * 0.55, 0.15, 0.18)
+			arm_droop_r += Vector3(-1.35 - cp * 0.55, -0.15, -0.18)
+			atk_spine += Vector3(-0.32, cp * 0.14, 0.0)
 
 		var rig_basis := zombie.rig_root.global_transform.basis.orthonormalized()
 		var sk_world_basis := sk.global_transform.basis.orthonormalized()
@@ -406,6 +427,34 @@ func _ready() -> void:
 			_chest_armor_mult = 1.0
 			_impulse_scale = 1.35
 			_model_scale_val = 0.99
+		Variant.BRUISER:
+			_is_tactical = true
+			max_health = 380.0
+			move_speed = 1.68
+			attack_damage = 36.0
+			poise_max = 175.0
+			_windup_dur = 0.68
+			_strike_dur = 0.20
+			_recover_dur = 0.85
+			_trigger_range = 2.15
+			_lunge_speed = 4.6
+			_chest_armor_mult = 0.52
+			_impulse_scale = 0.32
+			_model_scale_val = 1.14 * 1.18
+		Variant.EXPLODER:
+			_is_tactical = false
+			max_health = 82.0
+			move_speed = 2.95
+			attack_damage = 28.0
+			poise_max = 42.0
+			_windup_dur = 0.42
+			_strike_dur = 0.14
+			_recover_dur = 0.55
+			_trigger_range = 2.10
+			_lunge_speed = 4.8
+			_chest_armor_mult = 1.15
+			_impulse_scale = 1.10
+			_model_scale_val = 1.05
 	health = max_health
 	anim_phase = randf() * TAU
 	growl_timer = randf_range(1.2, 4.5)
@@ -634,11 +683,12 @@ static func _bake_unit_mesh(src: Mesh, scl: float, zv: int, to_sk: Transform3D) 
 func _build_body() -> void:
 	var col := CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
-	cap.radius = 0.40 if _is_tactical else 0.38
-	cap.height = 1.88 if _is_tactical else 1.78
+	cap.radius = 0.48 if variant == Variant.BRUISER else (0.40 if _is_tactical else 0.38)
+	cap.height = 2.08 if variant == Variant.BRUISER else (1.88 if _is_tactical else 1.78)
 	col.shape = cap
 	col.position = Vector3(0, cap.height * 0.5, 0)
 	add_child(col)
+	_body_col = col
 
 	rig_root = Node3D.new()
 	add_child(rig_root)
@@ -655,6 +705,9 @@ func _build_body() -> void:
 			if packed:
 				_baked_scene_cache[variant] = packed
 				used_baked = true
+	if variant == Variant.BRUISER and used_baked:
+		# Uniform scale (natively supported by Jolt CapsuleShape3D with ZERO physics errors!)
+		rig_root.scale = Vector3.ONE * 1.18
 	if packed == null:
 		var glb_path := "res://assets/models/zombie_tactical.glb" if _is_tactical else "res://assets/models/zombie_runner.glb"
 		packed = _get_scene(glb_path)
@@ -677,6 +730,59 @@ func _build_body() -> void:
 			skeleton.add_child(mod)
 			sk_mod = mod
 		_play_horror_anim("walk", randf() * 1.4)
+		if variant == Variant.EXPLODER:
+			_attach_exploder_visuals()
+
+
+func _attach_exploder_visuals() -> void:
+	var cluster := Node3D.new()
+	cluster.name = "ExploderPustules"
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.84, 0.30, 0.06)
+	mat.roughness = 0.32
+	if ResourceLoader.exists("res://assets/textures/zombie_pores_normal.png"):
+		mat.normal_enabled = true
+		mat.normal_texture = load("res://assets/textures/zombie_pores_normal.png")
+		mat.normal_scale = 1.6
+	mat.emission_enabled = true
+	mat.emission = Color(1.0, 0.42, 0.06)
+	mat.emission_energy_multiplier = 2.6
+	for spec in [
+		[Vector3(0.0, 0.02, 0.14), Vector3(0.19, 0.24, 0.16)],
+		[Vector3(-0.11, -0.05, 0.11), Vector3(0.13, 0.15, 0.12)],
+		[Vector3(0.10, 0.08, 0.10), Vector3(0.12, 0.14, 0.11)],
+	]:
+		var lob := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.5; sm.height = 1.0; sm.radial_segments = 14; sm.rings = 8
+		sm.material = mat
+		lob.mesh = sm
+		lob.position = spec[0]
+		lob.scale = spec[1]
+		lob.layers = 8
+		lob.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		cluster.add_child(lob)
+	if skeleton and spine2_bone >= 0:
+		var ba := BoneAttachment3D.new()
+		ba.bone_name = skeleton.get_bone_name(spine2_bone)
+		ba.add_child(cluster)
+		skeleton.add_child(ba)
+		_exploder_attach = ba
+	else:
+		cluster.position = Vector3(0.0, 1.16, 0.14)
+		rig_root.add_child(cluster)
+	_exploder_sac = cluster
+	if not OS.has_feature("web"):
+		var el := OmniLight3D.new()
+		el.position = Vector3(0.0, 0.04, 0.24)
+		el.light_color = Color(1.0, 0.44, 0.08)
+		el.light_energy = 1.8
+		el.omni_range = 3.2
+		el.shadow_enabled = false
+		el.light_cull_mask = 0xFFFFD
+		el.light_volumetric_fog_energy = 0.0
+		cluster.add_child(el)
+		_exploder_light = el
 
 
 func _collect_shadow_meshes() -> void:
@@ -1023,6 +1129,12 @@ func raycast_skeleton(ray_orig: Vector3, ray_dir: Vector3, max_dist: float) -> D
 	if t_c2 >= 0.0 and t_c2 < best_t:
 		best_t = t_c2
 		best_zone = "CHEST"
+	if variant == Variant.EXPLODER and _exploder_sac and is_instance_valid(_exploder_sac) and _exploder_sac.visible:
+		var sp := _exploder_sac.global_position
+		var t_sac := _ray_capsule_hit(ray_orig, rd, sp - Vector3(0, 0.08, 0), sp + Vector3(0, 0.08, 0), 0.26, best_t)
+		if t_sac >= 0.0 and t_sac < best_t:
+			best_t = t_sac
+			best_zone = "CHEST"
 
 	# Left Arm (upper always, forearm+hand unless dismembered)
 	var p_la := _bone_world_pos(l_arm_bone, Vector3(-0.24, 1.32, 0))
@@ -1402,6 +1514,101 @@ func apply_shock(dur: float) -> void:
 	_ensure_status_light()
 
 
+func apply_bleed(dur: float, dps: float = 22.0) -> void:
+	if dead:
+		return
+	bleed_timer = maxf(bleed_timer, dur)
+	bleed_dps = maxf(bleed_dps, dps)
+
+
+func enter_crawler() -> void:
+	if dead or is_crawler or variant == Variant.BRUISER:
+		return
+	is_crawler = true
+	move_speed = minf(move_speed, 1.18)
+	_lunge_speed = 2.6
+	_trigger_range = 1.65
+	if _body_col and is_instance_valid(_body_col) and _body_col.shape is CapsuleShape3D:
+		var cap := (_body_col.shape as CapsuleShape3D).duplicate() as CapsuleShape3D
+		cap.radius = 0.34
+		cap.height = 0.72
+		_body_col.shape = cap
+		_body_col.position = Vector3(0.0, 0.36, 0.0)
+	if state == State.CHASE or state == State.WINDUP:
+		_release_token()
+		state = State.TRIPPED
+		state_timer = 0.45
+
+
+func _detonate_exploder(was_headshot: bool) -> void:
+	if _exploder_detonated or variant != Variant.EXPLODER:
+		return
+	_exploder_detonated = true
+	if _exploder_attach and is_instance_valid(_exploder_attach):
+		_exploder_attach.queue_free()
+		_exploder_attach = null
+		_exploder_sac = null
+		_exploder_light = null
+	elif _exploder_sac and is_instance_valid(_exploder_sac):
+		_exploder_sac.visible = false
+	if _exploder_light and is_instance_valid(_exploder_light):
+		_exploder_light.visible = false
+	if was_headshot:
+		# Precision headshot defuses the volatile chest sac cleanly!
+		if VFXManager.instance:
+			VFXManager.instance.spawn_blood_impact(global_position + Vector3(0, 1.2, 0), Vector3.UP, 1.1, true, true)
+		return
+	# Audible heavy blast SFX on Exploder detonation!
+	if impact_audio and _death_stream:
+		impact_audio.stream = _death_stream
+		impact_audio.pitch_scale = 0.45
+		impact_audio.volume_db = 4.0
+		impact_audio.play()
+	if target and is_instance_valid(target) and target.has_method("_play_gun_sfx") and "_weapon_audio" in target:
+		var wa: Array = target._weapon_audio
+		if wa.size() > 2 and wa[2]:
+			target._play_gun_sfx(wa[2], 0.52)
+	var pos := global_position + Vector3(0.0, 1.0, 0.0)
+	var radius := 4.8
+	var space := get_world_3d().direct_space_state
+	if VFXManager.instance:
+		VFXManager.instance.spawn_blood_impact(pos, Vector3.UP, 2.0, true, true)
+	# Blast nearby zombies (chain reactions!)
+	for z_raw in _all_zombies.duplicate():
+		var oz := z_raw as ZombieAI
+		if oz == self or not is_instance_valid(oz) or oz.dead:
+			continue
+		var d := oz.global_position.distance_to(global_position)
+		if d <= radius and absf(oz.global_position.y - global_position.y) <= 2.5:
+			var clear := true
+			if space:
+				var q := PhysicsRayQueryParameters3D.create(pos, oz.global_position + Vector3(0.0, 0.9, 0.0), 1)
+				clear = space.intersect_ray(q).is_empty()
+			if clear:
+				var falloff := clampf(1.0 - (d / radius) * 0.65, 0.35, 1.0)
+				var bdir := (oz.global_position + Vector3(0, 1.0, 0) - pos).normalized()
+				var res := oz.apply_shot([{"zone": "CHEST", "pos": oz.global_position + Vector3(0, 1.0, 0), "dir": bdir, "dmg": 185.0 * falloff, "dist": d}], 2)
+				if bool(res.get("killed", false)) and target and is_instance_valid(target) and target.has_signal("hit_confirmed"):
+					target.emit_signal("hit_confirmed", false, true)
+				if not oz.dead:
+					oz.velocity += bdir * (7.5 * falloff)
+	# Blast nearby player (respects LOS & god_mode)
+	if target and is_instance_valid(target):
+		var dp := target.global_position.distance_to(global_position)
+		if dp <= radius and absf(target.global_position.y - global_position.y) <= 2.5:
+			var clear_p := true
+			if space:
+				var qp := PhysicsRayQueryParameters3D.create(pos, target.global_position + Vector3(0.0, 1.1, 0.0), 1)
+				clear_p = space.intersect_ray(qp).is_empty()
+			if clear_p and target.has_method("take_damage"):
+				var pdmg := clampf(44.0 * (1.0 - dp / radius), 12.0, 44.0)
+				target.take_damage(pdmg, pos)
+		if "trauma" in target:
+			target.trauma = minf(1.0, float(target.trauma) + clampf(1.0 - dp / 12.0, 0.15, 0.75))
+	if target and is_instance_valid(target) and target.has_method("_spawn_hazard_pool"):
+		target._spawn_hazard_pool("frag_flash", global_position, 0.32, 3.2)
+
+
 func _ensure_status_light() -> void:
 	if OS.has_feature("web"):
 		return
@@ -1415,6 +1622,13 @@ func _ensure_status_light() -> void:
 		add_child(_status_light)
 
 
+func apply_knockback(imp: Vector3) -> void:
+	if dead:
+		return
+	var horiz := Vector3(imp.x, 0.0, imp.z) * _impulse_scale
+	_knockback_vel = (_knockback_vel + horiz).limit_length(10.0)
+
+
 func apply_status_damage(dmg: float) -> void:
 	if dead or dmg <= 0.0:
 		return
@@ -1424,19 +1638,36 @@ func apply_status_damage(dmg: float) -> void:
 			_status_light.visible = false
 		burn_timer = 0.0
 		shock_timer = 0.0
+		bleed_timer = 0.0
 		dead = true
+		state = State.DEAD
 		_release_token()
+		if variant == Variant.EXPLODER:
+			_detonate_exploder(false)
+		if growl_player and _death_stream:
+			growl_player.stream = _death_stream
+			growl_player.pitch_scale = 0.72 if variant == Variant.BRUISER else randf_range(0.90, 1.08)
+			growl_player.volume_db = -1.5
+			growl_player.play()
 		if target and is_instance_valid(target) and target.has_signal("hit_confirmed"):
 			target.emit_signal("hit_confirmed", false, true)
 		emit_signal("died", self, false)
 		_enter_ragdoll(Vector3(0.0, 0.15, -1.0).normalized(), dmg, "CHEST", 2.0, 1)
+		_register_corpse(self)
 
 
 func _tick_status_effects(delta: float) -> void:
 	if dead:
 		if _status_light and is_instance_valid(_status_light):
 			_status_light.visible = false
+		if _exploder_light and is_instance_valid(_exploder_light):
+			_exploder_light.visible = false
 		return
+	if variant == Variant.EXPLODER and _exploder_sac and is_instance_valid(_exploder_sac):
+		var pulse := 1.0 + 0.14 * sin(Time.get_ticks_msec() * 0.012)
+		_exploder_sac.scale = Vector3.ONE * pulse
+		if _exploder_light and is_instance_valid(_exploder_light):
+			_exploder_light.light_energy = 1.6 + 0.9 * sin(Time.get_ticks_msec() * 0.012)
 	var any_fx := false
 	if burn_timer > 0.0:
 		any_fx = true
@@ -1454,6 +1685,16 @@ func _tick_status_effects(delta: float) -> void:
 		if _shock_tick >= 0.45:
 			_shock_tick = 0.0
 			apply_status_damage(12.0)
+			if dead:
+				return
+	if bleed_timer > 0.0:
+		bleed_timer = maxf(0.0, bleed_timer - delta)
+		_bleed_tick += delta
+		if _bleed_tick >= 0.40:
+			_bleed_tick = 0.0
+			if VFXManager.instance:
+				VFXManager.instance.spawn_blood_impact(global_position + Vector3(0.0, 0.45 if is_crawler else 1.05, 0.0), Vector3.DOWN, 0.45, false, false)
+			apply_status_damage(bleed_dps * 0.40)
 			if dead:
 				return
 	if _status_light and is_instance_valid(_status_light):
@@ -1563,7 +1804,7 @@ func _choose_nav_dir(to_target: Vector3) -> Vector3:
 	if _nav_ray_tick == 0:
 		var space := get_world_3d().direct_space_state
 		if space:
-			var eye := gp + Vector3(0, 1.05, 0)
+			var eye := gp + Vector3(0, 0.42 if is_crawler else 1.05, 0)
 			var q_fwd := PhysicsRayQueryParameters3D.create(eye, eye + dir * 1.45, 1)
 			if space.intersect_ray(q_fwd):
 				var l_dir := dir.rotated(Vector3.UP, 0.78)
@@ -1648,7 +1889,9 @@ func _sync_bones_from_jolt() -> void:
 		if is_instance_valid(pb):
 			var b_idx: int = entry["bone"]
 			var inv_bo: Transform3D = entry["inv_bo"]
-			skeleton.set_bone_global_pose(b_idx, sk_inv * pb.global_transform * inv_bo)
+			var b_xf := sk_inv * pb.global_transform * inv_bo
+			b_xf.basis = b_xf.basis.orthonormalized()
+			skeleton.set_bone_global_pose(b_idx, b_xf)
 	if not dismembered.is_empty():
 		for z_key in dismembered.keys():
 			var b := _dismember_bone_for_zone(str(z_key))
@@ -1712,6 +1955,11 @@ func _freeze_ragdoll_to_static() -> void:
 	anim_player = null
 	if _status_light and is_instance_valid(_status_light):
 		_status_light.visible = false
+	if _exploder_attach and is_instance_valid(_exploder_attach):
+		_exploder_attach.queue_free()
+		_exploder_attach = null
+		_exploder_sac = null
+		_exploder_light = null
 	_set_shadow_casting(false)
 	death_settled = true
 	set_physics_process(false)
@@ -1907,11 +2155,18 @@ func _physics_process(delta: float) -> void:
 			state = State.CHASE
 		return
 
+	if _knockback_vel.length_squared() > 0.002:
+		_knockback_vel = _knockback_vel.lerp(Vector3.ZERO, minf(1.0, delta * 9.5))
+	else:
+		_knockback_vel = Vector3.ZERO
+
 	if state == State.STAGGER or state == State.TRIPPED:
 		state_timer -= delta
-		velocity.x = lerp(velocity.x, 0.0, delta * 8.5)
-		velocity.z = lerp(velocity.z, 0.0, delta * 8.5)
-		rig_root.rotation.x = lerp(rig_root.rotation.x, -0.20 if state == State.STAGGER else -0.34, delta * 12.0)
+		velocity.x = lerp(velocity.x, 0.0, delta * 8.5) + _knockback_vel.x
+		velocity.z = lerp(velocity.z, 0.0, delta * 8.5) + _knockback_vel.z
+		rig_root.rotation.x = lerp(rig_root.rotation.x, (1.28 if state == State.STAGGER else 1.44) if is_crawler else (-0.20 if state == State.STAGGER else -0.34), delta * 12.0)
+		if is_crawler:
+			rig_root.position = rig_root.position.lerp(Vector3(0.0, 0.24, -0.92), delta * 10.0)
 		move_and_slide()
 		if state_timer <= 0.0:
 			state = State.CHASE
@@ -1922,8 +2177,8 @@ func _physics_process(delta: float) -> void:
 		growl_timer = randf_range(4.2, 8.5)
 		if growl_player and not _growl_streams.is_empty():
 			growl_player.stream = _growl_streams[randi() % _growl_streams.size()]
-			growl_player.pitch_scale = randf_range(0.84, 1.16)
-			growl_player.volume_db = -4.0
+			growl_player.pitch_scale = randf_range(0.66, 0.78) if variant == Variant.BRUISER else randf_range(0.84, 1.16)
+			growl_player.volume_db = -2.0 if variant == Variant.BRUISER else -4.0
 			growl_player.play()
 
 	if target and is_instance_valid(target):
@@ -1938,9 +2193,11 @@ func _physics_process(delta: float) -> void:
 			state_timer -= delta
 			if state_timer > 0.14:
 				rotation.y = lerp_angle(rotation.y, desired_yaw, delta * 2.4)
-			velocity.x = dir_to_player.x * move_speed * 0.15
-			velocity.z = dir_to_player.z * move_speed * 0.15
-			rig_root.rotation.x = lerp(rig_root.rotation.x, -0.14, delta * 10.0)
+			velocity.x = dir_to_player.x * move_speed * 0.15 + _knockback_vel.x
+			velocity.z = dir_to_player.z * move_speed * 0.15 + _knockback_vel.z
+			rig_root.rotation.x = lerp(rig_root.rotation.x, 1.24 if is_crawler else -0.14, delta * 10.0)
+			if is_crawler:
+				rig_root.position = rig_root.position.lerp(Vector3(0.0, 0.24, -0.92), delta * 10.0)
 			move_and_slide()
 			if state_timer <= 0.0:
 				state = State.STRIKE
@@ -1952,13 +2209,17 @@ func _physics_process(delta: float) -> void:
 		if state == State.STRIKE:
 			state_timer -= delta
 			var prog := 1.0 - (state_timer / maxf(_strike_dur, 0.01))
-			velocity.x = strike_dir.x * _lunge_speed
-			velocity.z = strike_dir.z * _lunge_speed
-			rig_root.rotation.x = lerp(rig_root.rotation.x, 0.22, delta * 22.0)
+			velocity.x = strike_dir.x * _lunge_speed + _knockback_vel.x
+			velocity.z = strike_dir.z * _lunge_speed + _knockback_vel.z
+			rig_root.rotation.x = lerp(rig_root.rotation.x, 1.46 if is_crawler else 0.22, delta * 22.0)
+			if is_crawler:
+				rig_root.position = rig_root.position.lerp(Vector3(0.0, 0.24, -0.92), delta * 10.0)
 			move_and_slide()
 			if prog >= 0.50 and not strike_hit_done:
 				strike_hit_done = true
 				_attempt_melee_hit(raw_to, dist, dy_player)
+				if dead:
+					return
 			if state_timer <= 0.0:
 				state = State.RECOVER
 				state_timer = _recover_dur
@@ -1967,9 +2228,11 @@ func _physics_process(delta: float) -> void:
 
 		if state == State.RECOVER:
 			state_timer -= delta
-			velocity.x = lerp(velocity.x, 0.0, delta * 11.0)
-			velocity.z = lerp(velocity.z, 0.0, delta * 11.0)
-			rig_root.rotation.x = lerp(rig_root.rotation.x, 0.05, delta * 8.0)
+			velocity.x = lerp(velocity.x, 0.0, delta * 11.0) + _knockback_vel.x
+			velocity.z = lerp(velocity.z, 0.0, delta * 11.0) + _knockback_vel.z
+			rig_root.rotation.x = lerp(rig_root.rotation.x, 1.38 if is_crawler else 0.05, delta * 8.0)
+			if is_crawler:
+				rig_root.position = rig_root.position.lerp(Vector3(0.0, 0.24, -0.92), delta * 10.0)
 			move_and_slide()
 			if state_timer <= 0.0:
 				_release_token()
@@ -1982,7 +2245,7 @@ func _physics_process(delta: float) -> void:
 			rotation.y = lerp_angle(rotation.y, desired_yaw if dist < 4.0 else steer_yaw, delta * 6.5)
 
 			var shock_mult := 0.22 if shock_timer > 0.0 else 1.0
-			var effective_speed := move_speed * (0.34 if crippled_side != 0 else 1.0) * shock_mult
+			var effective_speed := (1.15 if is_crawler else move_speed * (0.34 if crippled_side != 0 else 1.0)) * shock_mult
 			if anim_player and not deterministic_pose:
 				anim_player.speed_scale = clampf(effective_speed / 2.15, 0.45, 1.85)
 			# Runner approach telegraph snarl when closing inside 7.5m
@@ -2033,20 +2296,24 @@ func _physics_process(delta: float) -> void:
 					growl_player.pitch_scale = randf_range(0.92, 1.12)
 					growl_player.volume_db = 0.0
 					growl_player.play()
-			elif dist < 0.88:
-				velocity.x = -dir_to_player.x * 2.4
-				velocity.z = -dir_to_player.z * 2.4
+			elif dist < (1.05 if is_crawler else 0.88):
+				velocity.x = -dir_to_player.x * 2.4 + _knockback_vel.x
+				velocity.z = -dir_to_player.z * 2.4 + _knockback_vel.z
 			else:
-				velocity.x = steer_dir.x * effective_speed
-				velocity.z = steer_dir.z * effective_speed
-				anim_phase += delta * effective_speed * 3.4
-				var sway_amp := 0.14 if crippled_side != 0 else 0.055
-				var cripple_drop := -0.14 if crippled_side != 0 else 0.0
-				rig_root.rotation.z = lerpf(rig_root.rotation.z, sin(anim_phase) * sway_amp + float(crippled_side) * 0.10, delta * 8.0)
-				rig_root.position.y = lerpf(rig_root.position.y, cripple_drop + absf(sin(anim_phase * 2.0)) * 0.032, delta * 8.0)
+				velocity.x = steer_dir.x * effective_speed + _knockback_vel.x
+				velocity.z = steer_dir.z * effective_speed + _knockback_vel.z
+				anim_phase += delta * effective_speed * (4.8 if is_crawler else 3.4)
+				if is_crawler:
+					rig_root.rotation.z = lerpf(rig_root.rotation.z, sin(anim_phase * 1.45) * 0.16, delta * 9.0)
+					rig_root.position = rig_root.position.lerp(Vector3(0.0, 0.24 + absf(sin(anim_phase * 1.45)) * 0.04, -0.92), delta * 10.0)
+				else:
+					var sway_amp := 0.14 if crippled_side != 0 else 0.055
+					var cripple_drop := -0.14 if crippled_side != 0 else 0.0
+					rig_root.rotation.z = lerpf(rig_root.rotation.z, sin(anim_phase) * sway_amp + float(crippled_side) * 0.10, delta * 8.0)
+					rig_root.position = rig_root.position.lerp(Vector3(0.0, cripple_drop + absf(sin(anim_phase * 2.0)) * 0.032, 0.0), delta * 8.0)
 
 	move_and_slide()
-	rig_root.rotation.x = lerp(rig_root.rotation.x, 0.09, delta * 6.0)
+	rig_root.rotation.x = lerp(rig_root.rotation.x, 1.38 if is_crawler else 0.09, delta * (10.0 if is_crawler else 6.0))
 
 
 func _has_clear_los_to_player() -> bool:
@@ -2055,7 +2322,7 @@ func _has_clear_los_to_player() -> bool:
 	var space := get_world_3d().direct_space_state
 	if space == null:
 		return true
-	var p0 := global_position + Vector3(0, 1.32, 0)
+	var p0 := global_position + Vector3(0, 0.45 if is_crawler else 1.32, 0)
 	var p1 := target.global_position + Vector3(0, 1.32, 0)
 	var q := PhysicsRayQueryParameters3D.create(p0, p1, 1)
 	return not space.intersect_ray(q)
@@ -2064,7 +2331,7 @@ func _has_clear_los_to_player() -> bool:
 func _attempt_melee_hit(raw_to: Vector3, dist_xz: float, dy_player: float) -> void:
 	if target == null or not is_instance_valid(target):
 		return
-	if absf(dy_player) > 1.25 or dist_xz > 1.72:
+	if absf(dy_player) > 1.25 or dist_xz > (1.85 if variant == Variant.EXPLODER else 1.72):
 		return
 	var z_fwd := Vector3(sin(rotation.y), 0.0, cos(rotation.y)).normalized()
 	var to_p_xz := Vector3(raw_to.x, 0.0, raw_to.z)
@@ -2072,8 +2339,19 @@ func _attempt_melee_hit(raw_to: Vector3, dist_xz: float, dy_player: float) -> vo
 		return
 	if not _has_clear_los_to_player():
 		return
+	if variant == Variant.EXPLODER:
+		# Exploder suicide-detonates on close contact!
+		health = 0.0
+		dead = true
+		state = State.DEAD
+		_release_token()
+		_detonate_exploder(false)
+		_enter_ragdoll(-z_fwd, 120.0, "CHEST", 1.5, 2)
+		_register_corpse(self)
+		emit_signal("died", self, false)
+		return
 	if target.has_method("take_damage"):
-		target.take_damage(attack_damage, global_position + Vector3(0, 1.35, 0))
+		target.take_damage(attack_damage, global_position + Vector3(0, 0.55 if is_crawler else 1.35, 0))
 
 
 func _pb_for_zone(zone: String) -> PhysicalBone3D:
@@ -2253,16 +2531,18 @@ func apply_shot(hits: Array, weapon_idx: int) -> Dictionary:
 		elif hz_s == "ARM_R" and not dismembered.has("ARM_R") and r_arm_dmg >= limb_thresh:
 			did_dismember = _dismember_zone("ARM_R", z_pt, hd_world) or did_dismember
 			poise = poise_max
-		elif hz_s == "LEG_L" and not dismembered.has("LEG_L") and left_leg_dmg >= limb_thresh and (is_shotgun or is_heavy_melee or health <= 0.0):
+		elif hz_s == "LEG_L" and not dismembered.has("LEG_L") and left_leg_dmg >= limb_thresh and (is_shotgun or is_heavy_melee or left_leg_dmg >= max_health * 0.42 or health <= 0.0):
 			did_dismember = _dismember_zone("LEG_L", z_pt, hd_world) or did_dismember
 			crippled_side = -1
-			if is_shotgun and min_dist < 5.5:
-				health = 0.0
-		elif hz_s == "LEG_R" and not dismembered.has("LEG_R") and right_leg_dmg >= limb_thresh and (is_shotgun or is_heavy_melee or health <= 0.0):
+			if health > 0.0:
+				enter_crawler()
+		elif hz_s == "LEG_R" and not dismembered.has("LEG_R") and right_leg_dmg >= limb_thresh and (is_shotgun or is_heavy_melee or right_leg_dmg >= max_health * 0.42 or health <= 0.0):
 			did_dismember = _dismember_zone("LEG_R", z_pt, hd_world) or did_dismember
 			crippled_side = 1
-			if is_shotgun and min_dist < 5.5:
-				health = 0.0
+			if health > 0.0:
+				enter_crawler()
+	if not is_crawler and health > 0.0 and (left_leg_dmg >= max_health * 0.45 or right_leg_dmg >= max_health * 0.45):
+		enter_crawler()
 	if dismembered.has("ARM_L") and dismembered.has("ARM_R"):
 		health = 0.0
 
@@ -2313,6 +2593,10 @@ func apply_shot(hits: Array, weapon_idx: int) -> Dictionary:
 		dead = true
 		state = State.DEAD
 		_release_token()
+		if _status_light and is_instance_valid(_status_light):
+			_status_light.visible = false
+		if variant == Variant.EXPLODER:
+			_detonate_exploder(any_hs and not zone_pos.has("CHEST"))
 		if growl_player and _death_stream:
 			growl_player.stream = _death_stream
 			growl_player.pitch_scale = randf_range(0.90, 1.08)

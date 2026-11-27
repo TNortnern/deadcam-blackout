@@ -290,9 +290,12 @@ const WEAPONS := [
 ]
 
 const MELEE_CATALOG := {
-	"knife": {"name": "COMBAT KNIFE", "damage": 55.0, "reach": 2.15, "dur": 0.42},
-	"fire_axe": {"name": "FIRE AXE", "damage": 94.0, "reach": 2.48, "dur": 0.56},
-	"machete": {"name": "TACTICAL MACHETE", "damage": 78.0, "reach": 2.34, "dur": 0.46},
+	"knife": {"name": "COMBAT KNIFE", "damage": 55.0, "reach": 2.15, "dur": 0.42, "poise": 35.0, "kb": 4.2},
+	"fire_axe": {"name": "FIRE AXE", "damage": 94.0, "reach": 2.48, "dur": 0.56, "poise": 72.0, "kb": 6.4},
+	"machete": {"name": "TACTICAL MACHETE", "damage": 78.0, "reach": 2.34, "dur": 0.46, "poise": 48.0, "kb": 5.0},
+	"bat": {"name": "BASEBALL BAT", "damage": 76.0, "reach": 2.42, "dur": 0.50, "poise": 78.0, "kb": 7.6},
+	"bat_spiked": {"name": "SPIKED BASEBALL BAT", "damage": 108.0, "reach": 2.46, "dur": 0.52, "poise": 88.0, "kb": 8.2, "bleed_dps": 24.0, "bleed_dur": 4.5},
+	"crowbar": {"name": "STEEL CROWBAR", "damage": 84.0, "reach": 2.30, "dur": 0.44, "poise": 68.0, "kb": 6.0, "armor_pierce": 1.45},
 }
 
 var head: Node3D
@@ -401,6 +404,7 @@ var _melee_is_heavy: bool = false
 var _melee_is_gun_bash: bool = false
 var _melee_combo_idx: int = 0
 var _melee_combo_reset: float = 0.0
+var _melee_hitstop_timer: float = 0.0
 var _melee_nodes: Dictionary = {} # melee_id -> Node3D
 
 # Throwables state (Frag, Molotov, Shock)
@@ -1438,10 +1442,14 @@ func _attach_ar_top_cartridge(inst: Node3D, parts: Dictionary) -> void:
 
 func _build_melee_viewmodel_rig(holder: Node3D) -> void:
 	_melee_nodes.clear()
+	# Seat every melee grip cleanly INSIDE ArmRight's clenched glove palm (~(-0.068, -0.058, 0.028))!
 	var specs := [
-		["knife", "res://assets/models/weapon_melee_knife.glb", true],
-		["fire_axe", "res://assets/models/weapon_melee_axe.glb", false],
-		["machete", "res://assets/models/weapon_melee_machete.glb", false],
+		["knife", "res://assets/models/weapon_melee_knife.glb", true, Vector3(-0.068, -0.052, 0.028), Vector3(0.14, 0.12, -0.18)],
+		["fire_axe", "res://assets/models/weapon_melee_axe.glb", false, Vector3(-0.068, -0.048, 0.028), Vector3(0.16, 0.14, -0.16)],
+		["machete", "res://assets/models/weapon_melee_machete.glb", false, Vector3(-0.068, -0.050, 0.028), Vector3(0.14, 0.12, -0.18)],
+		["bat", "res://assets/models/weapon_melee_bat.glb", false, Vector3(-0.068, -0.036, 0.028), Vector3(0.16, 0.12, -0.16)],
+		["bat_spiked", "res://assets/models/weapon_melee_bat_spiked.glb", false, Vector3(-0.068, -0.036, 0.028), Vector3(0.16, 0.12, -0.16)],
+		["crowbar", "res://assets/models/weapon_melee_crowbar.glb", false, Vector3(-0.068, -0.095, 0.028), Vector3(0.16, 0.14, -0.16)],
 	]
 	for sp in specs:
 		var mid: String = sp[0]
@@ -1450,6 +1458,8 @@ func _build_melee_viewmodel_rig(holder: Node3D) -> void:
 		var root_n := Node3D.new()
 		root_n.name = "Melee_%s" % mid
 		root_n.visible = vis
+		root_n.position = sp[3]
+		root_n.rotation = sp[4]
 		if ResourceLoader.exists(glb_path):
 			if not _glb_cache.has(glb_path):
 				_glb_cache[glb_path] = load(glb_path)
@@ -1457,6 +1467,18 @@ func _build_melee_viewmodel_rig(holder: Node3D) -> void:
 			if pk:
 				var inst := pk.instantiate()
 				_prep_viewmodel_node(inst)
+				if mid == "bat":
+					# Clamp wooden baseball bat metallic <= 0.05 so ash wood isn't metallic!
+					for mn in inst.find_children("*", "MeshInstance3D", true, false):
+						var mi := mn as MeshInstance3D
+						if mi.mesh:
+							for si in mi.mesh.get_surface_count():
+								var sm := mi.get_active_material(si) as StandardMaterial3D
+								if sm:
+									var wm := sm.duplicate() as StandardMaterial3D
+									wm.metallic = 0.04
+									wm.roughness = maxf(wm.roughness, 0.62)
+									mi.set_surface_override_material(si, wm)
 				root_n.add_child(inst)
 		holder.add_child(root_n)
 		_melee_nodes[mid] = root_n
@@ -1529,6 +1551,19 @@ func _clone_tactical_arms(src_idx: int, holder: Node3D, parts: Dictionary,
 		var dup := MeshInstance3D.new()
 		dup.name = src_mi.name
 		dup.mesh = src_mi.mesh
+		# When cloning G17's ArmRight solo for melee, strip the stray inner-seam island (< 900 verts) that juts out left of the wrist!
+		if src_idx == 0 and grp == "arm_right" and not include_left and src_mi.mesh.get_surface_count() > 0:
+			var arr0 := src_mi.mesh.surface_get_arrays(0)
+			var sv0: PackedVector3Array = arr0[Mesh.ARRAY_VERTEX]
+			var si0: PackedInt32Array = arr0[Mesh.ARRAY_INDEX]
+			if not sv0.is_empty() and not si0.is_empty():
+				var islands := _find_mesh_islands(sv0, si0)
+				var keep_tris := PackedInt32Array()
+				for isl: Dictionary in islands:
+					if int(isl["count"]) >= 900:
+						keep_tris.append_array(isl["tris"] as PackedInt32Array)
+				if not keep_tris.is_empty():
+					dup.mesh = _build_submesh_from_tris(arr0, keep_tris, src_mi.get_active_material(0))
 		dup.transform = src_mi.transform
 		dup.layers = 2
 		dup.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -1959,6 +1994,7 @@ func _equip_weapon(idx: int, force_preview: bool = false) -> void:
 	is_reloading = false
 	_quick_melee_active = false
 	_melee_timer = 0.0
+	_melee_hitstop_timer = 0.0
 	reload_cancel_req = false
 	_shotgun_fire_on_cancel = false
 	_fire_buffer_timer = 0.0
@@ -2336,7 +2372,17 @@ func unlock_weapon_silent(idx: int) -> void:
 func acquire_melee_weapon(m_id: String) -> void:
 	if not MELEE_CATALOG.has(m_id):
 		return
-	if not owned_melee.has(m_id):
+	# Never downgrade Spiked Baseball Bat back to plain Bat, and replace plain Bat in owned_melee when upgrading!
+	if m_id == "bat" and owned_melee.has("bat_spiked"):
+		select_melee_weapon("bat_spiked")
+		return
+	if m_id == "bat_spiked":
+		var bi := owned_melee.find("bat")
+		if bi >= 0:
+			owned_melee[bi] = "bat_spiked"
+		elif not owned_melee.has("bat_spiked"):
+			owned_melee.append("bat_spiked")
+	elif not owned_melee.has(m_id):
 		owned_melee.append(m_id)
 	select_melee_weapon(m_id)
 
@@ -2390,7 +2436,7 @@ func get_hotbar_summary() -> String:
 	if special_slot >= 0:
 		var snm := str(WEAPONS[special_slot]["name"]).split(" ")[0]
 		parts.append("[4]%s%s" % ["*" if special_slot == current_weapon else "", snm])
-	var m_lbl := str(MELEE_CATALOG[equipped_melee_id]["name"]).split(" ")[-1] if (equipped_melee_id != "" and MELEE_CATALOG.has(equipped_melee_id)) else "BASH"
+	var m_lbl := "SPIKED" if equipped_melee_id == "bat_spiked" else (str(MELEE_CATALOG[equipped_melee_id]["name"]).split(" ")[-1] if (equipped_melee_id != "" and MELEE_CATALOG.has(equipped_melee_id)) else "BASH")
 	parts.append("[V]%s" % m_lbl)
 	var g_lbl: String = str(GRENADE_LABELS.get(equipped_grenade, "FRAG"))
 	var g_cnt: int = int(grenade_counts.get(equipped_grenade, 0))
@@ -2721,7 +2767,9 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_just_pressed("melee"):
 		trigger_melee()
 
-	if _melee_timer > 0.0:
+	if _melee_hitstop_timer > 0.0:
+		_melee_hitstop_timer = maxf(0.0, _melee_hitstop_timer - delta)
+	elif _melee_timer > 0.0:
 		_melee_timer = maxf(0.0, _melee_timer - delta)
 		var m_elapsed := _melee_dur - _melee_timer
 		var hit_t := 0.16 if _melee_is_heavy else 0.11
@@ -4742,11 +4790,27 @@ func _perform_melee_hit() -> void:
 
 	var any_live := false
 	var any_live_hs := false
-	var kb := 6.8 if _melee_is_heavy else (5.2 if _melee_is_gun_bash else 4.2)
+	var base_kb := float(m.get("kb", 4.2))
+	var base_poise := float(m.get("poise", 40.0))
+	var bleed_dps_val := float(m.get("bleed_dps", 0.0))
+	var bleed_dur_val := float(m.get("bleed_dur", 0.0))
+	var ap_mult := float(m.get("armor_pierce", 1.0))
+	var kb := (5.2 if _melee_is_gun_bash else base_kb * (1.35 if _melee_is_heavy else 1.0))
+	var horiz_kb := Vector3(swing_dir.x, 0.0, swing_dir.z)
+	if horiz_kb.length_squared() < 0.01:
+		horiz_kb = Vector3(fwd.x, 0.0, fwd.z)
+	horiz_kb = horiz_kb.normalized()
 	for z_key in z_hits.keys():
 		var z := z_key as ZombieAI
+		var hit_arr: Array = z_hits[z_key]
+		# Crowbar armor-pierce applies strictly against armored CHEST hits on Bruisers & Tactical Soldiers!
+		if not _melee_is_gun_bash and ap_mult > 1.0 and str(hit_arr[0].get("zone", "")) == "CHEST" and (z.variant == ZombieAI.Variant.BRUISER or z.variant == ZombieAI.Variant.TACTICAL_SOLDIER):
+			hit_arr[0]["dmg"] = float(hit_arr[0]["dmg"]) * ap_mult
+		# Apply melee poise bonus BEFORE apply_shot so poise >= poise_max triggers STAGGER immediately!
+		if not z.dead:
+			z.poise += (45.0 if _melee_is_gun_bash else base_poise * (1.45 if _melee_is_heavy else 1.0))
 		# Use weapon_idx = 3 (dedicated MELEE class — NOT M870 shotgun class 2!)
-		var res := z.apply_shot(z_hits[z_key], 3)
+		var res := z.apply_shot(hit_arr, 3)
 		var is_hs := bool(res.get("headshot", false))
 		var killed := bool(res.get("killed", false))
 		if not bool(res.get("corpse_hit", false)):
@@ -4754,10 +4818,13 @@ func _perform_melee_hit() -> void:
 			any_live_hs = any_live_hs or is_hs
 			emit_signal("hit_confirmed", is_hs, killed)
 			if not z.dead:
-				z.velocity += fwd * kb
-				if _melee_is_heavy or _melee_is_gun_bash:
-					z.poise += 45.0
+				if z.has_method("apply_knockback"):
+					z.apply_knockback(horiz_kb * kb)
+				if not _melee_is_gun_bash and bleed_dps_val > 0.0 and z.has_method("apply_bleed"):
+					z.apply_bleed(bleed_dur_val, bleed_dps_val)
 	if any_live:
+		_melee_hitstop_timer = 0.062 if (_melee_is_heavy or any_live_hs) else 0.036
+		trauma = minf(1.0, trauma + (0.20 if _melee_is_heavy else 0.12))
 		if sfx_hit:
 			sfx_hit.stream = _sfx_melee_cleave if _sfx_melee_cleave else (_sfx_hit_flesh[0] if not _sfx_hit_flesh.is_empty() else null)
 			if sfx_hit.stream:
@@ -5335,6 +5402,7 @@ func heal_full(reset_unlocks: bool = false) -> void:
 	_hazards.clear()
 	_quick_melee_active = false
 	_melee_timer = 0.0
+	_melee_hitstop_timer = 0.0
 	if reset_unlocks:
 		firearm_slots = [0]
 		special_slot = -1

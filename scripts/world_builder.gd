@@ -2623,9 +2623,12 @@ func _build_interactables() -> void:
 		bar.plank_nodes.append(pl)
 	interactables.append(bar)
 
-	# Journey Melee Weapon Pickups: Fire Axe (Lobby near tunnel pillar) & Tactical Machete (Courtyard Cabin porch)
+	# Journey Melee Weapon Pickups: Fire Axe (Lobby), Crowbar (Catacomb Tunnel), Machete (Courtyard Cabin), Baseball Bat (Sawmill Yard)
 	_spawn_melee_pickup("FireAxePickup", "fire_axe", "FIRE AXE", Vector3(-1.95, 0.0, -3.25), Vector3(0.0, 0.55, 0.0), lobby_group)
+	_spawn_melee_pickup("CrowbarPickup", "crowbar", "STEEL CROWBAR", Vector3(-1.45, 0.0, -16.5), Vector3(0.0, 0.35, 0.0), tunnel_group)
 	_spawn_melee_pickup("MachetePickup", "machete", "TACTICAL MACHETE", Vector3(-2.45, 0.0, -49.6), Vector3(0.0, -0.40, 0.0), courtyard_group)
+	var bat_y := _snow_height_at(4.2, -74.0)
+	_spawn_melee_pickup("BatPickup", "bat", "BASEBALL BAT", Vector3(4.2, bat_y, -74.0), Vector3(0.0, 0.72, 0.0), sawmill_group)
 
 	# Dedicated Lobby Ammo Resupply Crate (250 PTS) — reachable even under 3-firearm cap!
 	var ac := InteractableObject.new()
@@ -2679,7 +2682,14 @@ func _spawn_melee_pickup(node_name: String, m_id: String, label: String, pos: Ve
 	vis.position = Vector3(0.0, 0.42, 0.0)
 	vis.rotation = Vector3(0.22, 0.0, 0.18)
 	pk.add_child(vis)
-	var m_glb := "res://assets/models/weapon_melee_axe.glb" if m_id == "fire_axe" else "res://assets/models/weapon_melee_machete.glb"
+	var m_glb_map := {
+		"fire_axe": "res://assets/models/weapon_melee_axe.glb",
+		"machete": "res://assets/models/weapon_melee_machete.glb",
+		"bat": "res://assets/models/weapon_melee_bat.glb",
+		"bat_spiked": "res://assets/models/weapon_melee_bat_spiked.glb",
+		"crowbar": "res://assets/models/weapon_melee_crowbar.glb",
+	}
+	var m_glb: String = str(m_glb_map.get(m_id, "res://assets/models/weapon_melee_axe.glb"))
 	if ResourceLoader.exists(m_glb):
 		var m_pk: PackedScene = load(m_glb)
 		if m_pk:

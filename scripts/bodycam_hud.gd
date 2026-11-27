@@ -624,9 +624,9 @@ func _build_dev_overlay() -> void:
 	var card := PanelContainer.new()
 	card.set_anchors_preset(Control.PRESET_CENTER)
 	card.offset_left = -360
-	card.offset_top = -270
+	card.offset_top = -315
 	card.offset_right = 360
-	card.offset_bottom = 270
+	card.offset_bottom = 315
 	card.add_theme_stylebox_override("panel", _make_card_style(Color(0.86, 0.56, 0.22, 0.94)))
 
 	var vb := VBoxContainer.new()
@@ -667,12 +667,15 @@ func _build_dev_overlay() -> void:
 	mhdr.add_theme_color_override("font_color", Color(0.82, 0.88, 0.90))
 	vb.add_child(mhdr)
 
-	var mrow := HBoxContainer.new()
-	mrow.add_theme_constant_override("separation", 8)
-	for mid in ["knife", "fire_axe", "machete"]:
+	var mrow := GridContainer.new()
+	mrow.columns = 3
+	mrow.add_theme_constant_override("h_separation", 6)
+	mrow.add_theme_constant_override("v_separation", 6)
+	for mid in ["knife", "fire_axe", "machete", "bat", "bat_spiked", "crowbar"]:
 		var mb := Button.new()
 		mb.text = str(PlayerBodycam.MELEE_CATALOG[mid]["name"])
-		mb.custom_minimum_size = Vector2(215, 28)
+		mb.custom_minimum_size = Vector2(215, 26)
+		mb.add_theme_font_size_override("font_size", 12)
 		var cap_m: String = mid
 		mb.pressed.connect(func(): emit_signal("dev_action", "give_melee", cap_m))
 		mrow.add_child(mb)
@@ -695,6 +698,9 @@ func _build_dev_overlay() -> void:
 		["UPGRADE HELD MK-II", "upgrade_cur"],
 		["KILL ALL ZOMBIES", "kill_all"],
 		["SKIP TO NEXT WAVE", "next_wave"],
+		["SPAWN BRUISER", "spawn_bruiser"],
+		["SPAWN EXPLODER", "spawn_exploder"],
+		["SPAWN CRAWLER", "spawn_crawler"],
 		["SPAWN ZOMBIE NEAR", "spawn_zombie"],
 		["TOGGLE DAYLIGHT [F9]", "toggle_daylight"],
 		["POWER ON + OPEN GATE", "unlock_world"],

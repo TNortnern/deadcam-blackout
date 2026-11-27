@@ -348,7 +348,12 @@ func _on_dev_action(action: String, arg: Variant) -> void:
 			if hud:
 				hud.show_toast("DEV: GOD MODE %s" % ("ON" if player.god_mode else "OFF"))
 		"upgrade_cur":
-			if not bool(PlayerBodycam.WEAPONS[player.current_weapon].get("is_melee", false)):
+			if bool(PlayerBodycam.WEAPONS[player.current_weapon].get("is_melee", false)):
+				if player.equipped_melee_id == "bat":
+					player.acquire_melee_weapon("bat_spiked")
+					if hud:
+						hud.show_toast("DEV: UPGRADED TO SPIKED BASEBALL BAT")
+			else:
 				player.is_reloading = false
 				player.reload_pos_off = Vector3.ZERO
 				player.reload_rot_off = Vector3.ZERO
@@ -371,13 +376,31 @@ func _on_dev_action(action: String, arg: Variant) -> void:
 			_start_wave(wave + 1)
 			if hud:
 				hud.show_toast("DEV: SKIPPED TO WAVE %02d" % wave)
-		"spawn_zombie":
-			var fwd := -player.global_transform.basis.z
-			var spos := player.global_position + fwd * 8.0
-			spos.y = player.global_position.y
-			spawn_zombie_at(spos, ZombieAI.Variant.TACTICAL_SOLDIER, player.yaw + PI, true)
+		"spawn_zombie", "spawn_bruiser", "spawn_exploder", "spawn_crawler":
+			var fwd_s := -player.global_transform.basis.z
+			var req_d := 6.5 if action == "spawn_crawler" else 8.0
+			var spos_s := player.global_position + fwd_s * req_d
+			var sp_state := player.get_world_3d().direct_space_state
+			if sp_state:
+				var wq := PhysicsRayQueryParameters3D.create(player.global_position + Vector3(0, 1.1, 0), spos_s + Vector3(0, 1.1, 0), 1)
+				var wh := sp_state.intersect_ray(wq)
+				if not wh.is_empty():
+					spos_s = (wh["position"] as Vector3) - fwd_s * 1.1
+				var fq := PhysicsRayQueryParameters3D.create(Vector3(spos_s.x, player.global_position.y + 1.8, spos_s.z), Vector3(spos_s.x, player.global_position.y - 6.0, spos_s.z), 1)
+				var fh := sp_state.intersect_ray(fq)
+				spos_s.y = float(fh["position"].y) + 0.05 if not fh.is_empty() else player.global_position.y
+			var sv := ZombieAI.Variant.TACTICAL_SOLDIER
+			if action == "spawn_bruiser": sv = ZombieAI.Variant.BRUISER
+			elif action == "spawn_exploder": sv = ZombieAI.Variant.EXPLODER
+			elif action == "spawn_crawler": sv = ZombieAI.Variant.ASYLUM_PATIENT
+			var zs := spawn_zombie_at(spos_s, sv, player.yaw + PI, action != "spawn_crawler")
+			if action == "spawn_crawler":
+				zs.crippled_side = -1
+				zs._dismember_zone("LEG_L", spos_s + Vector3(0, 0.4, 0), -fwd_s)
+				zs.enter_crawler()
 			if hud:
-				hud.show_toast("DEV: SPAWNED ZOMBIE AHEAD")
+				var lbl_map := {"spawn_zombie": "ZOMBIE", "spawn_bruiser": "HEAVY BRUISER", "spawn_exploder": "VOLATILE EXPLODER (HEADSHOT DEFUSES!)", "spawn_crawler": "CRAWLER"}
+				hud.show_toast("DEV: SPAWNED %s AHEAD" % lbl_map[action])
 		"toggle_daylight":
 			if world:
 				world.set_daylight_mode(not world.daylight_mode)
@@ -864,10 +887,11 @@ func _process(delta: float) -> void:
 				spawn_timer = 2.9 if wave == 1 else (2.3 if wave == 2 else maxf(0.85, 2.5 - wave * 0.16))
 				var v := ZombieAI.Variant.ASYLUM_PATIENT
 				if wave == 2:
-					v = ZombieAI.Variant.TACTICAL_SOLDIER if randf() < 0.25 else ZombieAI.Variant.ASYLUM_PATIENT
+					var r2 := randf()
+					v = ZombieAI.Variant.EXPLODER if r2 < 0.16 else (ZombieAI.Variant.TACTICAL_SOLDIER if r2 < 0.42 else ZombieAI.Variant.ASYLUM_PATIENT)
 				elif wave >= 3:
 					var r := randf()
-					v = ZombieAI.Variant.TACTICAL_SOLDIER if r < 0.38 else (ZombieAI.Variant.RUNNER if r < 0.68 else ZombieAI.Variant.ASYLUM_PATIENT)
+					v = ZombieAI.Variant.BRUISER if r < 0.14 else (ZombieAI.Variant.EXPLODER if r < 0.30 else (ZombieAI.Variant.TACTICAL_SOLDIER if r < 0.56 else (ZombieAI.Variant.RUNNER if r < 0.80 else ZombieAI.Variant.ASYLUM_PATIENT)))
 				spawn_zombie_at(pick["pos"], v, float(pick.get("yaw", 0.0)), true)
 			else:
 				spawn_timer = 0.45
