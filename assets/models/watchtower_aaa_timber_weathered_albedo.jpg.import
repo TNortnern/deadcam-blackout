@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://g24feof21w45"
-path="res://.godot/imported/watchtower_aaa_timber_weathered_albedo.jpg-2a5b5d2111f77a78c07374c3e7a9533c.ctex"
+path.s3tc="res://.godot/imported/watchtower_aaa_timber_weathered_albedo.jpg-2a5b5d2111f77a78c07374c3e7a9533c.s3tc.ctex"
+path.etc2="res://.godot/imported/watchtower_aaa_timber_weathered_albedo.jpg-2a5b5d2111f77a78c07374c3e7a9533c.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "c33560b5b1b785dd9b6f62015b69ee78"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/watchtower_aaa_timber_weathered_albedo.jpg"
-dest_files=["res://.godot/imported/watchtower_aaa_timber_weathered_albedo.jpg-2a5b5d2111f77a78c07374c3e7a9533c.ctex"]
+dest_files=["res://.godot/imported/watchtower_aaa_timber_weathered_albedo.jpg-2a5b5d2111f77a78c07374c3e7a9533c.s3tc.ctex", "res://.godot/imported/watchtower_aaa_timber_weathered_albedo.jpg-2a5b5d2111f77a78c07374c3e7a9533c.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

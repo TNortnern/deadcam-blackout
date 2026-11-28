@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bv16lspbiexsx"
-path="res://.godot/imported/weapon_crossbow_Image_0.jpg-b52920b06594b3d616190e67d11d4152.ctex"
+path.bptc="res://.godot/imported/weapon_crossbow_Image_0.jpg-b52920b06594b3d616190e67d11d4152.bptc.ctex"
+path.astc="res://.godot/imported/weapon_crossbow_Image_0.jpg-b52920b06594b3d616190e67d11d4152.astc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "30c64ffdde04bd9ce7c22bf6bd455791"
@@ -14,12 +16,12 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/weapon_crossbow_Image_0.jpg"
-dest_files=["res://.godot/imported/weapon_crossbow_Image_0.jpg-b52920b06594b3d616190e67d11d4152.ctex"]
+dest_files=["res://.godot/imported/weapon_crossbow_Image_0.jpg-b52920b06594b3d616190e67d11d4152.bptc.ctex", "res://.godot/imported/weapon_crossbow_Image_0.jpg-b52920b06594b3d616190e67d11d4152.astc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

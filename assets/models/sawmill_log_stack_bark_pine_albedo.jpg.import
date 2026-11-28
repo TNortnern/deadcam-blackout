@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://c2tojothcogeu"
-path="res://.godot/imported/sawmill_log_stack_bark_pine_albedo.jpg-eb2bfd543ded3b42961c43256633b75e.ctex"
+path.s3tc="res://.godot/imported/sawmill_log_stack_bark_pine_albedo.jpg-eb2bfd543ded3b42961c43256633b75e.s3tc.ctex"
+path.etc2="res://.godot/imported/sawmill_log_stack_bark_pine_albedo.jpg-eb2bfd543ded3b42961c43256633b75e.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "adf9205433fc716de12edf648a54a6fe"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/sawmill_log_stack_bark_pine_albedo.jpg"
-dest_files=["res://.godot/imported/sawmill_log_stack_bark_pine_albedo.jpg-eb2bfd543ded3b42961c43256633b75e.ctex"]
+dest_files=["res://.godot/imported/sawmill_log_stack_bark_pine_albedo.jpg-eb2bfd543ded3b42961c43256633b75e.s3tc.ctex", "res://.godot/imported/sawmill_log_stack_bark_pine_albedo.jpg-eb2bfd543ded3b42961c43256633b75e.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

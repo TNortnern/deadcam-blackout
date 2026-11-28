@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://yg1eg8gwsshx"
-path="res://.godot/imported/weapon_melee_bat_spiked_Image_0.jpg-a7c596a32d9ca98ba3dd637b4bf44f5c.ctex"
+path.bptc="res://.godot/imported/weapon_melee_bat_spiked_Image_0.jpg-a7c596a32d9ca98ba3dd637b4bf44f5c.bptc.ctex"
+path.astc="res://.godot/imported/weapon_melee_bat_spiked_Image_0.jpg-a7c596a32d9ca98ba3dd637b4bf44f5c.astc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "3e828f519838aad155d7e15a1a47c555"
@@ -14,12 +16,12 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/weapon_melee_bat_spiked_Image_0.jpg"
-dest_files=["res://.godot/imported/weapon_melee_bat_spiked_Image_0.jpg-a7c596a32d9ca98ba3dd637b4bf44f5c.ctex"]
+dest_files=["res://.godot/imported/weapon_melee_bat_spiked_Image_0.jpg-a7c596a32d9ca98ba3dd637b4bf44f5c.bptc.ctex", "res://.godot/imported/weapon_melee_bat_spiked_Image_0.jpg-a7c596a32d9ca98ba3dd637b4bf44f5c.astc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

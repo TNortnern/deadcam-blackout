@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://rpm25um2gbxo"
-path="res://.godot/imported/weapon_garand_Image_4.jpg-5abbfcdbc4bc86cfbbc032baddf36e79.ctex"
+path.bptc="res://.godot/imported/weapon_garand_Image_4.jpg-5abbfcdbc4bc86cfbbc032baddf36e79.bptc.ctex"
+path.astc="res://.godot/imported/weapon_garand_Image_4.jpg-5abbfcdbc4bc86cfbbc032baddf36e79.astc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "97958bfa5fe5560c7ced5e13e01ae8bf"
@@ -14,12 +16,12 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/weapon_garand_Image_4.jpg"
-dest_files=["res://.godot/imported/weapon_garand_Image_4.jpg-5abbfcdbc4bc86cfbbc032baddf36e79.ctex"]
+dest_files=["res://.godot/imported/weapon_garand_Image_4.jpg-5abbfcdbc4bc86cfbbc032baddf36e79.bptc.ctex", "res://.godot/imported/weapon_garand_Image_4.jpg-5abbfcdbc4bc86cfbbc032baddf36e79.astc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

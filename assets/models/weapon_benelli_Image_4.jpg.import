@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dexp1m8cshojs"
-path="res://.godot/imported/weapon_benelli_Image_4.jpg-956df6c244761d3e5ce5573b0d5290a7.ctex"
+path.bptc="res://.godot/imported/weapon_benelli_Image_4.jpg-956df6c244761d3e5ce5573b0d5290a7.bptc.ctex"
+path.astc="res://.godot/imported/weapon_benelli_Image_4.jpg-956df6c244761d3e5ce5573b0d5290a7.astc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "6c54db322519c6a9fe0df1bd7e5d5bcf"
@@ -14,12 +16,12 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/weapon_benelli_Image_4.jpg"
-dest_files=["res://.godot/imported/weapon_benelli_Image_4.jpg-956df6c244761d3e5ce5573b0d5290a7.ctex"]
+dest_files=["res://.godot/imported/weapon_benelli_Image_4.jpg-956df6c244761d3e5ce5573b0d5290a7.bptc.ctex", "res://.godot/imported/weapon_benelli_Image_4.jpg-956df6c244761d3e5ce5573b0d5290a7.astc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

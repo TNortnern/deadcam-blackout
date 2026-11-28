@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://v3kxpiee4clv"
-path="res://.godot/imported/weapon_ak74_wood_carved_albedo.jpg-15acf7aa1dd36fc5ddfab2835c73179f.ctex"
+path.bptc="res://.godot/imported/weapon_ak74_wood_carved_albedo.jpg-15acf7aa1dd36fc5ddfab2835c73179f.bptc.ctex"
+path.astc="res://.godot/imported/weapon_ak74_wood_carved_albedo.jpg-15acf7aa1dd36fc5ddfab2835c73179f.astc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "d797de6eb072717df7d509c365f47b1d"
@@ -14,12 +16,12 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/weapon_ak74_wood_carved_albedo.jpg"
-dest_files=["res://.godot/imported/weapon_ak74_wood_carved_albedo.jpg-15acf7aa1dd36fc5ddfab2835c73179f.ctex"]
+dest_files=["res://.godot/imported/weapon_ak74_wood_carved_albedo.jpg-15acf7aa1dd36fc5ddfab2835c73179f.bptc.ctex", "res://.godot/imported/weapon_ak74_wood_carved_albedo.jpg-15acf7aa1dd36fc5ddfab2835c73179f.astc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://2b17bhwv5s2q"
-path="res://.godot/imported/weapon_melee_crowbar_Image_4.jpg-b798e9509eb7d83b99a3870cc7641318.ctex"
+path.bptc="res://.godot/imported/weapon_melee_crowbar_Image_4.jpg-b798e9509eb7d83b99a3870cc7641318.bptc.ctex"
+path.astc="res://.godot/imported/weapon_melee_crowbar_Image_4.jpg-b798e9509eb7d83b99a3870cc7641318.astc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "0d980d07f97b044e31019c68eecd6088"
@@ -14,12 +16,12 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/weapon_melee_crowbar_Image_4.jpg"
-dest_files=["res://.godot/imported/weapon_melee_crowbar_Image_4.jpg-b798e9509eb7d83b99a3870cc7641318.ctex"]
+dest_files=["res://.godot/imported/weapon_melee_crowbar_Image_4.jpg-b798e9509eb7d83b99a3870cc7641318.bptc.ctex", "res://.godot/imported/weapon_melee_crowbar_Image_4.jpg-b798e9509eb7d83b99a3870cc7641318.astc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

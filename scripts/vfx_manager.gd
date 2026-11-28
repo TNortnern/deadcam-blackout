@@ -714,6 +714,24 @@ func spawn_surface_impact(pos: Vector3, normal: Vector3, incident_dir: Vector3, 
 				ap.volume_db = -8.5
 		ap.play()
 
+func spawn_tinted_mist(pos: Vector3, dir: Vector3, tint: Color, intensity: float = 1.0) -> void:
+	# Generic lit puff from the pooled dust emitters (acid splashes, slam dust, shattered visors)
+	if _dust_pool.is_empty():
+		return
+	var d_dir := dir.normalized() if dir.length_squared() > 0.001 else Vector3.UP
+	var dust := _dust_pool[_dust_idx % _dust_pool.size()]
+	_dust_idx += 1
+	dust.global_transform = Transform3D(_orient_along_dir(d_dir), pos)
+	var d_pm := dust.process_material as ParticleProcessMaterial
+	var d_mat := dust.draw_pass_1.material as ShaderMaterial
+	if d_mat:
+		d_mat.set_shader_parameter("tint_color", tint)
+	d_pm.initial_velocity_min = 1.2 * intensity
+	d_pm.initial_velocity_max = 3.6 * intensity
+	dust.restart()
+	dust.emitting = true
+
+
 func run_pipeline_warmup(cam_pos: Vector3, cam_fwd: Vector3) -> void:
 	var target_pos := cam_pos + cam_fwd.normalized() * 3.0
 	spawn_blood_impact(target_pos, cam_fwd, 1.1, true, true)

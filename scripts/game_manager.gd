@@ -70,17 +70,7 @@ func _ready() -> void:
 		hud.name = "HUD"
 		add_child(hud)
 		hud.set_world_texture(render_vp.get_texture())
-		hud.start_requested.connect(start_game)
-		hud.start_daylight_requested.connect(start_game_daylight)
-		hud.restart_requested.connect(restart_game)
-		hud.graphics_action.connect(_on_hud_graphics_action)
-		hud.open_settings_requested.connect(func(): _open_overlay("settings"))
-		hud.settings_closed.connect(_on_settings_closed)
-		hud.open_inventory_requested.connect(_open_inventory)
-		hud.inventory_action.connect(_on_inventory_action)
-		hud.inventory_closed.connect(_close_all_overlays)
-		hud.dev_action.connect(_on_dev_action)
-		hud.dev_closed.connect(_close_all_overlays)
+		_connect_hud()
 		if hud.loading_overlay:
 			hud.loading_overlay.visible = true
 			hud.set_loading_status("BODYCAM-04 // INITIALIZING WEBGL2 OPTICS...")
@@ -114,21 +104,9 @@ func _ready() -> void:
 	hud.name = "HUD"
 	add_child(hud)
 	hud.set_world_texture(render_vp.get_texture())
-	hud.start_requested.connect(start_game)
-	hud.start_daylight_requested.connect(start_game_daylight)
-	hud.restart_requested.connect(restart_game)
-	hud.graphics_action.connect(_on_hud_graphics_action)
-	hud.open_settings_requested.connect(func(): _open_overlay("settings"))
-	hud.settings_closed.connect(_on_settings_closed)
-	hud.open_inventory_requested.connect(_open_inventory)
-	hud.inventory_action.connect(_on_inventory_action)
-	hud.inventory_closed.connect(_close_all_overlays)
-	hud.dev_action.connect(_on_dev_action)
-	hud.dev_closed.connect(_close_all_overlays)
+	_connect_hud()
 
-	player.player_died.connect(_on_player_died)
-	player.hit_confirmed.connect(_on_hit_confirmed)
-	player.status_message.connect(func(msg): hud.show_toast(msg))
+	_post_player_setup()
 
 	for p in ["res://assets/audio/zombie_growl_a.wav", "res://assets/audio/zombie_growl_b.wav"]:
 		if ResourceLoader.exists(p):
@@ -258,6 +236,7 @@ func _open_overlay(which: String) -> void:
 		hud.dev_panel.visible = (which == "dev")
 	if which == "settings":
 		_sync_hud_graphics_state()
+		_apply_options()
 		hud.set_settings_context(game_active and player != null and not player.dead)
 	elif which == "inventory" and player:
 		hud.refresh_inventory(player)
@@ -293,6 +272,7 @@ func _close_all_overlays() -> void:
 
 
 func _on_settings_closed() -> void:
+	_save_settings()
 	_close_all_overlays()
 
 
@@ -396,7 +376,7 @@ func _on_dev_action(action: String, arg: Variant) -> void:
 			_start_wave(wave + 1)
 			if hud:
 				hud.show_toast("DEV: SKIPPED TO WAVE %02d" % wave)
-		"spawn_zombie", "spawn_bruiser", "spawn_exploder", "spawn_crawler":
+		"spawn_zombie", "spawn_bruiser", "spawn_exploder", "spawn_crawler", "spawn_spitter", "spawn_screamer", "spawn_runner":
 			var fwd_s := -player.global_transform.basis.z
 			var req_d := 6.5 if action == "spawn_crawler" else 8.0
 			var spos_s := player.global_position + fwd_s * req_d
@@ -413,13 +393,16 @@ func _on_dev_action(action: String, arg: Variant) -> void:
 			if action == "spawn_bruiser": sv = ZombieAI.Variant.BRUISER
 			elif action == "spawn_exploder": sv = ZombieAI.Variant.EXPLODER
 			elif action == "spawn_crawler": sv = ZombieAI.Variant.ASYLUM_PATIENT
+			elif action == "spawn_spitter": sv = ZombieAI.Variant.SPITTER
+			elif action == "spawn_screamer": sv = ZombieAI.Variant.SCREAMER
+			elif action == "spawn_runner": sv = ZombieAI.Variant.RUNNER
 			var zs := spawn_zombie_at(spos_s, sv, player.yaw + PI, action != "spawn_crawler")
 			if action == "spawn_crawler":
 				zs.crippled_side = -1
 				zs._dismember_zone("LEG_L", spos_s + Vector3(0, 0.4, 0), -fwd_s)
 				zs.enter_crawler()
 			if hud:
-				var lbl_map := {"spawn_zombie": "ZOMBIE", "spawn_bruiser": "HEAVY BRUISER", "spawn_exploder": "VOLATILE EXPLODER (HEADSHOT DEFUSES!)", "spawn_crawler": "CRAWLER"}
+				var lbl_map := {"spawn_zombie": "ZOMBIE", "spawn_bruiser": "RIOT BRUISER", "spawn_exploder": "BLOATER (HEADSHOT DEFUSES)", "spawn_crawler": "CRAWLER", "spawn_spitter": "SPITTER", "spawn_screamer": "SCREAMER", "spawn_runner": "RUNNER"}
 				hud.show_toast("DEV: SPAWNED %s AHEAD" % lbl_map[action])
 		"toggle_daylight":
 			if world:
@@ -543,7 +526,7 @@ func request_attack_token(z: ZombieAI) -> bool:
 	var i := _active_attackers.size() - 1
 	while i >= 0:
 		var a: ZombieAI = _active_attackers[i]
-		if not is_instance_valid(a) or a.dead or (a.state != ZombieAI.State.WINDUP and a.state != ZombieAI.State.STRIKE and a.state != ZombieAI.State.RECOVER):
+		if not is_instance_valid(a) or a.dead or (a.state != ZombieAI.State.WINDUP and a.state != ZombieAI.State.STRIKE and a.state != ZombieAI.State.RECOVER and a.state != ZombieAI.State.GRAB and a.state != ZombieAI.State.SPECIAL and a.state != ZombieAI.State.CHARGE and a.state != ZombieAI.State.LEAP):
 			_active_attackers.remove_at(i)
 		i -= 1
 	if z in _active_attackers:
@@ -567,13 +550,18 @@ func start_game() -> void:
 		ambient_audio.play()
 	hud.title_panel.visible = false
 	hud.defeat_panel.visible = false
+	if player.weapon_rig_holder:
+		player.weapon_rig_holder.visible = true
+	player.head.rotation.x = 0.0
 	if hud.settings_panel: hud.settings_panel.visible = false
 	if hud.inventory_panel: hud.inventory_panel.visible = false
 	if hud.dev_panel: hud.dev_panel.visible = false
 	player.input_enabled = true
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	run_time = 0.0
+	points_earned = 0
 	_start_wave(1)
-	hud.show_toast("WAVE 01 — SURVIVE THE BLACKOUT  ([I] INV  [G] GRENADE  [ESC] PAUSE)")
+	hud.show_toast("[I] LOADOUT    [G] GRENADE    [V] MELEE    [ESC] PAUSE", 6.0)
 
 
 func start_game_daylight() -> void:
@@ -595,13 +583,18 @@ func start_game_daylight() -> void:
 		ambient_audio.play()
 	hud.title_panel.visible = false
 	hud.defeat_panel.visible = false
+	if player.weapon_rig_holder:
+		player.weapon_rig_holder.visible = true
+	player.head.rotation.x = 0.0
 	if hud.settings_panel: hud.settings_panel.visible = false
 	if hud.inventory_panel: hud.inventory_panel.visible = false
 	if hud.dev_panel: hud.dev_panel.visible = false
 	player.input_enabled = true
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	run_time = 0.0
+	points_earned = 0
 	_start_wave(1)
-	hud.show_toast("WINTER DAYLIGHT — OUTDOOR SHOWCASE [F9 TOGGLE]")
+	hud.show_toast("WINTER DAYLIGHT — [F9] TOGGLES NIGHT", 5.0)
 
 
 func restart_game() -> void:
@@ -609,35 +602,7 @@ func restart_game() -> void:
 		return
 	var keep_daylight := world.daylight_mode
 	get_tree().paused = false
-	for c in zombies_root.get_children():
-		c.queue_free()
-	_active_attackers.clear()
-	_recent_spawns.clear()
-	wave_pause_timer = 0.0
-	player.heal_full(true)
-	player.global_position = Vector3(-1.2, 0.05, 3.6)
-	player.yaw = -0.35
-	player.pitch = 0.0
-	points = 600
-	kills = 0
-	headshots = 0
-	power_restored = false
-	world.set_asylum_power(false)
-	if world.sawmill_gate_open:
-		world.sawmill_gate_open = false
-		for sp: Vector3 in world.sawmill_spawn_points:
-			world.spawn_points.erase(sp)
-	if world.boiler_gate_open:
-		world.boiler_gate_open = false
-		for sp: Vector3 in world.boiler_spawn_points:
-			world.spawn_points.erase(sp)
-	if world.morgue_gate_open:
-		world.morgue_gate_open = false
-		for sp: Vector3 in world.morgue_spawn_points:
-			world.spawn_points.erase(sp)
-	for inter: InteractableObject in world.interactables:
-		if is_instance_valid(inter) and inter.has_method("reset_state"):
-			inter.reset_state()
+	_reset_run_state()
 	if keep_daylight:
 		start_game_daylight()
 	else:
@@ -700,13 +665,27 @@ func _start_wave(w: int) -> void:
 	wave = w
 	if w == 1:
 		zombies_to_spawn = 6
-		spawn_timer = 1.6
+		spawn_timer = 2.4
 	elif w == 2:
 		zombies_to_spawn = 9
 		spawn_timer = 1.4
 	else:
 		zombies_to_spawn = 7 + w * 2
 		spawn_timer = 1.1
+	wave_total = zombies_to_spawn
+	_wave_kills = 0
+	if hud and game_active and not deterministic_mode:
+		var sub := "CLEAR THE ASYLUM"
+		if w == 2:
+			sub = "SPITTERS AND BLOATERS INBOUND"
+		elif w == 3:
+			sub = "RUNNERS. LISTEN FOR THE SCREAMER."
+		elif w == 4:
+			sub = "RIOT BRUISER ON THE FLOOR"
+		elif w > 4:
+			sub = "%d HOSTILES" % zombies_to_spawn
+		hud.show_banner("WAVE %02d" % w, sub, Color(0.95, 0.30, 0.24), 3.4)
+		hud.play_ui("wave_start")
 
 
 func _pick_fair_spawn_point() -> Dictionary:
@@ -790,6 +769,12 @@ func spawn_zombie_at(pos: Vector3, variant: ZombieAI.Variant, yaw_rad := 0.0, wi
 	z.variant = variant
 	z.target = player
 	zombies_root.add_child(z)
+	if game_active and wave > 3:
+		z.max_health *= _wave_hp_scale()
+		z.health = z.max_health
+	if game_active and with_cue and hud and not _hint_shown.has(variant) and THREAT_HINTS.has(variant):
+		_hint_shown[variant] = true
+		hud.show_toast(str(THREAT_HINTS[variant]), 6.5)
 	z.global_position = pos
 	z.rotation.y = yaw_rad
 	z.died.connect(_on_zombie_died)
@@ -800,6 +785,8 @@ func spawn_zombie_at(pos: Vector3, variant: ZombieAI.Variant, yaw_rad := 0.0, wi
 
 func clear_zombies() -> void:
 	_active_attackers.clear()
+	if combat:
+		combat.clear_all()
 	for c in zombies_root.get_children():
 		c.queue_free()
 
@@ -814,14 +801,24 @@ func get_living_zombies() -> int:
 
 func add_points(delta_pts: int) -> void:
 	points = max(0, points + delta_pts)
+	if delta_pts > 0:
+		points_earned += delta_pts
+	elif delta_pts < 0 and hud and game_active:
+		hud.push_points(delta_pts, "")
+		hud.play_ui("ui_buy")
 
 
 func on_generator_activated() -> void:
+	if hud and game_active and not power_restored:
+		hud.show_banner("POWER RESTORED", "ARMORY BENCH ONLINE", Color(0.56, 0.90, 0.62), 3.0)
+		hud.push_points(200, "GENERATOR")
 	power_restored = true
 	world.set_asylum_power(true)
 	for inter: InteractableObject in world.interactables:
 		if is_instance_valid(inter) and inter.kind == InteractableObject.Kind.UPGRADE_BENCH:
 			inter.activated = true
+		elif is_instance_valid(inter) and inter.kind == InteractableObject.Kind.PERK:
+			inter.set_powered(true)
 	add_points(200)
 
 
@@ -857,22 +854,52 @@ func on_breach_gate_opened(gate_id: String) -> void:
 
 func _on_hit_confirmed(is_headshot: bool, killed: bool) -> void:
 	hud.show_hit(is_headshot, killed)
-	if killed:
-		add_points(150 if is_headshot else 100)
+	if not killed:
+		add_points(10)
 
 
 func _on_zombie_died(z: ZombieAI, was_headshot: bool) -> void:
 	release_attack_token(z)
 	kills += 1
+	_wave_kills += 1
 	if was_headshot:
 		headshots += 1
+	# Kill pay-out by enemy type, a precision bonus, and a short chain bonus for kills in quick succession
+	var pts := z.kill_points + (50 if was_headshot else 0)
+	add_points(pts)
+	_kill_chain = (_kill_chain + 1) if _kill_chain_timer > 0.0 else 1
+	_kill_chain_timer = 2.6
+	if hud and game_active:
+		var lbl := z.variant_label() if z.kill_points > 100 else ""
+		if was_headshot:
+			lbl = ("HEADSHOT  " + lbl).strip_edges()
+		hud.push_points(pts, lbl)
+		if _kill_chain >= 3:
+			var bonus := 25 * (_kill_chain - 2)
+			add_points(bonus)
+			hud.push_points(bonus, "%d× CHAIN" % _kill_chain)
+	if game_active and player and not player.dead:
+		_maybe_spawn_drop(z)
 
 
 func _on_player_died() -> void:
 	game_active = false
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
-	hud.defeat_info.text = "SURVIVED WAVE %d  •  KILLS: %d  •  HEADSHOTS: %d" % [wave, kills, headshots]
-	hud.defeat_panel.visible = true
+	var new_best := wave > best_wave or (wave == best_wave and kills > best_kills)
+	if new_best and not deterministic_mode:
+		best_wave = wave
+		best_kills = kills
+		_save_settings()
+	hud.show_defeat({
+		"wave": wave, "kills": kills, "headshots": headshots,
+		"hs_pct": int(round(100.0 * float(headshots) / float(maxi(kills, 1)))),
+		"accuracy": int(round(100.0 * float(player.shots_hit) / float(maxi(player.shots_fired, 1)))),
+		"earned": points_earned, "time": _format_time(run_time),
+		"damage_taken": int(player.damage_taken_total), "killer": player.last_hit_by if player.last_hit_by != "" else "THE INFECTED",
+		"new_best": new_best,
+	})
+	if player.sfx_heart and player.sfx_heart.playing:
+		player.sfx_heart.stop()
 
 
 func _process(delta: float) -> void:
@@ -881,7 +908,16 @@ func _process(delta: float) -> void:
 	if world and player and player.camera:
 		world.update_zone_culling(player.camera)
 	var living_z := get_living_zombies()
-	hud.update_hud(delta, player, wave, points, living_z + zombies_to_spawn, living_z)
+	var hud_ctx := {"wave_total": wave_total, "fisheye": 0.212 if deterministic_mode else get_fisheye_strength()}
+	if game_active and not deterministic_mode:
+		if wave_pause_timer > 0.0:
+			hud_ctx["intermission"] = maxf(0.0, wave_intermission_dur - wave_pause_timer)
+		var obj := get_objective()
+		if not obj.is_empty():
+			hud_ctx["objective"] = obj["text"]
+			if obj.has("pos"):
+				hud_ctx["objective_pos"] = obj["pos"]
+	hud.update_hud(delta, player, wave, points, living_z + zombies_to_spawn, living_z, hud_ctx)
 	if hud.perf_label and hud.perf_label.visible and render_vp:
 		_perf_accum += delta
 		if _perf_accum >= 0.25:
@@ -923,8 +959,19 @@ func _process(delta: float) -> void:
 		world.lightning_light.visible = false
 		world.lightning_light.light_energy = 0.0
 
+	_update_low_health_audio()
+	if hud.title_panel.visible and not deterministic_mode and not bench_mode:
+		_title_t += delta
+		player.rotation.y = -0.55 + sin(_title_t * 0.09) * 0.42
+		player.head.rotation.x = 0.04 + sin(_title_t * 0.13) * 0.03
+		if player.weapon_rig_holder and player.weapon_rig_holder.visible:
+			player.weapon_rig_holder.visible = false
 	if not game_active or player.dead:
 		return
+	run_time += delta
+	if _kill_chain_timer > 0.0:
+		_kill_chain_timer -= delta
+	_update_drops(delta)
 
 	var alive_cap := 4 if wave == 1 else (6 if wave == 2 else mini(11, 5 + wave))
 	if zombies_to_spawn > 0:
@@ -934,13 +981,9 @@ func _process(delta: float) -> void:
 			if pick["ok"]:
 				zombies_to_spawn -= 1
 				spawn_timer = 2.9 if wave == 1 else (2.3 if wave == 2 else maxf(0.85, 2.5 - wave * 0.16))
-				var v := ZombieAI.Variant.ASYLUM_PATIENT
-				if wave == 2:
-					var r2 := randf()
-					v = ZombieAI.Variant.EXPLODER if r2 < 0.16 else (ZombieAI.Variant.TACTICAL_SOLDIER if r2 < 0.42 else ZombieAI.Variant.ASYLUM_PATIENT)
-				elif wave >= 3:
-					var r := randf()
-					v = ZombieAI.Variant.BRUISER if r < 0.14 else (ZombieAI.Variant.EXPLODER if r < 0.30 else (ZombieAI.Variant.TACTICAL_SOLDIER if r < 0.56 else (ZombieAI.Variant.RUNNER if r < 0.80 else ZombieAI.Variant.ASYLUM_PATIENT)))
+				var v := _pick_wave_variant()
+				if wave == 4 and zombies_to_spawn == wave_total - 3 and _alive_of(ZombieAI.Variant.BRUISER) == 0:
+					v = ZombieAI.Variant.BRUISER
 				spawn_zombie_at(pick["pos"], v, float(pick.get("yaw", 0.0)), true)
 			else:
 				spawn_timer = 0.45
@@ -949,12 +992,15 @@ func _process(delta: float) -> void:
 			var g_pick: String = PlayerBodycam.GRENADE_ORDER[wave % PlayerBodycam.GRENADE_ORDER.size()]
 			if player and player.has_method("add_grenade"):
 				player.add_grenade(g_pick, 1)
-			hud.show_toast("WAVE %02d CLEARED — +1 %s GRENADE • RELOAD & REGROUP" % [wave, PlayerBodycam.GRENADE_LABELS[g_pick]])
+			var clear_bonus := 100 + 50 * wave
+			add_points(clear_bonus)
+			hud.show_banner("WAVE %02d CLEARED" % wave, "+%d PTS   ·   +1 %s GRENADE   ·   RELOAD AND RESUPPLY" % [clear_bonus, PlayerBodycam.GRENADE_LABELS[g_pick]], Color(0.56, 0.90, 0.62), 4.0)
+			hud.play_ui("wave_clear")
+			wave_pause_timer = 0.0001
 		wave_pause_timer += delta
 		if wave_pause_timer >= wave_intermission_dur:
 			wave_pause_timer = 0.0
 			_start_wave(wave + 1)
-			hud.show_toast("WAVE %02d INCOMING" % wave)
 
 
 func _run_web_async_boot() -> void:
@@ -996,9 +1042,7 @@ func _run_web_async_boot() -> void:
 	player.yaw = -0.35
 	player.input_enabled = false
 
-	player.player_died.connect(_on_player_died)
-	player.hit_confirmed.connect(_on_hit_confirmed)
-	player.status_message.connect(func(msg): hud.show_toast(msg))
+	_post_player_setup()
 
 	for p in ["res://assets/audio/zombie_growl_a.wav", "res://assets/audio/zombie_growl_b.wav"]:
 		if ResourceLoader.exists(p):
@@ -1032,7 +1076,8 @@ func _run_web_shader_warmup() -> void:
 
 	var warmup_weapons := [1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 0]
 	var step := 0
-	var total_steps := 3 + warmup_weapons.size() + 4
+	var variant_count := ZombieAI.Variant.size()
+	var total_steps := variant_count + warmup_weapons.size() + 4
 	var _render_step := func(label: String) -> void:
 		step += 1
 		if hud:
@@ -1041,12 +1086,13 @@ func _run_web_shader_warmup() -> void:
 
 	# Steps 1-3: Each zombie variant directly in front of camera under flashlight + lobby omni
 	var warm_z: Array[ZombieAI] = []
-	for i in range(3):
+	for i in range(variant_count):
 		var v := i as ZombieAI.Variant
-		var z := spawn_zombie_at(Vector3(-1.2 + (i - 1) * 0.85, 0.05, 0.8), v, PI, false)
+		var z := spawn_zombie_at(Vector3(-1.2 + (i - 3) * 0.62, 0.05, 0.8 - absf(i - 3) * 0.18), v, PI, false)
 		z.move_speed = 0.0
+		z.deterministic_pose = true
 		warm_z.append(z)
-		_render_step.call("INFECTED %d/3" % (i + 1))
+		_render_step.call("INFECTED %d/%d" % [i + 1, variant_count])
 		await tree.process_frame
 
 	# Steps 4-6: Weapons 0/1/2 with muzzle lights + muzzle flash rig visible (compiles dynamic-light + flash shaders!)
@@ -1069,6 +1115,10 @@ func _run_web_shader_warmup() -> void:
 	# Step 7: In-frustum VFX + head dismemberment/ragdoll stump warmup
 	if vfx:
 		vfx.run_pipeline_warmup(player.camera.global_position, -player.camera.global_transform.basis.z)
+	if combat:
+		# Acid pool and glob materials compile here, behind the loading screen
+		combat.spawn_acid_pool(Vector3(-1.2, 0.05, 1.6), 1.2, 1.0)
+		combat.spawn_acid_glob(Vector3(-1.2, 1.4, 1.2), Vector3(-1.2, 0.05, 2.4))
 	if not warm_z.is_empty() and is_instance_valid(warm_z[2]):
 		warm_z[2].apply_shot([{"zone": "HEAD", "pos": warm_z[2].face_focus_position(), "dir": Vector3.FORWARD, "dmg": 400.0, "dist": 3.0}], 2)
 	_render_step.call("COMBAT VFX")
@@ -1174,10 +1224,11 @@ func _run_startup_warmup() -> void:
 	var saved_lock := world.debug_lock_env
 	world.debug_lock_env = true
 	var warm_z: Array[ZombieAI] = []
-	for i in range(3):
+	for i in range(ZombieAI.Variant.size()):
 		var v := i as ZombieAI.Variant
-		var z := spawn_zombie_at(Vector3(-1.8 + i * 1.4, 0.05, 0.2), v, PI, false)
+		var z := spawn_zombie_at(Vector3(-1.2 + (i - 3) * 0.62, 0.05, 0.2 - absf(i - 3) * 0.18), v, PI, false)
 		z.move_speed = 0.0
+		z.deterministic_pose = true
 		warm_z.append(z)
 	for w_idx in [1, 2, 0]:
 		player._equip_weapon(w_idx, true)
@@ -1185,6 +1236,10 @@ func _run_startup_warmup() -> void:
 
 	if vfx:
 		vfx.run_pipeline_warmup(player.camera.global_position, -player.camera.global_transform.basis.z)
+	if combat:
+		# Acid pool and glob materials compile here, behind the loading screen
+		combat.spawn_acid_pool(Vector3(-1.2, 0.05, 1.6), 1.2, 1.0)
+		combat.spawn_acid_glob(Vector3(-1.2, 1.4, 1.2), Vector3(-1.2, 0.05, 2.4))
 	await tree.process_frame
 	if not warm_z.is_empty() and is_instance_valid(warm_z[2]):
 		warm_z[2].apply_shot([{"zone": "HEAD", "pos": warm_z[2].face_focus_position(), "dir": Vector3.FORWARD, "dmg": 400.0, "dist": 3.0}], 2)
@@ -1263,3 +1318,458 @@ func _run_cli_bench() -> void:
 		var ms := (Time.get_ticks_usec() - t0) / 1000.0 / 30.0
 		print("BENCH %-12s | %6.2f ms (%5.1f FPS) | 3D_GPU %.2f ms | WIN_GPU %.2f ms" % [vw["name"], ms, 1000.0 / maxf(ms, 0.001), gpu3d / 30.0, gpuwin / 30.0])
 	tree.quit(0)
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Run flow, scoring, objectives, drops and saved options
+# ---------------------------------------------------------------------------------------------------------------------
+
+const SETTINGS_PATH := "user://deadcam_settings.cfg"
+const GRAIN_NAMES := ["OFF", "LOW", "FULL"]
+const GRAIN_VALS := [0.0, 0.008, 0.016]
+const DROP_LIFETIME := 45.0
+const MAX_DROPS := 3
+
+var combat: CombatDirector
+var opt_sens: float = 1.0
+var opt_ads_sens: float = 0.62
+var opt_fov: float = 94.0
+var opt_volume: int = 100
+var opt_crosshair: bool = true
+var opt_invert_y: bool = false
+var opt_bodycam: int = 100
+var opt_grain: int = 2
+var best_wave: int = 0
+var best_kills: int = 0
+var run_time: float = 0.0
+var points_earned: int = 0
+var wave_total: int = 0
+var _wave_kills: int = 0
+var _drops: Array[Dictionary] = []
+var _drop_scenes: Dictionary = {}
+var _obj_cache: Dictionary = {}
+var _heart_on: bool = false
+var _kill_chain: int = 0
+var _kill_chain_timer: float = 0.0
+var _hint_shown: Dictionary = {}
+var _title_t: float = 0.0
+
+const THREAT_HINTS := {
+	ZombieAI.Variant.RUNNER: "RUNNER — LEAPS FROM RANGE. SHOOT IT OUT OF THE AIR OR SIDESTEP.",
+	ZombieAI.Variant.EXPLODER: "BLOATER — DETONATES ON CONTACT. A HEADSHOT DEFUSES IT; A BODY SHOT SETS IT OFF.",
+	ZombieAI.Variant.SPITTER: "SPITTER — LOBS ACID FROM RANGE. KEEP MOVING AND CLOSE THE GAP.",
+	ZombieAI.Variant.SCREAMER: "SCREAMER — ITS SHRIEK ENRAGES THE HORDE. KILL IT WHILE IT INHALES.",
+	ZombieAI.Variant.BRUISER: "RIOT BRUISER — VISOR BLOCKS HEADSHOTS UNTIL IT BREAKS. DODGE THE CHARGE.",
+	ZombieAI.Variant.TACTICAL_SOLDIER: "SOLDIER — BODY ARMOUR SOAKS CHEST HITS. AIM FOR THE HEAD OR LEGS.",
+}
+
+
+func _connect_hud() -> void:
+	hud.start_requested.connect(start_game)
+	hud.start_daylight_requested.connect(start_game_daylight)
+	hud.restart_requested.connect(restart_game)
+	hud.quit_to_title_requested.connect(quit_to_title)
+	hud.graphics_action.connect(_on_hud_graphics_action)
+	hud.option_action.connect(_on_option_action)
+	hud.open_settings_requested.connect(func(): _open_overlay("settings"))
+	hud.settings_closed.connect(_on_settings_closed)
+	hud.open_inventory_requested.connect(_open_inventory)
+	hud.inventory_action.connect(_on_inventory_action)
+	hud.inventory_closed.connect(_close_all_overlays)
+	hud.dev_action.connect(_on_dev_action)
+	hud.dev_closed.connect(_close_all_overlays)
+
+
+func _post_player_setup() -> void:
+	player.player_died.connect(_on_player_died)
+	player.hit_confirmed.connect(_on_hit_confirmed)
+	player.status_message.connect(func(msg): hud.show_toast(msg))
+	player.score_event.connect(_on_score_event)
+	player.feed_message.connect(func(msg): hud.show_toast(msg))
+	combat = CombatDirector.new()
+	combat.name = "CombatDirector"
+	render_vp.add_child(combat)
+	combat.player = player
+	ZombieAI.preload_kits()
+	_load_settings()
+	_apply_options()
+	hud.set_best_record(best_wave, best_kills)
+
+
+func _load_settings() -> void:
+	var cf := ConfigFile.new()
+	if cf.load(SETTINGS_PATH) != OK:
+		return
+	opt_sens = clampf(float(cf.get_value("game", "sens", opt_sens)), 0.3, 3.0)
+	opt_ads_sens = clampf(float(cf.get_value("game", "ads_sens", opt_ads_sens)), 0.3, 1.0)
+	opt_fov = clampf(float(cf.get_value("game", "fov", opt_fov)), 80.0, 110.0)
+	opt_volume = clampi(int(cf.get_value("game", "volume", opt_volume)), 0, 100)
+	opt_crosshair = bool(cf.get_value("game", "crosshair", opt_crosshair))
+	opt_invert_y = bool(cf.get_value("game", "invert_y", opt_invert_y))
+	opt_bodycam = clampi(int(cf.get_value("game", "bodycam", opt_bodycam)), 0, 100)
+	opt_grain = clampi(int(cf.get_value("game", "grain", opt_grain)), 0, 2)
+	best_wave = int(cf.get_value("record", "wave", 0))
+	best_kills = int(cf.get_value("record", "kills", 0))
+
+
+func _save_settings() -> void:
+	if deterministic_mode or bench_mode:
+		return
+	var cf := ConfigFile.new()
+	cf.set_value("game", "sens", opt_sens)
+	cf.set_value("game", "ads_sens", opt_ads_sens)
+	cf.set_value("game", "fov", opt_fov)
+	cf.set_value("game", "volume", opt_volume)
+	cf.set_value("game", "crosshair", opt_crosshair)
+	cf.set_value("game", "invert_y", opt_invert_y)
+	cf.set_value("game", "bodycam", opt_bodycam)
+	cf.set_value("game", "grain", opt_grain)
+	cf.set_value("record", "wave", best_wave)
+	cf.set_value("record", "kills", best_kills)
+	cf.save(SETTINGS_PATH)
+
+
+func get_fisheye_strength() -> float:
+	return 0.212 * float(opt_bodycam) / 100.0
+
+
+func _apply_options() -> void:
+	if player:
+		player.mouse_sens = 0.0022 * opt_sens
+		player.ads_sens_mult = opt_ads_sens
+		player.base_fov = opt_fov
+		player.invert_y = opt_invert_y
+	var master := AudioServer.get_bus_index("Master")
+	if master >= 0:
+		AudioServer.set_bus_mute(master, opt_volume <= 0)
+		AudioServer.set_bus_volume_db(master, linear_to_db(maxf(float(opt_volume) / 100.0, 0.001)))
+	if hud:
+		hud.show_crosshair = opt_crosshair
+		if hud.post_mat and not deterministic_mode:
+			hud.post_mat.set_shader_parameter("grain_strength", float(GRAIN_VALS[opt_grain]))
+			hud.post_mat.set_shader_parameter("ca_strength", 0.0068 * float(opt_bodycam) / 100.0)
+		hud.update_option_labels({
+			"sens": "%.1f×" % opt_sens,
+			"ads_sens": "%d%%" % int(round(opt_ads_sens * 100.0)),
+			"fov": "%d°" % int(opt_fov),
+			"volume": ("%d%%" % opt_volume) if opt_volume > 0 else "MUTED",
+			"crosshair": "ON" if opt_crosshair else "OFF",
+			"invert_y": "ON" if opt_invert_y else "OFF",
+			"bodycam": ("%d%%" % opt_bodycam) if opt_bodycam > 0 else "OFF",
+			"grain": GRAIN_NAMES[opt_grain],
+		})
+
+
+func _on_option_action(key: String, dir: int) -> void:
+	match key:
+		"sens": opt_sens = clampf(snappedf(opt_sens + 0.1 * dir, 0.1), 0.3, 3.0)
+		"ads_sens": opt_ads_sens = clampf(snappedf(opt_ads_sens + 0.05 * dir, 0.01), 0.3, 1.0)
+		"fov": opt_fov = clampf(opt_fov + 2.0 * dir, 80.0, 110.0)
+		"volume": opt_volume = clampi(opt_volume + 10 * dir, 0, 100)
+		"crosshair": opt_crosshair = not opt_crosshair
+		"invert_y": opt_invert_y = not opt_invert_y
+		"bodycam": opt_bodycam = clampi(opt_bodycam + 20 * dir, 0, 100)
+		"grain": opt_grain = posmod(opt_grain + dir, GRAIN_NAMES.size())
+	_apply_options()
+	_save_settings()
+
+
+func quit_to_title() -> void:
+	if zombies_root == null or player == null or world == null:
+		return
+	get_tree().paused = false
+	game_active = false
+	_reset_run_state()
+	hud.defeat_panel.visible = false
+	if hud.settings_panel: hud.settings_panel.visible = false
+	if hud.inventory_panel: hud.inventory_panel.visible = false
+	if hud.dev_panel: hud.dev_panel.visible = false
+	hud.title_panel.visible = true
+	hud.set_best_record(best_wave, best_kills)
+	player.input_enabled = false
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+
+
+func _reset_run_state() -> void:
+	_hint_shown.clear()
+	for c in zombies_root.get_children():
+		c.queue_free()
+	_active_attackers.clear()
+	_recent_spawns.clear()
+	_clear_drops()
+	if combat:
+		combat.clear_all()
+	wave_pause_timer = 0.0
+	zombies_to_spawn = 0
+	player.heal_full(true)
+	player.global_position = Vector3(-1.2, 0.05, 3.6)
+	player.yaw = -0.35
+	player.pitch = 0.0
+	points = 600
+	kills = 0
+	headshots = 0
+	run_time = 0.0
+	points_earned = 0
+	_kill_chain = 0
+	_obj_cache.clear()
+	power_restored = false
+	world.set_asylum_power(false)
+	if world.sawmill_gate_open:
+		world.sawmill_gate_open = false
+		for sp: Vector3 in world.sawmill_spawn_points:
+			world.spawn_points.erase(sp)
+	if world.boiler_gate_open:
+		world.boiler_gate_open = false
+		for sp: Vector3 in world.boiler_spawn_points:
+			world.spawn_points.erase(sp)
+	if world.morgue_gate_open:
+		world.morgue_gate_open = false
+		for sp: Vector3 in world.morgue_spawn_points:
+			world.spawn_points.erase(sp)
+	for inter: InteractableObject in world.interactables:
+		if is_instance_valid(inter) and inter.has_method("reset_state"):
+			inter.reset_state()
+
+
+func _on_score_event(kind: String, amount: int) -> void:
+	add_points(amount)
+	if hud:
+		hud.push_points(amount, kind)
+
+
+func _alive_of(v: ZombieAI.Variant) -> int:
+	var n := 0
+	for c in zombies_root.get_children():
+		if c is ZombieAI and not c.dead and c.variant == v:
+			n += 1
+	return n
+
+
+func _pick_wave_variant() -> ZombieAI.Variant:
+	# Weighted roster per wave, with caps on the specials so a wave never becomes three screamers and two bruisers
+	var w := wave
+	var table: Array = []
+	if w <= 1:
+		table = [[ZombieAI.Variant.ASYLUM_PATIENT, 100]]
+	elif w == 2:
+		table = [[ZombieAI.Variant.ASYLUM_PATIENT, 55], [ZombieAI.Variant.TACTICAL_SOLDIER, 25], [ZombieAI.Variant.EXPLODER, 10], [ZombieAI.Variant.SPITTER, 10]]
+	elif w == 3:
+		table = [[ZombieAI.Variant.ASYLUM_PATIENT, 32], [ZombieAI.Variant.TACTICAL_SOLDIER, 22], [ZombieAI.Variant.RUNNER, 18], [ZombieAI.Variant.EXPLODER, 10], [ZombieAI.Variant.SPITTER, 10], [ZombieAI.Variant.SCREAMER, 8]]
+	else:
+		table = [[ZombieAI.Variant.ASYLUM_PATIENT, 24], [ZombieAI.Variant.TACTICAL_SOLDIER, 20], [ZombieAI.Variant.RUNNER, 20], [ZombieAI.Variant.EXPLODER, 10], [ZombieAI.Variant.SPITTER, 11], [ZombieAI.Variant.SCREAMER, 6], [ZombieAI.Variant.BRUISER, 9]]
+	var caps := {
+		ZombieAI.Variant.BRUISER: 1 + (1 if w >= 7 else 0),
+		ZombieAI.Variant.SCREAMER: 1,
+		ZombieAI.Variant.SPITTER: 2 + (1 if w >= 6 else 0),
+		ZombieAI.Variant.EXPLODER: 2,
+	}
+	var total := 0
+	var usable: Array = []
+	for row in table:
+		var v: ZombieAI.Variant = row[0]
+		if caps.has(v) and _alive_of(v) >= int(caps[v]):
+			continue
+		usable.append(row)
+		total += int(row[1])
+	if usable.is_empty() or total <= 0:
+		return ZombieAI.Variant.ASYLUM_PATIENT
+	var roll := randi() % total
+	for row in usable:
+		roll -= int(row[1])
+		if roll < 0:
+			return row[0]
+	return ZombieAI.Variant.ASYLUM_PATIENT
+
+
+func _wave_hp_scale() -> float:
+	return clampf(1.0 + 0.07 * float(maxi(0, wave - 3)), 1.0, 2.2)
+
+
+func spawn_reinforcements(_caller: ZombieAI, count: int) -> void:
+	# A scream calls a few extra bodies out of the dark. They do not count against the wave total.
+	if not game_active or player == null or player.dead:
+		return
+	var cap := (4 if wave == 1 else (6 if wave == 2 else mini(11, 5 + wave))) + 2
+	for _i in range(count):
+		if get_living_zombies() >= cap:
+			return
+		var pick := _pick_fair_spawn_point()
+		if not pick.get("ok", false):
+			return
+		var v := ZombieAI.Variant.RUNNER if randf() < 0.4 else ZombieAI.Variant.ASYLUM_PATIENT
+		var z := spawn_zombie_at(pick["pos"], v, float(pick.get("yaw", 0.0)), true)
+		z.enrage(8.0)
+	if hud:
+		hud.show_toast("THE SCREAM IS DRAWING MORE OF THEM")
+
+
+func _find_interactable(kind: int, gate_id := "") -> InteractableObject:
+	var key := "%d:%s" % [kind, gate_id]
+	if _obj_cache.has(key) and is_instance_valid(_obj_cache[key]):
+		return _obj_cache[key]
+	for inter: InteractableObject in world.interactables:
+		if is_instance_valid(inter) and inter.kind == kind and (gate_id == "" or inter.gate_id == gate_id):
+			_obj_cache[key] = inter
+			return inter
+	return null
+
+
+func get_objective() -> Dictionary:
+	# The next sensible thing to do, with a world position for the compass marker
+	if not game_active or world == null or player == null:
+		return {}
+	if not power_restored:
+		var gen := _find_interactable(InteractableObject.Kind.GENERATOR)
+		if gen:
+			return {"text": "RESTORE POWER — START THE GENERATOR", "pos": gen.global_position}
+	var any_gate := world.boiler_gate_open or world.morgue_gate_open or world.sawmill_gate_open
+	var any_up := false
+	for u in player.upgraded_weapons:
+		if u:
+			any_up = true
+			break
+	if not world.sawmill_gate_open and (any_gate or points >= 750):
+		var sg := _find_interactable(InteractableObject.Kind.BREACH_GATE, "sawmill")
+		if sg:
+			return {"text": "BREACH THE SAWMILL GATE — ARMORY BENCH BEYOND  (%d PTS)" % sg.cost, "pos": sg.global_position}
+	if not any_gate:
+		var bg := _find_interactable(InteractableObject.Kind.BREACH_GATE, "boiler")
+		if bg:
+			return {"text": "EARN %d PTS AND BREACH A WING GATE" % bg.cost, "pos": bg.global_position}
+	if world.sawmill_gate_open and not any_up:
+		var bench := _find_interactable(InteractableObject.Kind.UPGRADE_BENCH)
+		if bench:
+			return {"text": "UPGRADE A WEAPON AT THE ARMORY BENCH  (%d PTS)" % bench.cost, "pos": bench.global_position}
+	return {"text": "HOLD OUT — SURVIVE THE WAVE"}
+
+
+func _clear_drops() -> void:
+	for d in _drops:
+		if is_instance_valid(d.get("node")):
+			(d["node"] as Node).queue_free()
+	_drops.clear()
+
+
+func _maybe_spawn_drop(z: ZombieAI) -> void:
+	if _drops.size() >= MAX_DROPS or world == null or not game_active:
+		return
+	var roll := randf()
+	var kind := ""
+	# Low on health or ammo makes the matching drop more likely, so a bad stretch can turn around
+	var hp_need := 1.0 - player.health / maxf(player.max_health, 1.0)
+	var cw := player.current_weapon
+	var ammo_need := 0.0
+	if not bool(PlayerBodycam.WEAPONS[cw].get("is_melee", false)):
+		ammo_need = 1.0 - clampf(float(player.ammo_reserve[cw]) / maxf(float(PlayerBodycam.WEAPONS[cw]["reserve_max"]), 1.0), 0.0, 1.0)
+	var p_med := 0.03 + 0.07 * hp_need
+	var p_ammo := 0.05 + 0.09 * ammo_need
+	if z.variant == ZombieAI.Variant.BRUISER:
+		p_ammo = 1.0
+	if roll < p_med:
+		kind = "medkit"
+	elif roll < p_med + p_ammo:
+		kind = "ammo"
+	if kind == "":
+		return
+	var glb_key := "medical_box" if kind == "medkit" else "ammo_box"
+	if not world.glbs.has(glb_key) or world.glbs[glb_key] == null:
+		return
+	var pos := z.global_position
+	var space := render_vp.world_3d.direct_space_state
+	if space:
+		var q := PhysicsRayQueryParameters3D.create(pos + Vector3(0, 1.2, 0), pos + Vector3(0, -4.0, 0), 1)
+		var res := space.intersect_ray(q)
+		if res.is_empty():
+			return
+		pos = res["position"]
+	var node := Node3D.new()
+	var inst: Node3D = world.glbs[glb_key].instantiate()
+	inst.scale = Vector3.ONE * (0.75 if kind == "medkit" else 0.9)
+	inst.rotation.y = randf() * TAU
+	for sb in inst.find_children("*", "CollisionObject3D", true, false):
+		(sb as CollisionObject3D).collision_layer = 0
+		(sb as CollisionObject3D).collision_mask = 0
+	node.add_child(inst)
+	var light: OmniLight3D = null
+	if not OS.has_feature("web"):
+		light = OmniLight3D.new()
+		light.light_color = Color(0.45, 1.0, 0.55) if kind == "medkit" else Color(1.0, 0.82, 0.42)
+		light.light_energy = 0.9
+		light.omni_range = 2.4
+		light.shadow_enabled = false
+		light.light_volumetric_fog_energy = 0.0
+		light.light_bake_mode = Light3D.BAKE_DISABLED
+		light.position = Vector3(0.0, 0.55, 0.0)
+		node.add_child(light)
+	zombies_root.get_parent().add_child(node)
+	node.global_position = pos
+	_drops.append({"node": node, "kind": kind, "age": 0.0, "light": light})
+
+
+func _update_drops(delta: float) -> void:
+	var i := _drops.size() - 1
+	while i >= 0:
+		var d: Dictionary = _drops[i]
+		var node := d["node"] as Node3D
+		d["age"] = float(d["age"]) + delta
+		var gone := not is_instance_valid(node) or float(d["age"]) > DROP_LIFETIME
+		if not gone:
+			var l := d.get("light") as OmniLight3D
+			if l and is_instance_valid(l):
+				var left := DROP_LIFETIME - float(d["age"])
+				var blink := 1.0 if left > 8.0 else (0.35 + 0.65 * absf(sin(float(d["age"]) * 6.0)))
+				l.light_energy = (0.8 + 0.25 * sin(float(d["age"]) * 3.0)) * blink
+			var to := node.global_position - player.global_position
+			if Vector2(to.x, to.z).length() < 1.25 and absf(to.y) < 1.6 and not player.dead:
+				if _collect_drop(str(d["kind"])):
+					gone = true
+		if gone:
+			if is_instance_valid(node):
+				node.queue_free()
+			_drops.remove_at(i)
+		i -= 1
+
+
+func _collect_drop(kind: String) -> bool:
+	if kind == "medkit":
+		if player.health >= player.max_health - 1.0:
+			return false
+		player.health = minf(player.max_health, player.health + 50.0)
+		hud.show_toast("FIELD DRESSING APPLIED  +50 HP")
+		hud.play_ui("ui_buy", 1.1)
+		return true
+	var gave := false
+	var slots: Array[int] = []
+	for idx: int in player.firearm_slots:
+		slots.append(idx)
+	if player.special_slot >= 0 and not player.is_no_refill_weapon(player.special_slot):
+		slots.append(player.special_slot)
+	for idx: int in slots:
+		var cap := int(PlayerBodycam.WEAPONS[idx]["reserve_max"])
+		if player.ammo_reserve[idx] < cap:
+			player.ammo_reserve[idx] = mini(cap, player.ammo_reserve[idx] + maxi(2, player.get_weapon_mag_size(idx) * 2))
+			gave = true
+	if not gave:
+		return false
+	hud.show_toast("AMMUNITION RECOVERED")
+	hud.play_ui("ui_buy", 0.92)
+	return true
+
+
+func _update_low_health_audio() -> void:
+	if player == null or player.sfx_heart == null or player.sfx_heart.stream == null:
+		return
+	var frac := player.health / maxf(player.max_health, 1.0)
+	var want := game_active and not player.dead and frac < 0.42
+	if want:
+		if not player.sfx_heart.playing:
+			player.sfx_heart.play()
+		player.sfx_heart.volume_db = lerpf(-4.0, -16.0, clampf(frac / 0.42, 0.0, 1.0))
+		player.sfx_heart.pitch_scale = lerpf(1.22, 0.92, clampf(frac / 0.42, 0.0, 1.0))
+	elif player.sfx_heart.playing:
+		player.sfx_heart.stop()
+
+
+func _format_time(t: float) -> String:
+	var s := int(t)
+	return "%d:%02d" % [int(s / 60.0), s % 60]

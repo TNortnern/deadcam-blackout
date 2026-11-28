@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cfw1jxxjrx7q0"
-path="res://.godot/imported/weapon_famas_Image_5.jpg-0eeea86b45a7792868e50722426d994d.ctex"
+path.bptc="res://.godot/imported/weapon_famas_Image_5.jpg-0eeea86b45a7792868e50722426d994d.bptc.ctex"
+path.astc="res://.godot/imported/weapon_famas_Image_5.jpg-0eeea86b45a7792868e50722426d994d.astc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "c2199ef7cd60eb075920ccd1e1c81e86"
@@ -14,12 +16,12 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/weapon_famas_Image_5.jpg"
-dest_files=["res://.godot/imported/weapon_famas_Image_5.jpg-0eeea86b45a7792868e50722426d994d.ctex"]
+dest_files=["res://.godot/imported/weapon_famas_Image_5.jpg-0eeea86b45a7792868e50722426d994d.bptc.ctex", "res://.godot/imported/weapon_famas_Image_5.jpg-0eeea86b45a7792868e50722426d994d.astc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

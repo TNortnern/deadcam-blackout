@@ -126,10 +126,12 @@ func build_world() -> void:
 	_build_extended_logging_yard()
 	_build_occluders()
 	_build_interactables()
+	_build_polish_dressing()
 	_build_snow_particles()
 	_build_voxel_gi()
 	_optimize_lights_recursive(self)
 	apply_graphics_toggles()
+	build_navigation()
 
 
 func build_world_web_async(hud: BodycamHUD = null) -> void:
@@ -163,10 +165,14 @@ func build_world_web_async(hud: BodycamHUD = null) -> void:
 	await tree.process_frame
 	_build_occluders()
 	_build_interactables()
+	_build_polish_dressing()
 	_build_snow_particles()
 	_build_voxel_gi()
 	_optimize_lights_recursive(self)
 	apply_graphics_toggles()
+	if hud: hud.set_loading_status("BODYCAM-04 // LOADING NAVIGATION...")
+	await tree.process_frame
+	build_navigation()
 	await tree.process_frame
 
 
@@ -498,7 +504,8 @@ const WORLD_GLB_LIST := [
 	"fallen_log", "dead_quiver_branch_01", "winter_grass",
 	"zombie_tactical", "zombie_runner",
 	"watchtower_aaa", "sawmill_log_stack", "diesel_generator_aaa", "sawmill_shed_aaa",
-	"evidence_chest_aaa", "upgrade_bench_aaa", "modular_pipes"
+	"evidence_chest_aaa", "upgrade_bench_aaa", "modular_pipes",
+	"prop_boiler", "prop_morgue_table", "prop_morgue_drawers", "prop_breach_gate", "prop_perk_cabinet", "prop_stair_collapse", "prop_gurney"
 ]
 
 
@@ -1358,11 +1365,11 @@ func _build_asylum_lobby() -> void:
 			continue
 		if rng.randf() < 0.65:
 			var sc := Vector3(rng.randf_range(0.09, 0.16), 0.022, rng.randf_range(0.36, 0.90))
-			var b := Basis.from_euler(Vector3(rng.randf_range(-0.05, 0.05), rng.randf_range(0, TAU), rng.randf_range(-0.05, 0.05))).scaled(sc)
+			var b := Basis.from_euler(Vector3(rng.randf_range(-0.05, 0.05), rng.randf_range(0, TAU), rng.randf_range(-0.05, 0.05))) * Basis.from_scale(sc)
 			wood_xforms.append(Transform3D(b, Vector3(px, 0.016, pz)))
 		else:
 			var sc := Vector3(rng.randf_range(0.18, 0.28), 0.005, rng.randf_range(0.24, 0.34))
-			var b := Basis.from_euler(Vector3(0, rng.randf_range(0, TAU), 0)).scaled(sc)
+			var b := Basis.from_euler(Vector3(0, rng.randf_range(0, TAU), 0)) * Basis.from_scale(sc)
 			paper_xforms.append(Transform3D(b, Vector3(px, 0.008, pz)))
 	var mm_wood := _add_box_multimesh(g, wood_xforms, Vector3.ONE, mats["wood_carved"], false)
 	var mm_paper := _add_box_multimesh(g, paper_xforms, Vector3.ONE, mats["old_paper"], false)
@@ -1456,6 +1463,7 @@ func _build_grand_staircase() -> void:
 	g.add_child(upper_flight)
 	_add_glb(upper_flight, "worn_oak_flight", Vector3.ZERO)
 	_add_box(upper_flight, Vector3(0,1.06,-2.12), Vector3(2.82,1.15,5.66), mats["plaster"], Vector3(atan2(0.219,0.284),0,0)).visible = false
+	_build_stair_barricades(g, upper_flight)
 	_add_box(g, Vector3(-5.92,3.37,-1.95), Vector3(4.91,0.25,1.32), mats["wood_carved"])
 	_add_box(g, Vector3(-4.79,6.71,3.53), Vector3(2.40,0.28,1.23), mats["plaster"])
 	var landing_key := SpotLight3D.new()
@@ -1558,7 +1566,7 @@ func _build_grand_staircase() -> void:
 		var sx := srng.randf_range(-9.2, -4.4)
 		var sz := srng.randf_range(2.2, 4.4)
 		var sc := Vector3(srng.randf_range(0.08, 0.16), 0.025, srng.randf_range(0.32, 0.88))
-		var b := Basis.from_euler(Vector3(srng.randf_range(-0.08, 0.08), srng.randf_range(0, TAU), srng.randf_range(-0.06, 0.06))).scaled(sc)
+		var b := Basis.from_euler(Vector3(srng.randf_range(-0.08, 0.08), srng.randf_range(0, TAU), srng.randf_range(-0.06, 0.06))) * Basis.from_scale(sc)
 		var xf := Transform3D(b, Vector3(sx, 0.02, sz))
 		if srng.randf() < 0.7:
 			stair_wood.append(xf)
@@ -1583,7 +1591,8 @@ func _build_grand_staircase() -> void:
 	sl_mid.position = Vector3(-9.05, 4.75, -2.2)
 	g.add_child(sl_mid)
 
-	spawn_points.append(Vector3(-7.6, 3.65, -5.8))
+	# Upstairs spawn sits on the open landing: the arch balcony behind the sealed portal door is not reachable on foot
+	spawn_points.append(Vector3(-9.0, 3.65, -2.3))
 
 
 func _build_storage_alcove() -> void:
@@ -2488,6 +2497,7 @@ func _build_sawmill_perimeter() -> void:
 	gate.add_child(gvis)
 	gate.gate_visual = gvis
 	_add_box(gvis, Vector3(2.5, 1.35, 0.0), Vector3(4.9, 2.5, 0.08), mats["metal"], Vector3.ZERO, false)
+	_dress_gate(gvis, 5.0, 2.7)
 	interactables.append(gate)
 
 	# 2. Staggered Stacked Pine Logs breaking up long lanes (merged GLBs, 1 draw call each!)
@@ -2667,6 +2677,7 @@ func _build_boiler_wing() -> void:
 	gate.add_child(gvis)
 	gate.gate_visual = gvis
 	_add_box(gvis, Vector3(1.3, 1.55, 0.0), Vector3(2.55, 3.1, 0.10), mats["metal"], Vector3.ZERO, false)
+	_dress_gate(gvis, 2.6, 3.1)
 	interactables.append(gate)
 
 	# Twin Industrial Cast-Iron Furnaces seated firmly on concrete cradles + Smokestacks + Overhead Piping + Cover Crates
@@ -2674,6 +2685,22 @@ func _build_boiler_wing() -> void:
 	firebox_m.albedo_color = Color(1.0, 0.38, 0.08); firebox_m.emission_enabled = true
 	firebox_m.emission = Color(1.0, 0.34, 0.06); firebox_m.emission_energy_multiplier = 3.2
 	for bz: float in [-2.8, 5.8]:
+		if _has_prop("prop_boiler"):
+			# Modelled fire-tube boiler on its masonry saddles, firebox door ajar toward the entrance
+			var b_inst := _add_glb(g, "prop_boiler", Vector3(24.5, 0.0, bz))
+			var glow := _find_named(b_inst, "FireGlow") if b_inst else null
+			if glow is MeshInstance3D:
+				(glow as MeshInstance3D).material_override = firebox_m
+			var fire_l := OmniLight3D.new()
+			fire_l.light_color = Color(1.0, 0.42, 0.10)
+			fire_l.light_energy = 2.6
+			fire_l.omni_range = 5.0
+			fire_l.shadow_enabled = false
+			fire_l.position = Vector3(21.1, 1.3, bz)
+			g.add_child(fire_l)
+			_add_box(g, Vector3(24.5, 1.4, bz), Vector3(5.8, 2.8, 2.7), mats["metal"]).visible = false
+			_add_blocker(g, Vector3(26.9, 3.9, bz), Vector3(0.7, 2.6, 0.7), Vector3.ZERO, "metal")
+			continue
 		var cyl := MeshInstance3D.new()
 		var cm := CylinderMesh.new(); cm.top_radius = 1.35; cm.bottom_radius = 1.35; cm.height = 5.6; cm.radial_segments = 18
 		cm.material = mats["metal"]
@@ -2766,14 +2793,28 @@ func _build_quarantine_morgue() -> void:
 	gate.add_child(gvis)
 	gate.gate_visual = gvis
 	_add_box(gvis, Vector3(1.7, 1.55, 0.0), Vector3(3.3, 3.0, 0.10), mats["metal"], Vector3.ZERO, false)
+	_dress_gate(gvis, 3.4, 3.0)
 	interactables.append(gate)
 
 	# PBR metal morgue exam tables, refrigerated body locker bank, medical crates & wheelchairs
+	var has_table := _has_prop("prop_morgue_table")
 	for tx: float in [-26.5, -31.5, -36.0]:
-		_add_box(g, Vector3(tx, h_m + 0.88, -51.5), Vector3(1.05, 0.12, 2.25), mats["metal"])
-		_add_box(g, Vector3(tx, h_m + 0.42, -51.5), Vector3(0.42, 0.84, 0.42), mats["metal"])
+		var t_top := _add_box(g, Vector3(tx, h_m + 0.88, -51.5), Vector3(1.05, 0.12, 2.25), mats["metal"])
+		var t_leg := _add_box(g, Vector3(tx, h_m + 0.42, -51.5), Vector3(0.42, 0.84, 0.42), mats["metal"])
+		if has_table:
+			t_top.visible = false
+			t_leg.visible = false
+			_add_glb(g, "prop_morgue_table", Vector3(tx, h_m + 0.03, -51.5), Vector3(0.0, PI * 0.5 + (tx + 31.0) * 0.012, 0.0))
 	# Mortuary cold-storage drawer wall along North Wall
-	_add_box(g, Vector3(-31.5, h_m + 1.4, -55.85), Vector3(12.0, 2.8, 1.0), mats["metal"])
+	var drawer_wall := _add_box(g, Vector3(-31.5, h_m + 1.4, -55.85), Vector3(12.0, 2.8, 1.0), mats["metal"])
+	if _has_prop("prop_morgue_drawers"):
+		drawer_wall.visible = false
+		for di in range(4):
+			var d_inst := _add_glb(g, "prop_morgue_drawers", Vector3(-36.0 + di * 3.0, h_m + 0.03, -55.85), Vector3.ZERO, Vector3(3.0 / 2.9, 1.18, 1.0))
+			if d_inst and di != 1:
+				var open_d := _find_named(d_inst, "DrawerDoorOpen")
+				if open_d:
+					open_d.rotation = Vector3.ZERO
 	_add_glb(g, "wheelchair", Vector3(-24.2, h_m, -44.2), Vector3(0.0, 1.1, 0.0), Vector3(1.05, 1.05, 1.05))
 	_add_glb(g, "medical_box", Vector3(-27.5, h_m, -43.0), Vector3(0.0, 0.3, 0.0), Vector3(1.3, 1.3, 1.3))
 	_add_glb(g, "military_crate", Vector3(-34.0, h_m, -43.2), Vector3(0.0, -0.4, 0.0), Vector3(1.2, 1.2, 1.2), Vector3(1.3, 0.95, 0.9))
@@ -2990,19 +3031,26 @@ func _spawn_trap(parent_grp: Node3D, node_name: String, t_type: String, t_label:
 				noz.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 				frame_root.add_child(noz)
 		var fire_sh := load("res://shaders/realistic_fire.gdshader") as Shader
+		var fire_tex: Texture2D = load("res://assets/textures/fire_plume_sheet.png") as Texture2D if ResourceLoader.exists("res://assets/textures/fire_plume_sheet.png") else null
 		var f_idx := 0
-		var heights := [1.60, 2.08, 1.85, 2.22, 1.75, 2.15, 1.65, 1.98]
-		var widths := [0.95, 1.15, 1.05, 1.18, 0.98, 1.12, 1.02, 1.16]
+		var heights := [1.65, 2.18, 1.92, 2.30, 1.80, 2.20, 1.72, 2.05]
+		var widths := [1.05, 1.25, 1.12, 1.28, 1.06, 1.22, 1.08, 1.24]
 		for fz_o: float in [-1.25, 1.25]:
 			for fx_o: float in [-1.45, -0.50, 0.50, 1.45]:
 				var sm := ShaderMaterial.new()
 				sm.shader = fire_sh
+				if fire_tex:
+					sm.set_shader_parameter("fire_tex", fire_tex)
+					sm.set_shader_parameter("has_fire_tex", 1.0)
+				sm.set_shader_parameter("atlas_fps", 16.0 + float(f_idx % 3) * 3.0)
+				sm.set_shader_parameter("flip_x", -1.0 if (f_idx % 2 == 1) else 1.0)
 				sm.set_shader_parameter("flame_speed", 3.1 + float(f_idx % 3) * 0.55)
 				sm.set_shader_parameter("phase_seed", float(f_idx) * 2.91 + 1.3)
-				sm.set_shader_parameter("intensity", 0.96 + float(f_idx % 3) * 0.06)
-				sm.set_shader_parameter("smoke_mix", 0.62)
+				sm.set_shader_parameter("intensity", 1.32 + float(f_idx % 3) * 0.12)
+				sm.set_shader_parameter("smoke_mix", 0.58)
 				sm.set_shader_parameter("billboard_y", 1.0)
 				sm.set_shader_parameter("jet_mode", 0.0)
+				sm.set_shader_parameter("blue_core", 0.35)
 				var qm := QuadMesh.new()
 				var fh: float = heights[f_idx % heights.size()]
 				var fw: float = widths[f_idx % widths.size()]
@@ -3018,12 +3066,18 @@ func _spawn_trap(parent_grp: Node3D, node_name: String, t_type: String, t_label:
 			for bx_o: float in [-0.95, 0.0, 0.95]:
 				var bsm := ShaderMaterial.new()
 				bsm.shader = fire_sh
+				if fire_tex:
+					bsm.set_shader_parameter("fire_tex", fire_tex)
+					bsm.set_shader_parameter("has_fire_tex", 1.0)
+				bsm.set_shader_parameter("atlas_fps", 18.0 + absf(bx_o) * 2.5)
+				bsm.set_shader_parameter("flip_x", -1.0 if bx_o < 0.0 else 1.0)
 				bsm.set_shader_parameter("flame_speed", 2.8 + absf(bx_o) * 0.4)
 				bsm.set_shader_parameter("phase_seed", float(f_idx) * 4.13)
-				bsm.set_shader_parameter("intensity", 0.92)
-				bsm.set_shader_parameter("smoke_mix", 0.50)
+				bsm.set_shader_parameter("intensity", 1.28)
+				bsm.set_shader_parameter("smoke_mix", 0.45)
 				bsm.set_shader_parameter("billboard_y", 1.0)
 				bsm.set_shader_parameter("jet_mode", 0.0)
+				bsm.set_shader_parameter("blue_core", 0.45)
 				var bqm := QuadMesh.new()
 				bqm.size = Vector2(1.38, 1.15)
 				bqm.material = bsm
@@ -3176,11 +3230,16 @@ func _build_interactables() -> void:
 	var ash := BoxShape3D.new(); ash.size = Vector3(0.95, 0.72, 0.58)
 	acol.shape = ash; acol.position = Vector3(0.0, 0.36, 0.0)
 	ac.add_child(acol)
-	var ac_mat := StandardMaterial3D.new()
-	ac_mat.albedo_color = Color(0.20, 0.24, 0.17)
-	ac_mat.roughness = 0.72; ac_mat.metallic = 0.35
-	_add_box(ac, Vector3(0.0, 0.28, 0.0), Vector3(0.86, 0.44, 0.46), ac_mat)
-	_add_box(ac, Vector3(0.0, 0.52, 0.0), Vector3(0.90, 0.08, 0.50), mats["metal"])
+	if _has_prop("military_crate") and _has_prop("ammo_box"):
+		_add_glb(ac, "military_crate", Vector3.ZERO, Vector3.ZERO, Vector3(0.95, 0.95, 0.95))
+		_add_glb(ac, "ammo_box", Vector3(-0.16, 0.74, 0.02), Vector3(0.0, 0.5, 0.0), Vector3(1.15, 1.15, 1.15))
+		_add_glb(ac, "ammo_box", Vector3(0.24, 0.74, -0.04), Vector3(0.0, -0.3, 0.0), Vector3(1.15, 1.15, 1.15))
+	else:
+		var ac_mat := StandardMaterial3D.new()
+		ac_mat.albedo_color = Color(0.20, 0.24, 0.17)
+		ac_mat.roughness = 0.72; ac_mat.metallic = 0.35
+		_add_box(ac, Vector3(0.0, 0.28, 0.0), Vector3(0.86, 0.44, 0.46), ac_mat)
+		_add_box(ac, Vector3(0.0, 0.52, 0.0), Vector3(0.90, 0.08, 0.50), mats["metal"])
 	var ac_light := OmniLight3D.new()
 	ac_light.light_color = Color(0.88, 0.94, 0.52)
 	ac_light.light_energy = 0.65
@@ -3388,3 +3447,260 @@ func bake_voxel_gis(save_to_res: bool = false) -> void:
 			gi.data.interior = true
 			ResourceSaver.save(gi.data, target_path, ResourceSaver.FLAG_COMPRESS)
 			print("BAKED GI:", target_path, " bytes=", FileAccess.get_file_as_bytes(target_path).size() if FileAccess.file_exists(target_path) else -1)
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Polish pass: authored props with graceful fallbacks, blocked dead-end stairs, perk cabinets and baked navigation
+# ---------------------------------------------------------------------------------------------------------------------
+
+const NAV_PATH := "res://assets/baked/navmesh.res"
+var nav_region: NavigationRegion3D = null
+
+
+func _has_prop(key: String) -> bool:
+	return glbs.has(key) and glbs[key] != null
+
+
+func _add_blocker(parent: Node3D, pos: Vector3, size: Vector3, rot := Vector3.ZERO, surf := "wood") -> StaticBody3D:
+	# Invisible static collider (no mesh): used where a prop's silhouette should stop players, zombies and navigation
+	var sb := StaticBody3D.new()
+	sb.collision_layer = 1
+	sb.set_meta(&"surface", surf)
+	sb.position = pos
+	sb.rotation = rot
+	var cs := CollisionShape3D.new()
+	var sh := BoxShape3D.new()
+	sh.size = size
+	cs.shape = sh
+	sb.add_child(cs)
+	parent.add_child(sb)
+	return sb
+
+
+func _find_named(root_n: Node, node_name: String) -> Node3D:
+	if str(root_n.name) == node_name and root_n is Node3D:
+		return root_n as Node3D
+	for c in root_n.get_children():
+		var f := _find_named(c, node_name)
+		if f:
+			return f
+	return null
+
+
+func _build_stair_barricades(g: Node3D, flight2: Node3D) -> void:
+	# Both upper flights of the stairwell run into the building shell. Seal them where they leave the first landing so
+	# the playable upper level is the landing and the arch balcony, with no dead ends to get cornered in.
+	var specs := [
+		# [position, rotation, scale, blocker centre, blocker size]
+		[Vector3(-4.81, 3.50, -1.05), Vector3(0.0, PI, 0.0), Vector3(1.0, 1.0, 1.0), Vector3(-4.81, 4.75, -0.95), Vector3(2.5, 2.5, 1.3)],
+		# The return flight's pile lies a few treads up, tilted with the stair, so the top of the first flight stays clear
+		[Vector3(-6.80, 4.55, -2.66), Vector3(0.60, -PI * 0.5, 0.0), Vector3(0.92, 1.05, 0.95), Vector3(-6.70, 5.40, -2.66), Vector3(1.3, 3.2, 2.3)],
+	]
+	for sp in specs:
+		var pos: Vector3 = sp[0]
+		if _has_prop("prop_stair_collapse"):
+			_add_glb(g, "prop_stair_collapse", pos, sp[1], sp[2])
+		else:
+			# Fallback dressing from the existing scanned debris set
+			var piv := Node3D.new()
+			piv.position = pos
+			piv.rotation = sp[1]
+			g.add_child(piv)
+			_add_glb(piv, "splinter_heap", Vector3(0.0, 0.0, 0.1), Vector3(0.0, 0.4, 0.0), Vector3(1.35, 1.9, 1.2))
+			_add_glb(piv, "drawer_cabinet", Vector3(-0.25, 0.55, 0.0), Vector3(1.32, 0.3, 0.18), Vector3.ONE * 1.2)
+			_add_glb(piv, "wooden_chair", Vector3(0.7, 0.35, 0.25), Vector3(1.9, 1.1, 0.4), Vector3.ONE * 1.05)
+			_add_glb(piv, "plaster_fall", Vector3(0.1, 0.02, 0.55), Vector3(0.0, 1.3, 0.0), Vector3(0.9, 0.5, 0.8))
+			_add_glb(piv, "plaster_fall", Vector3(-0.6, 0.9, -0.1), Vector3(0.7, 0.2, 0.3), Vector3(0.7, 0.4, 0.7))
+			for k in range(4):
+				_add_box(piv, Vector3(-0.9 + k * 0.6, 0.95 + (k % 2) * 0.5, -0.05 + (k % 3) * 0.12), Vector3(0.14, 0.05, 2.3), mats["timber"],
+					Vector3(0.9 + k * 0.23, 0.35 * (k - 1.5), 1.2 + k * 0.17), false)
+		_add_blocker(g, sp[3], sp[4])
+	if flight2 != null:
+		# The sealed flight keeps its visuals but nothing can stand on it any more
+		for sb in flight2.find_children("*", "StaticBody3D", true, false):
+			(sb as StaticBody3D).collision_layer = 0
+
+
+func _spawn_perk(parent_grp: Node3D, node_name: String, perk: String, label: String, price: int, pos: Vector3, rot_y: float) -> InteractableObject:
+	var pk := InteractableObject.new()
+	pk.name = node_name
+	pk.kind = InteractableObject.Kind.PERK
+	pk.perk_id = perk
+	pk.perk_label = label
+	pk.cost = price
+	pk.collision_layer = 1 | 16
+	pk.position = pos
+	pk.rotation.y = rot_y
+	(parent_grp if parent_grp != null else self).add_child(pk)
+	var col := CollisionShape3D.new()
+	var sh := BoxShape3D.new()
+	sh.size = Vector3(1.0, 1.95, 0.5)
+	col.shape = sh
+	col.position = Vector3(0.0, 0.975, 0.0)
+	pk.add_child(col)
+	var lamp_parent: Node3D = pk
+	if _has_prop("prop_perk_cabinet"):
+		var inst := _add_glb(pk, "prop_perk_cabinet", Vector3.ZERO)
+		if inst:
+			_tame_perk_cabinet_enamel(inst)
+		var lamp := _find_named(inst, "StatusLamp") if inst else null
+		if lamp is MeshInstance3D:
+			var lm := StandardMaterial3D.new()
+			lm.albedo_color = Color(0.9, 0.2, 0.15)
+			lm.emission_enabled = true
+			lm.emission = Color(1.0, 0.22, 0.12)
+			lm.emission_energy_multiplier = 1.4
+			(lamp as MeshInstance3D).material_override = lm
+			pk.lamp_mat = lm
+			lamp_parent = lamp
+		pk.drawer_node = _find_named(inst, "DispenseDrawer") if inst else null
+	else:
+		_add_glb(pk, "vintage_cabinet", Vector3(0.0, 0.0, -0.02), Vector3.ZERO, Vector3(0.95, 1.18, 0.9))
+		_add_glb(pk, "medical_box", Vector3(0.0, 1.02, 0.02), Vector3(0.0, 0.2, 0.0), Vector3(0.8, 0.8, 0.8))
+	var gl := OmniLight3D.new()
+	gl.light_color = Color(1.0, 0.25, 0.15)
+	gl.light_energy = 0.5 * InteractableObject.PERK_GLOW_SCALE
+	gl.omni_range = 2.8
+	gl.shadow_enabled = false
+	gl.light_cull_mask = 0xFFFFD
+	gl.light_volumetric_fog_energy = 0.0
+	gl.set_meta("dynamic_light", true)
+	gl.position = Vector3(0.0, 1.75, 0.55) if lamp_parent == pk else Vector3(0.0, 0.12, 0.3)
+	lamp_parent.add_child(gl)
+	pk.glow_light = gl
+	interactables.append(pk)
+	return pk
+
+
+static var _perk_enamel_mats: Dictionary = {}
+
+func _tame_perk_cabinet_enamel(inst: Node3D) -> void:
+	# The cabinet's off-white enamel (albedo ~0.80) clips to solid white in the hot spot of the 28-energy
+	# player flashlight at arm's length. Pull the paint atlas down to an aged ~0.6 enamel and give the
+	# glazing atlas a touch more diffusion so the paint wear, glass door and bottles stay readable.
+	for c in inst.find_children("*", "MeshInstance3D", true, false):
+		var mi := c as MeshInstance3D
+		if mi.mesh == null or mi.name == "StatusLamp":
+			continue
+		for s in range(mi.mesh.get_surface_count()):
+			var src := mi.mesh.surface_get_material(s) as StandardMaterial3D
+			if src == null:
+				continue
+			var key := src.get_instance_id()
+			if not _perk_enamel_mats.has(key):
+				var m := src.duplicate() as StandardMaterial3D
+				if src.resource_name.ends_with("_inner"):
+					# Interior shelves + wired glazing: softer dielectric glint so the beam never flares the door
+					m.albedo_color = src.albedo_color * Color(0.86, 0.86, 0.86, 1.0)
+					m.metallic_specular = 0.24
+				else:
+					m.albedo_color = src.albedo_color * Color(0.74, 0.73, 0.71, 1.0)
+					m.metallic_specular = 0.30
+				_perk_enamel_mats[key] = m
+			mi.set_surface_override_material(s, _perk_enamel_mats[key])
+
+
+func _dress_gate(gvis: Node3D, width: float, height: float) -> bool:
+	# Swap a breach gate's flat panel for the modelled steel security leaf (hinge on the visual's origin)
+	if not _has_prop("prop_breach_gate") or gvis == null:
+		return false
+	for c in gvis.get_children():
+		if c is MeshInstance3D:
+			(c as MeshInstance3D).visible = false
+	_add_glb(gvis, "prop_breach_gate", Vector3.ZERO, Vector3.ZERO, Vector3(width / 2.6, height / 3.1, 1.0))
+	return true
+
+
+func _build_polish_dressing() -> void:
+	# ---- Boiler wing: real fire-tube boilers, a medical station, cover ----
+	if boiler_group:
+		_spawn_perk(boiler_group, "PerkVitality", "vitality", "VITALITY SERUM", 1500, Vector3(29.9, 0.0, 1.5), -PI * 0.5)
+		_add_glb(boiler_group, "wooden_crate", Vector3(13.4, 0.0, -4.9), Vector3(0.0, 0.5, 0.0), Vector3(1.2, 1.2, 1.2), Vector3(1.0, 1.0, 1.0))
+		_add_glb(boiler_group, "military_crate", Vector3(28.6, 0.0, 1.9), Vector3(0.0, 1.2, 0.0), Vector3(1.15, 1.15, 1.15), Vector3(1.3, 0.95, 0.9))
+		_add_glb(boiler_group, "trash_can", Vector3(11.2, 0.0, 6.9), Vector3.ZERO, Vector3(1.1, 1.1, 1.1), Vector3(0.6, 0.9, 0.6))
+		_add_glb(boiler_group, "caged_sconce", Vector3(20.3, 3.3, 9.3), Vector3(0.0, PI, 0.0), Vector3(1.3, 1.3, 1.3))
+		_add_glb(boiler_group, "caged_sconce", Vector3(20.3, 3.3, -6.3), Vector3.ZERO, Vector3(1.3, 1.3, 1.3))
+	# ---- Morgue: gurneys, a field-surgery station, cold fluorescent pools ----
+	if morgue_group:
+		var h_m := maxf(_snow_height_at(-19.0, -48.5), maxf(_snow_height_at(-29.5, -48.5), maxf(_snow_height_at(-38.0, -54.0), _snow_height_at(-38.0, -42.0)))) + 0.34
+		_spawn_perk(morgue_group, "PerkQuickHands", "quickhands", "STIMULANT — QUICK HANDS", 1250, Vector3(-33.5, h_m + 0.03, -40.85), PI)
+		if _has_prop("prop_gurney"):
+			_add_glb(morgue_group, "prop_gurney", Vector3(-22.6, h_m + 0.03, -52.4), Vector3(0.0, 0.35, 0.0), Vector3.ONE, Vector3(1.9, 0.9, 0.7))
+			_add_glb(morgue_group, "prop_gurney", Vector3(-34.2, h_m + 0.03, -46.3), Vector3(0.0, 1.45, 0.0), Vector3.ONE, Vector3(1.9, 0.9, 0.7))
+		_add_glb(morgue_group, "medical_box", Vector3(-31.2, h_m + 0.03, -52.9), Vector3(0.0, 1.1, 0.0), Vector3(1.2, 1.2, 1.2))
+		_add_glb(morgue_group, "trash_can", Vector3(-39.6, h_m + 0.03, -48.0), Vector3.ZERO, Vector3(1.1, 1.1, 1.1), Vector3(0.6, 0.9, 0.6))
+		_add_glb(morgue_group, "drawer_cabinet", Vector3(-24.0, h_m + 0.03, -41.1), Vector3(0.0, PI, 0.0), Vector3(1.2, 1.2, 1.2), Vector3(1.2, 1.5, 0.6))
+	# ---- Stair landing: a reason to climb, with one way up and one way down ----
+	if lobby_group:
+		_spawn_perk(lobby_group, "PerkAdrenal", "adrenal", "ADRENAL SHOT", 1500, Vector3(-9.72, 3.58, -2.25), PI * 0.5)
+
+
+func _nav_signature() -> int:
+	# Cheap fingerprint of the static collision set, so a stale baked mesh is detected after map edits
+	var count := 0
+	var acc := 0.0
+	for n in find_children("*", "CollisionShape3D", true, false):
+		var cs := n as CollisionShape3D
+		var owner_b := cs.get_parent()
+		if not (owner_b is StaticBody3D) or ((owner_b as StaticBody3D).collision_layer & 1) == 0:
+			continue
+		if owner_b is InteractableObject and (owner_b as InteractableObject).kind == InteractableObject.Kind.BREACH_GATE:
+			continue
+		count += 1
+		var gp := cs.global_position
+		acc += gp.x * 1.3 + gp.y * 2.1 + gp.z * 0.7
+		if cs.shape is BoxShape3D:
+			var bs := (cs.shape as BoxShape3D).size
+			acc += bs.x + bs.y * 3.0 + bs.z * 5.0
+	return count * 100003 + int(round(acc * 10.0))
+
+
+func bake_navigation_mesh() -> NavigationMesh:
+	var nm := NavigationMesh.new()
+	nm.cell_size = 0.25
+	nm.cell_height = 0.25
+	nm.agent_radius = 0.5
+	nm.agent_height = 1.75
+	nm.agent_max_climb = 0.5
+	nm.agent_max_slope = 48.0
+	nm.region_min_size = 6.0
+	nm.edge_max_error = 1.2
+	nm.geometry_parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
+	nm.geometry_collision_mask = 1
+	nm.geometry_source_geometry_mode = NavigationMesh.SOURCE_GEOMETRY_ROOT_NODE_CHILDREN
+	nm.filter_baking_aabb = AABB(Vector3(-46.0, -3.0, -120.0), Vector3(92.0, 12.0, 132.0))
+	# Breach gates are baked open: zombies only ever spawn in, and chase the player through, wings that are unlocked
+	var gates: Array[Dictionary] = []
+	for inter: InteractableObject in interactables:
+		if is_instance_valid(inter) and inter.kind == InteractableObject.Kind.BREACH_GATE:
+			gates.append({"n": inter, "layer": inter.collision_layer})
+			inter.collision_layer = 16
+	var src := NavigationMeshSourceGeometryData3D.new()
+	NavigationServer3D.parse_source_geometry_data(nm, src, self)
+	NavigationServer3D.bake_from_source_geometry_data(nm, src)
+	for gd in gates:
+		(gd["n"] as InteractableObject).collision_layer = int(gd["layer"])
+	nm.set_meta("geo_sig", _nav_signature())
+	return nm
+
+
+func build_navigation() -> void:
+	ZombieAI.nav_enabled = false
+	var nm: NavigationMesh = null
+	if ResourceLoader.exists(NAV_PATH):
+		nm = load(NAV_PATH) as NavigationMesh
+		if nm != null and int(nm.get_meta("geo_sig", 0)) != _nav_signature():
+			push_warning("Baked navigation mesh is stale for this map build; run tools/bake_nav.gd")
+			nm = null
+	if nm == null and not OS.has_feature("web"):
+		nm = bake_navigation_mesh()
+	if nm == null or nm.get_polygon_count() == 0:
+		return
+	nav_region = NavigationRegion3D.new()
+	nav_region.name = "NavRegion"
+	nav_region.navigation_mesh = nm
+	add_child(nav_region)
+	ZombieAI.nav_map = get_world_3d().navigation_map
+	NavigationServer3D.map_set_cell_size(ZombieAI.nav_map, 0.25)
+	NavigationServer3D.map_set_cell_height(ZombieAI.nav_map, 0.25)
+	ZombieAI.nav_enabled = true

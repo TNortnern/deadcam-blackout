@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cgxh6fqnmm6q2"
-path="res://.godot/imported/diesel_generator_aaa_metal_tactical_albedo.jpg-370a71706d7a2a1a36c167ef3481b72c.ctex"
+path.s3tc="res://.godot/imported/diesel_generator_aaa_metal_tactical_albedo.jpg-370a71706d7a2a1a36c167ef3481b72c.s3tc.ctex"
+path.etc2="res://.godot/imported/diesel_generator_aaa_metal_tactical_albedo.jpg-370a71706d7a2a1a36c167ef3481b72c.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "bc76fe88b43b722e3f50d30f3e7b165e"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/diesel_generator_aaa_metal_tactical_albedo.jpg"
-dest_files=["res://.godot/imported/diesel_generator_aaa_metal_tactical_albedo.jpg-370a71706d7a2a1a36c167ef3481b72c.ctex"]
+dest_files=["res://.godot/imported/diesel_generator_aaa_metal_tactical_albedo.jpg-370a71706d7a2a1a36c167ef3481b72c.s3tc.ctex", "res://.godot/imported/diesel_generator_aaa_metal_tactical_albedo.jpg-370a71706d7a2a1a36c167ef3481b72c.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0

@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dyu636f1s0p5q"
-path="res://.godot/imported/weapon_magnum_Image_8.jpg-9ecd9347a77b01e2acecc9fc145a33b6.ctex"
+path.bptc="res://.godot/imported/weapon_magnum_Image_8.jpg-9ecd9347a77b01e2acecc9fc145a33b6.bptc.ctex"
+path.astc="res://.godot/imported/weapon_magnum_Image_8.jpg-9ecd9347a77b01e2acecc9fc145a33b6.astc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "f214ec3ca8c8bfc36d704e4fc939908b"
@@ -14,12 +16,12 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/weapon_magnum_Image_8.jpg"
-dest_files=["res://.godot/imported/weapon_magnum_Image_8.jpg-9ecd9347a77b01e2acecc9fc145a33b6.ctex"]
+dest_files=["res://.godot/imported/weapon_magnum_Image_8.jpg-9ecd9347a77b01e2acecc9fc145a33b6.bptc.ctex", "res://.godot/imported/weapon_magnum_Image_8.jpg-9ecd9347a77b01e2acecc9fc145a33b6.astc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

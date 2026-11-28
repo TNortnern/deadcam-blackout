@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dgimfd2ruoo3u"
-path="res://.godot/imported/weapon_flamethrower_Image_0.jpg-639d123a8e3b8c3226feefae1eca5b19.ctex"
+path.bptc="res://.godot/imported/weapon_flamethrower_Image_0.jpg-639d123a8e3b8c3226feefae1eca5b19.bptc.ctex"
+path.astc="res://.godot/imported/weapon_flamethrower_Image_0.jpg-639d123a8e3b8c3226feefae1eca5b19.astc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "2b4963bf51eaadca0b15fd6bf05fee08"
@@ -14,12 +16,12 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/weapon_flamethrower_Image_0.jpg"
-dest_files=["res://.godot/imported/weapon_flamethrower_Image_0.jpg-639d123a8e3b8c3226feefae1eca5b19.ctex"]
+dest_files=["res://.godot/imported/weapon_flamethrower_Image_0.jpg-639d123a8e3b8c3226feefae1eca5b19.bptc.ctex", "res://.godot/imported/weapon_flamethrower_Image_0.jpg-639d123a8e3b8c3226feefae1eca5b19.astc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

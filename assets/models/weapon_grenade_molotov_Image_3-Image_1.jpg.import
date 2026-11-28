@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bppe7pk740f1g"
-path="res://.godot/imported/weapon_grenade_molotov_Image_3-Image_1.jpg-3d1122d5523e79abffc269e435a147dc.ctex"
+path.bptc="res://.godot/imported/weapon_grenade_molotov_Image_3-Image_1.jpg-3d1122d5523e79abffc269e435a147dc.bptc.ctex"
+path.astc="res://.godot/imported/weapon_grenade_molotov_Image_3-Image_1.jpg-3d1122d5523e79abffc269e435a147dc.astc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "7617c0a95cb3ce2d085327b541791730"
@@ -14,12 +16,12 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/weapon_grenade_molotov_Image_3-Image_1.jpg"
-dest_files=["res://.godot/imported/weapon_grenade_molotov_Image_3-Image_1.jpg-3d1122d5523e79abffc269e435a147dc.ctex"]
+dest_files=["res://.godot/imported/weapon_grenade_molotov_Image_3-Image_1.jpg-3d1122d5523e79abffc269e435a147dc.bptc.ctex", "res://.godot/imported/weapon_grenade_molotov_Image_3-Image_1.jpg-3d1122d5523e79abffc269e435a147dc.astc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

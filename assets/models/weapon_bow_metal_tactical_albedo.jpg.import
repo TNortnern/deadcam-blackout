@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://d84b7dhjwnhc"
-path="res://.godot/imported/weapon_bow_metal_tactical_albedo.jpg-3bc821e87426e52adf8af4a5909b63dc.ctex"
+path.bptc="res://.godot/imported/weapon_bow_metal_tactical_albedo.jpg-3bc821e87426e52adf8af4a5909b63dc.bptc.ctex"
+path.astc="res://.godot/imported/weapon_bow_metal_tactical_albedo.jpg-3bc821e87426e52adf8af4a5909b63dc.astc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "bc76fe88b43b722e3f50d30f3e7b165e"
@@ -14,12 +16,12 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/weapon_bow_metal_tactical_albedo.jpg"
-dest_files=["res://.godot/imported/weapon_bow_metal_tactical_albedo.jpg-3bc821e87426e52adf8af4a5909b63dc.ctex"]
+dest_files=["res://.godot/imported/weapon_bow_metal_tactical_albedo.jpg-3bc821e87426e52adf8af4a5909b63dc.bptc.ctex", "res://.godot/imported/weapon_bow_metal_tactical_albedo.jpg-3bc821e87426e52adf8af4a5909b63dc.astc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

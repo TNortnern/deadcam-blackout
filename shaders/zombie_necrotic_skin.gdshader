@@ -15,6 +15,7 @@ uniform float detail_uv_scale = 11.0;
 uniform float detail_strength = 0.72;
 uniform float blood_wetness = 0.90;
 uniform float gore_seed = 0.0;
+uniform float burn_char : hint_range(0.0, 1.0) = 0.0;
 
 // Locked bind-pose rest coordinates decoded from UV2 (x, y) + COLOR (z, normal.y) so gore/veins NEVER swim!
 varying vec3 rest_pos;
@@ -86,10 +87,34 @@ void fragment() {
 
 	float cavity = clamp(0.45 + 0.55 * n_comb.z, 0.22, 1.0) * smoothstep(0.01, 0.14, lum_raw + 0.05);
 
+	// Progressive fire charring & smouldering fissure seams when burning
+	// Scorch front: blistered seared skin first, spreading to near-total blackening at full char.
+	// Flames climb, so torso/arms/head char first; legs catch up only at high burn_char.
+	float char_w = clamp(burn_char, 0.0, 1.0);
+	float upper_bias = smoothstep(0.45, 1.25, rest_pos.y);
+	float char_local = char_w * mix(0.30 + 0.55 * smoothstep(0.45, 1.0, char_w), 1.0, upper_bias);
+	float cn = vnoise3(gp * 6.0) * 0.50 + vnoise3(gp * 15.0 + 3.7) * 0.32 + mottle * 0.18;
+	float char_pat = smoothstep(0.0, 0.30, char_local * 1.30 - (1.0 - cn) * 0.80 + 0.12) * smoothstep(0.0, 0.10, char_local);
+	vec3 seared_col = vec3(0.17, 0.065, 0.040);
+	vec3 char_col = vec3(0.032, 0.024, 0.022);
+	col = mix(col, col * 0.55 + seared_col * 0.45, smoothstep(0.0, 0.45, char_local) * (1.0 - char_pat));
+	col = mix(col, char_col, char_pat * 0.95);
+	// Smouldering seams: low-frequency, domain-warped ridge lines read as long organic fissures in the
+	// crust (never a field of bright speckles), and only glow where the skin is fully charred
+	vec3 wp = gp + vec3(vnoise3(gp * 1.1 + 2.3), vnoise3(gp * 1.1 + 5.9), vnoise3(gp * 1.1 + 9.4)) * 1.4;
+	float ridge_a = 1.0 - abs(vnoise3(wp * 4.6) - 0.5) * 2.0;
+	float ridge_b = 1.0 - abs(vnoise3(wp * 9.5 + 7.1) - 0.5) * 2.0;
+	float seam = ridge_a * 0.78 + ridge_b * 0.22;
+	// Seams smoulder in scattered patches of the crust, not as an even net over the whole body
+	float seam_patch = smoothstep(0.36, 0.68, vnoise3(gp * 0.75 + vec3(11.0, gore_seed * 2.3, 4.0)));
+	float ember_crack = smoothstep(0.84, 0.965, pow(seam, 1.4)) * seam_patch * smoothstep(0.55, 0.95, char_pat);
+	float ember_pulse = 0.72 + 0.28 * sin(TIME * 4.5 + gore_seed * 6.0 + rest_pos.y * 3.0);
+	EMISSION = vec3(0.95, 0.16, 0.015) * ember_crack * ember_pulse * (0.30 + 0.55 * char_w);
+
 	ALBEDO = col;
-	ROUGHNESS = mix(0.72, 0.08, wet_blood);
-	SPECULAR = mix(0.40, 0.68, wet_blood);
-	CLEARCOAT = wet_blood * 0.92;
+	ROUGHNESS = mix(mix(0.72, 0.08, wet_blood), 0.94, char_pat);
+	SPECULAR = mix(mix(0.40, 0.68, wet_blood), 0.12, char_pat);
+	CLEARCOAT = wet_blood * 0.92 * (1.0 - char_pat * 0.9);
 	CLEARCOAT_ROUGHNESS = 0.06;
 	AO = clamp(cavity, 0.18, 1.0);
 	AO_LIGHT_AFFECT = 0.78;

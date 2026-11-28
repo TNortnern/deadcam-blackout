@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://di2o2lusd66mg"
-path="res://.godot/imported/weapon_kar98k_Image_0.jpg-e63378f9678edabe3440c73e2dc492db.ctex"
+path.bptc="res://.godot/imported/weapon_kar98k_Image_0.jpg-e63378f9678edabe3440c73e2dc492db.bptc.ctex"
+path.astc="res://.godot/imported/weapon_kar98k_Image_0.jpg-e63378f9678edabe3440c73e2dc492db.astc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "b2cef785bf7d2cfde053e9d9ba46861b"
@@ -14,12 +16,12 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/weapon_kar98k_Image_0.jpg"
-dest_files=["res://.godot/imported/weapon_kar98k_Image_0.jpg-e63378f9678edabe3440c73e2dc492db.ctex"]
+dest_files=["res://.godot/imported/weapon_kar98k_Image_0.jpg-e63378f9678edabe3440c73e2dc492db.bptc.ctex", "res://.godot/imported/weapon_kar98k_Image_0.jpg-e63378f9678edabe3440c73e2dc492db.astc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

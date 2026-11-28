@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b4c8ilbu1jb5k"
-path="res://.godot/imported/weapon_springfield_Image_0.jpg-c9480c5701a2b633c30ae91ec839c721.ctex"
+path.bptc="res://.godot/imported/weapon_springfield_Image_0.jpg-c9480c5701a2b633c30ae91ec839c721.bptc.ctex"
+path.astc="res://.godot/imported/weapon_springfield_Image_0.jpg-c9480c5701a2b633c30ae91ec839c721.astc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "cf3be8399a8a7714ff6b2bd21b861b25"
@@ -14,12 +16,12 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/weapon_springfield_Image_0.jpg"
-dest_files=["res://.godot/imported/weapon_springfield_Image_0.jpg-c9480c5701a2b633c30ae91ec839c721.ctex"]
+dest_files=["res://.godot/imported/weapon_springfield_Image_0.jpg-c9480c5701a2b633c30ae91ec839c721.bptc.ctex", "res://.godot/imported/weapon_springfield_Image_0.jpg-c9480c5701a2b633c30ae91ec839c721.astc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

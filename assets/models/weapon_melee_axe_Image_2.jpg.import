@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dekurr60sniw6"
-path="res://.godot/imported/weapon_melee_axe_Image_2.jpg-d11761bf08e56447d77984f8bc883cca.ctex"
+path.bptc="res://.godot/imported/weapon_melee_axe_Image_2.jpg-d11761bf08e56447d77984f8bc883cca.bptc.ctex"
+path.astc="res://.godot/imported/weapon_melee_axe_Image_2.jpg-d11761bf08e56447d77984f8bc883cca.astc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "cb18a5d28e77522dfec6a6255bc3847e"
@@ -14,12 +16,12 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/weapon_melee_axe_Image_2.jpg"
-dest_files=["res://.godot/imported/weapon_melee_axe_Image_2.jpg-d11761bf08e56447d77984f8bc883cca.ctex"]
+dest_files=["res://.godot/imported/weapon_melee_axe_Image_2.jpg-d11761bf08e56447d77984f8bc883cca.bptc.ctex", "res://.godot/imported/weapon_melee_axe_Image_2.jpg-d11761bf08e56447d77984f8bc883cca.astc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

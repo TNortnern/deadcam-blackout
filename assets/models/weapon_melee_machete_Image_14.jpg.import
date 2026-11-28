@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://d0u1mae80mqqx"
-path="res://.godot/imported/weapon_melee_machete_Image_14.jpg-f9ce59b66ef90007a90bd64dd0037f06.ctex"
+path.bptc="res://.godot/imported/weapon_melee_machete_Image_14.jpg-f9ce59b66ef90007a90bd64dd0037f06.bptc.ctex"
+path.astc="res://.godot/imported/weapon_melee_machete_Image_14.jpg-f9ce59b66ef90007a90bd64dd0037f06.astc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "c07d98578ff1aca14984f8674b85c97e"
@@ -14,17 +16,17 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/weapon_melee_machete_Image_14.jpg"
-dest_files=["res://.godot/imported/weapon_melee_machete_Image_14.jpg-f9ce59b66ef90007a90bd64dd0037f06.ctex"]
+dest_files=["res://.godot/imported/weapon_melee_machete_Image_14.jpg-f9ce59b66ef90007a90bd64dd0037f06.bptc.ctex", "res://.godot/imported/weapon_melee_machete_Image_14.jpg-f9ce59b66ef90007a90bd64dd0037f06.astc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1

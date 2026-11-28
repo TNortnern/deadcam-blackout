@@ -426,20 +426,20 @@ const WEAPONS := [
 		"key": "4",
 		"glb": "res://assets/models/weapon_flamethrower.glb",
 		"arm_src": 1,
-		"audio": "res://assets/audio/gun_shotgun.wav",
+		"audio": "res://assets/audio/flamethrower_jet.wav",
 		"is_special": true,
 		"is_flamethrower": true,
 		"no_ammo_refill": true,
-		"mag_size": 60,
+		"mag_size": 90,
 		"reserve_max": 0,
-		"damage": 18.0,
-		"fire_rate": 0.095,
+		"damage": 16.0,
+		"fire_rate": 0.075,
 		"auto": true,
 		"pellets": 1,
-		"spread": 0.06,
-		"recoil_pitch": 0.010,
-		"recoil_kick": 0.012,
-		"flash_scale": 1.45,
+		"spread": 0.055,
+		"recoil_pitch": 0.008,
+		"recoil_kick": 0.010,
+		"flash_scale": 0.65,
 		"hip_pos": Vector3(0.140, -0.205, -0.30),
 		"hip_rot": Vector3(0.01, 0.06, -0.03),
 		"ads_pos": Vector3(0.060, -0.135, -0.26),
@@ -480,13 +480,45 @@ const WEAPONS := [
 	}
 ]
 
+# Per-weapon melee identity. "class" drives impact audio and gore: blades and axes sever, blunt weapons break poise and
+# knock down. "cleave" is how many bodies one swing can pass through, "weight" scales hit-stop and camera heft, "heavy" is the
+# charged RMB move and "charge" the seconds of hold needed for full power.
 const MELEE_CATALOG := {
-	"knife": {"name": "COMBAT KNIFE", "damage": 55.0, "reach": 2.15, "dur": 0.42, "poise": 35.0, "kb": 4.2},
-	"fire_axe": {"name": "FIRE AXE", "damage": 94.0, "reach": 2.48, "dur": 0.56, "poise": 72.0, "kb": 6.4},
-	"machete": {"name": "TACTICAL MACHETE", "damage": 78.0, "reach": 2.34, "dur": 0.46, "poise": 48.0, "kb": 5.0},
-	"bat": {"name": "BASEBALL BAT", "damage": 76.0, "reach": 2.42, "dur": 0.50, "poise": 78.0, "kb": 7.6},
-	"bat_spiked": {"name": "SPIKED BASEBALL BAT", "damage": 108.0, "reach": 2.46, "dur": 0.52, "poise": 88.0, "kb": 8.2, "bleed_dps": 24.0, "bleed_dur": 4.5},
-	"crowbar": {"name": "STEEL CROWBAR", "damage": 84.0, "reach": 2.30, "dur": 0.44, "poise": 68.0, "kb": 6.0, "armor_pierce": 1.45},
+	"knife": {"name": "COMBAT KNIFE", "class": "blade", "damage": 55.0, "reach": 2.15, "dur": 0.38, "poise": 35.0, "kb": 3.6,
+		"cleave": 1, "weight": 0.6, "sever": 0.8, "heavy": "lunge", "heavy_mult": 2.1, "charge": 0.30, "backstab": 2.0,
+		"trait": "FAST · 2x BACKSTAB · LUNGE STAB"},
+	"fire_axe": {"name": "FIRE AXE", "class": "axe", "damage": 94.0, "reach": 2.48, "dur": 0.60, "poise": 72.0, "kb": 6.4,
+		"cleave": 2, "weight": 1.3, "sever": 1.7, "heavy": "overhead", "heavy_mult": 1.9, "charge": 0.55, "knockdown": true,
+		"trait": "SEVERS LIMBS · OVERHEAD CLEAVE"},
+	"machete": {"name": "TACTICAL MACHETE", "class": "blade", "damage": 78.0, "reach": 2.34, "dur": 0.46, "poise": 48.0, "kb": 5.0,
+		"cleave": 3, "weight": 0.85, "sever": 1.4, "heavy": "sweep", "heavy_mult": 1.5, "charge": 0.40,
+		"trait": "CLEAVES 3 · WIDE SWEEP"},
+	"bat": {"name": "BASEBALL BAT", "class": "blunt", "damage": 76.0, "reach": 2.42, "dur": 0.52, "poise": 78.0, "kb": 7.6,
+		"cleave": 2, "weight": 1.05, "sever": 0.0, "heavy": "homerun", "heavy_mult": 1.6, "charge": 0.50, "knockdown": true,
+		"trait": "STAGGERS · KNOCKDOWN SWING"},
+	"bat_spiked": {"name": "SPIKED BASEBALL BAT", "class": "blunt", "damage": 108.0, "reach": 2.46, "dur": 0.54, "poise": 88.0, "kb": 8.2,
+		"cleave": 2, "weight": 1.15, "sever": 0.6, "heavy": "homerun", "heavy_mult": 1.6, "charge": 0.50, "knockdown": true,
+		"bleed_dps": 24.0, "bleed_dur": 4.5, "trait": "BLEED · KNOCKDOWN SWING"},
+	"crowbar": {"name": "STEEL CROWBAR", "class": "bar", "damage": 84.0, "reach": 2.30, "dur": 0.46, "poise": 68.0, "kb": 6.0,
+		"cleave": 2, "weight": 1.0, "sever": 0.4, "heavy": "overhead", "heavy_mult": 1.7, "charge": 0.45, "armor_pierce": 1.45,
+		"armor_break": true, "trait": "ARMOR PIERCE · BREAKS PLATES"},
+}
+
+# Viewmodel swing poses as offsets from the weapon's hip pose: "w" is the wound-up pose, "t" the follow-through.
+# "arc" tells the swept hit test which way the edge travels: yaw sweep (+1 = right-to-left), pitch sweep, or a thrust.
+const MELEE_MOVES := {
+	# The viewmodel is one rigid forearm entering from the bottom-right of frame. Swings therefore read through hand
+	# travel across the view plus a modest roll (about -0.95..+0.66 rad); larger roll or yaw swings the elbow into shot.
+	"slash_rl": {"wp": Vector3(0.05, 0.09, 0.06), "wr": Vector3(0.30, -0.28, -0.55), "tp": Vector3(-0.30, -0.14, -0.16), "tr": Vector3(-0.45, -0.15, 0.62), "arc": "yaw", "sign": 1.0, "span": 46.0},
+	"slash_lr": {"wp": Vector3(-0.30, 0.03, 0.02), "wr": Vector3(0.12, 0.32, 1.05), "tp": Vector3(0.05, -0.07, -0.14), "tr": Vector3(-0.38, -0.32, -0.95), "arc": "yaw", "sign": -1.0, "span": 46.0},
+	"stab": {"wp": Vector3(0.02, -0.02, 0.14), "wr": Vector3(-0.22, -0.05, -0.10), "tp": Vector3(-0.14, 0.03, -0.30), "tr": Vector3(0.05, -0.28, 0.42), "arc": "thrust", "sign": 1.0, "span": 10.0},
+	"lunge": {"wp": Vector3(0.04, -0.02, 0.18), "wr": Vector3(-0.15, -0.10, -0.20), "tp": Vector3(-0.18, 0.03, -0.36), "tr": Vector3(0.05, -0.30, 0.50), "arc": "thrust", "sign": 1.0, "span": 12.0},
+	"overhead": {"wp": Vector3(-0.02, 0.15, 0.10), "wr": Vector3(0.50, -0.10, -0.25), "tp": Vector3(-0.24, -0.16, -0.20), "tr": Vector3(-0.42, -0.10, 0.55), "arc": "pitch", "sign": 1.0, "span": 52.0},
+	"sweep": {"wp": Vector3(0.10, 0.02, 0.06), "wr": Vector3(0.10, -0.25, -0.95), "tp": Vector3(-0.40, -0.12, -0.16), "tr": Vector3(-0.30, -0.15, 0.62), "arc": "yaw", "sign": 1.0, "span": 78.0},
+	"homerun": {"wp": Vector3(0.10, 0.06, 0.08), "wr": Vector3(0.20, -0.30, -0.85), "tp": Vector3(-0.40, -0.10, -0.18), "tr": Vector3(-0.25, -0.18, 0.66), "arc": "yaw", "sign": 1.0, "span": 70.0},
+	"shove": {"wp": Vector3(-0.04, 0.00, 0.10), "wr": Vector3(0.10, 0.20, 0.40), "tp": Vector3(-0.17, -0.04, -0.30), "tr": Vector3(-0.20, -0.15, 0.55), "arc": "thrust", "sign": 1.0, "span": 50.0},
+	"bash_pistol": {"wp": Vector3(0.08, 0.06, 0.05), "wr": Vector3(0.24, -0.35, -0.40), "tp": Vector3(-0.18, -0.04, -0.16), "tr": Vector3(-0.48, 0.85, 0.78), "arc": "yaw", "sign": 1.0, "span": 30.0},
+	"bash_rifle": {"wp": Vector3(-0.04, -0.03, 0.09), "wr": Vector3(-0.18, 0.45, 0.52), "tp": Vector3(0.03, 0.04, -0.22), "tr": Vector3(0.26, -0.55, 0.32), "arc": "thrust", "sign": 1.0, "span": 24.0},
 }
 
 var head: Node3D
@@ -554,6 +586,8 @@ var _base_head_roll: float = 0.0
 var _last_near_focus: float = -1.0
 var reload_pos_off: Vector3 = Vector3.ZERO
 var reload_rot_off: Vector3 = Vector3.ZERO
+var _rl_layer_p: Vector3 = Vector3.ZERO
+var _rl_layer_r: Vector3 = Vector3.ZERO
 
 var fire_cd: float = 0.0
 var muzzle_elapsed: float = 9.0
@@ -593,10 +627,26 @@ var _burst_remaining: int = 0
 var _burst_timer: float = 0.0
 var _rockets: Array[Dictionary] = []
 var _flame_jets: Array[Dictionary] = []
+var _flame_embers: Array[Dictionary] = []
 var _flame_pool_cd: float = 0.0
+var _flame_firing_timer: float = 0.0
+var _flame_emit_window: float = 0.0
+var _flame_emit_accum: float = 0.0
+var _flame_emit_w: Dictionary = {}
+var _flame_hit_tick_cd: float = 0.0
+var _flamer_pilot_node: MeshInstance3D = null
+var _flamer_pilot_mat: ShaderMaterial = null
+var sfx_flame_loop: AudioStreamPlayer = null
 static var _fire_shader: Shader = null
 static var _char_shader: Shader = null
 static var _smoke_wisp_tex: Texture2D = null
+static var _fire_plume_tex: Texture2D = null
+static var _napalm_puff_tex: Texture2D = null
+static var _ember_mat: StandardMaterial3D = null
+static var _ember_mesh: QuadMesh = null
+static var _sfx_flame_jet_loop: AudioStream = null
+static var _sfx_fire_crackle_loop: AudioStream = null
+var _flamer_flare: float = 0.0
 var equipped_melee_id: String = "knife"
 var _melee_timer: float = 0.0
 var _melee_dur: float = 0.42
@@ -608,6 +658,51 @@ var _melee_combo_idx: int = 0
 var _melee_combo_reset: float = 0.0
 var _melee_hitstop_timer: float = 0.0
 var _melee_nodes: Dictionary = {} # melee_id -> Node3D
+var _melee_move: String = "slash_rl"
+var _melee_win0: float = 0.10 # seconds into the swing when the edge becomes live
+var _melee_win1: float = 0.24 # seconds into the swing when the edge stops being live
+var _melee_prev_u: float = 0.0
+var _melee_swing_hits: Dictionary = {} # ZombieAI -> true (one hit per body per swing)
+var _melee_hits_left: int = 1
+var _melee_any_hit: bool = false
+var _melee_wall_done: bool = false
+var _melee_power: float = 1.0 # damage multiplier of the swing in flight
+var _melee_charging: bool = false
+var _melee_charge: float = 0.0 # 0..1 held heavy-attack charge
+var _melee_charge_pose: float = 0.0
+var _melee_lunge_vel: Vector3 = Vector3.ZERO
+var _melee_lunge_timer: float = 0.0
+var _shove_cd: float = 0.0
+
+# Survival state: regenerating health, zombie grabs, external shoves and score-relevant stats
+var regen_delay: float = 0.0
+var grabbed_by: Node3D = null
+var grab_struggle: float = 0.0
+var grab_immunity: float = 0.0
+var slow_timer: float = 0.0
+var slow_mult: float = 1.0
+var _ext_vel: Vector3 = Vector3.ZERO
+var _coyote_timer: float = 0.0
+var _jump_buffer: float = 0.0
+var _spread_bloom: float = 0.0
+var shots_fired: int = 0
+var shots_hit: int = 0
+var damage_taken_total: float = 0.0
+var last_damage_dir: Vector3 = Vector3.ZERO # world-space point the last hit came from (HUD direction arc)
+var last_damage_time: float = -99.0
+var last_hit_by: String = "" # label of whatever last hurt the player (shown on the debrief screen)
+var base_fov: float = 94.0
+var perks: Dictionary = {} # perk id -> true, bought from dispensary cabinets, lost when the run ends
+var ads_sens_mult: float = 0.62
+var invert_y: bool = false
+static var _sfx_melee_blunt: AudioStream = null
+static var _sfx_melee_wall: AudioStream = null
+static var _sfx_shove: AudioStream = null
+static var _sfx_heartbeat: AudioStream = null
+var sfx_heart: AudioStreamPlayer
+
+signal score_event(kind: String, amount: int)
+signal feed_message(msg: String)
 
 # Throwables state (Frag, Molotov, Shock)
 var grenade_counts: Dictionary = {"frag": 2, "molotov": 1, "shock": 1}
@@ -617,10 +712,12 @@ var _grenades: Array[Dictionary] = []
 var _hazards: Array[Dictionary] = []
 
 # Bow, Revolver & CoD-Style Sniper Scope Transition state
+const BOW_NOCK_DUR := 0.78
 var _bow_drawing: bool = false
 var _bow_draw: float = 0.0
 var _bow_hold_time: float = 0.0
 var _bow_nock_timer: float = 0.0
+var _bow_nock_sfx_played: bool = false
 var _bow_release_timer: float = 0.0
 var _bow_release_from_draw: float = 0.0
 var _bow_require_repull: bool = false
@@ -717,7 +814,11 @@ static var _sfx_melee_swing: AudioStream = null
 static var _sfx_melee_cleave: AudioStream = null
 static var _sfx_bow_draw: AudioStream = null
 static var _sfx_bow_release: AudioStream = null
+static var _sfx_bow_nock: AudioStream = null
 static var _sfx_arrow_impact: AudioStream = null
+static var _sfx_flamethrower_jet: AudioStream = null
+static var _sfx_fire_crackle: AudioStream = null
+static var _sfx_garand_ping: AudioStream = null
 
 signal player_died
 signal weapon_changed(index: int, name: String)
@@ -728,6 +829,10 @@ signal status_message(msg: String)
 func _ready() -> void:
 	collision_layer = 2
 	collision_mask = 1 | 4
+	# Stairs are ramp colliders: keep the capsule glued to them on the way down and hold walking speed constant on slopes.
+	floor_snap_length = 0.45
+	floor_constant_speed = true
+	floor_max_angle = deg_to_rad(50.0)
 	_noise = FastNoiseLite.new()
 	_noise.seed = 4077
 	_noise.frequency = 1.8
@@ -772,8 +877,24 @@ func _preload_combat_fx() -> void:
 		_sfx_bow_draw = load("res://assets/audio/bow_draw.wav")
 	if ResourceLoader.exists("res://assets/audio/bow_release.wav"):
 		_sfx_bow_release = load("res://assets/audio/bow_release.wav")
+	if ResourceLoader.exists("res://assets/audio/bow_nock.wav"):
+		_sfx_bow_nock = load("res://assets/audio/bow_nock.wav")
 	if ResourceLoader.exists("res://assets/audio/arrow_impact.wav"):
 		_sfx_arrow_impact = load("res://assets/audio/arrow_impact.wav")
+	if ResourceLoader.exists("res://assets/audio/flamethrower_jet.wav"):
+		_sfx_flamethrower_jet = load("res://assets/audio/flamethrower_jet.wav")
+	if ResourceLoader.exists("res://assets/audio/fire_crackle.wav"):
+		_sfx_fire_crackle = load("res://assets/audio/fire_crackle.wav")
+	if ResourceLoader.exists("res://assets/audio/garand_ping.wav"):
+		_sfx_garand_ping = load("res://assets/audio/garand_ping.wav")
+	if ResourceLoader.exists("res://assets/audio/melee_blunt.wav"):
+		_sfx_melee_blunt = load("res://assets/audio/melee_blunt.wav")
+	if ResourceLoader.exists("res://assets/audio/melee_wall.wav"):
+		_sfx_melee_wall = load("res://assets/audio/melee_wall.wav")
+	if ResourceLoader.exists("res://assets/audio/shove.wav"):
+		_sfx_shove = load("res://assets/audio/shove.wav")
+	if ResourceLoader.exists("res://assets/audio/heartbeat.wav"):
+		_sfx_heartbeat = load("res://assets/audio/heartbeat.wav")
 
 	if _casing_mesh == null:
 		_casing_mesh = CylinderMesh.new()
@@ -1033,6 +1154,10 @@ func _build_rig() -> void:
 	sfx_bow_draw.volume_db = -3.5
 	add_child(sfx_bow_draw)
 
+	sfx_flame_loop = AudioStreamPlayer.new()
+	sfx_flame_loop.volume_db = -28.0
+	add_child(sfx_flame_loop)
+
 	sfx_step = AudioStreamPlayer.new()
 	sfx_step.stream = load("res://assets/audio/footstep.wav")
 	sfx_step.volume_db = -10.5
@@ -1057,6 +1182,15 @@ func _build_rig() -> void:
 	sfx_slash = AudioStreamPlayer.new()
 	sfx_slash.volume_db = -1.0
 	add_child(sfx_slash)
+
+	sfx_heart = AudioStreamPlayer.new()
+	sfx_heart.volume_db = -60.0
+	if _sfx_heartbeat:
+		if _sfx_heartbeat is AudioStreamWAV:
+			(_sfx_heartbeat as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_FORWARD
+			(_sfx_heartbeat as AudioStreamWAV).loop_end = int(round(_sfx_heartbeat.get_length() * float((_sfx_heartbeat as AudioStreamWAV).mix_rate)))
+		sfx_heart.stream = _sfx_heartbeat
+	add_child(sfx_heart)
 
 	if not skip_initial_weapon_prebuild:
 		_prebuild_weapon_rigs()
@@ -2261,6 +2395,8 @@ func _equip_weapon(idx: int, force_preview: bool = false) -> void:
 	_quick_melee_active = false
 	_melee_timer = 0.0
 	_melee_hitstop_timer = 0.0
+	_melee_charging = false
+	_melee_charge = 0.0
 	reload_cancel_req = false
 	_shotgun_fire_on_cancel = false
 	_fire_buffer_timer = 0.0
@@ -2274,9 +2410,18 @@ func _equip_weapon(idx: int, force_preview: bool = false) -> void:
 	_bow_release_timer = 0.0
 	_bow_release_from_draw = 0.0
 	if idx == 4 and ammo_in_mag[4] <= 0 and ammo_reserve[4] > 0:
-		_bow_nock_timer = 0.35
+		_bow_nock_timer = BOW_NOCK_DUR
+		_bow_nock_sfx_played = false
 	else:
 		_bow_nock_timer = 0.0
+		_bow_nock_sfx_played = false
+	if idx != 16:
+		_flame_firing_timer = 0.0
+		_flame_emit_window = 0.0
+		if sfx_flame_loop and sfx_flame_loop.playing:
+			sfx_flame_loop.stop()
+	if idx == 16:
+		_ensure_flamer_pilot()
 	_hunting_bolt_timer = 0.0
 	_hunting_bolt_did_sfx = false
 	_sniper_ads_raw = 0.0
@@ -2312,7 +2457,7 @@ func _equip_weapon(idx: int, force_preview: bool = false) -> void:
 		is_ads = false
 		_ads_blend = 0.0
 		if camera:
-			camera.fov = 94.0
+			camera.fov = base_fov
 	muzzle_light.position = w["muzzle"]
 	muzzle_vm_light.position = w["muzzle"]
 	muzzle_flash_rig.position = w["muzzle"]
@@ -2844,9 +2989,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not input_enabled or dead or deterministic_camera:
 		return
 	if event is InputEventMouseMotion and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
-		var sens := mouse_sens * (0.35 if (current_weapon == 7 and sniper_scope_alpha > 0.5) else (0.62 if is_ads else 1.0))
+		var sens := mouse_sens * (0.35 if (current_weapon == 7 and sniper_scope_alpha > 0.5) else (ads_sens_mult if is_ads else 1.0))
+		if grabbed_by != null:
+			sens *= 0.55
 		var dx: float = -event.relative.x * sens
-		var dy: float = -event.relative.y * sens
+		var dy: float = -event.relative.y * sens * (-1.0 if invert_y else 1.0)
 		yaw += dx
 		pitch = clamp(pitch + dy, -1.35, 1.35)
 		sway_offset.x = clamp(sway_offset.x + dx * 2.5, -0.065, 0.065)
@@ -2948,7 +3095,7 @@ func set_deterministic_view(pos: Vector3, look_yaw: float, look_pitch: float, we
 		ads_p_eff = Vector3(-holo_quad.position.x, -holo_quad.position.y, ads_p_eff.z)
 	weapon_pivot.position = ads_p_eff if is_ads else w["hip_pos"]
 	weapon_pivot.rotation = w["ads_rot"] if is_ads else w["hip_rot"]
-	camera.fov = float(w.get("ads_fov", 60.5)) if is_ads else 94.0
+	camera.fov = float(w.get("ads_fov", 60.5)) if is_ads else base_fov
 	muzzle_light.light_energy = flash_energy
 	muzzle_light.visible = flash_energy > 0.05
 	muzzle_vm_light.light_energy = minf(flash_energy * 0.45, 1.4)
@@ -3055,40 +3202,86 @@ func _physics_process(delta: float) -> void:
 	_update_grenades(delta)
 	_update_hazards(delta)
 	_update_flame_jets(delta)
+	_update_flame_embers(delta)
+	_update_flamethrower_audio_and_pilot(delta)
 	_update_rockets(delta)
 	if _flame_pool_cd > 0.0:
 		_flame_pool_cd = maxf(0.0, _flame_pool_cd - delta)
+	if _flame_hit_tick_cd > 0.0:
+		_flame_hit_tick_cd = maxf(0.0, _flame_hit_tick_cd - delta)
 	if _grenade_cd > 0.0:
 		_grenade_cd = maxf(0.0, _grenade_cd - delta)
 	if _melee_combo_reset > 0.0:
 		_melee_combo_reset = maxf(0.0, _melee_combo_reset - delta)
 		if _melee_combo_reset <= 0.0:
 			_melee_combo_idx = 0
+	if _shove_cd > 0.0:
+		_shove_cd = maxf(0.0, _shove_cd - delta)
+	if grab_immunity > 0.0:
+		grab_immunity = maxf(0.0, grab_immunity - delta)
+	if slow_timer > 0.0:
+		slow_timer = maxf(0.0, slow_timer - delta)
+		if slow_timer <= 0.0:
+			slow_mult = 1.0
+	_spread_bloom = maxf(0.0, _spread_bloom - delta * 2.6)
 	if deterministic_camera or dead or not input_enabled:
 		return
+
+	# Regenerating health: 5 s after the last hit, recover steadily (never while a zombie has hold of you)
+	if regen_delay > 0.0:
+		regen_delay = maxf(0.0, regen_delay - delta)
+	elif health < max_health and grabbed_by == null:
+		health = minf(max_health, health + (18.0 if perks.has("adrenal") else 13.0) * delta)
+	_update_grab(delta)
 
 	is_crouching = Input.is_action_pressed("crouch")
 	if ads_lockout > 0.0:
 		ads_lockout -= delta
-	var can_ads := not bool(WEAPONS[current_weapon].get("is_melee", false)) and not _quick_melee_active
+	var holding_melee := bool(WEAPONS[current_weapon].get("is_melee", false))
+	var can_ads := not holding_melee and not _quick_melee_active
 	is_ads = can_ads and Input.is_action_pressed("aim") and not is_reloading and ads_lockout <= 0.0
-	is_sprinting = Input.is_action_pressed("sprint") and not is_crouching and not is_ads and not is_reloading and _burst_remaining <= 0 and Input.get_vector("move_left", "move_right", "move_forward", "move_backward").length() > 0.1
+	var iv := Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
+	is_sprinting = Input.is_action_pressed("sprint") and not is_crouching and not is_ads and not is_reloading and _burst_remaining <= 0 and iv.length() > 0.1 and iv.y < 0.35 and grabbed_by == null and not _melee_charging
 	if is_sprinting and _bow_drawing:
 		cancel_bow_draw(true)
 
-	var iv := Input.get_vector("move_left", "move_right", "move_forward", "move_backward")
 	var basis_fwd := -global_transform.basis.z
 	var basis_right := global_transform.basis.x
 	var move_dir := (basis_right * iv.x - basis_fwd * iv.y).normalized()
 	var spd := 2.4 if is_crouching else (6.2 if is_sprinting else (2.7 if is_ads else 4.1))
+	if holding_melee and not is_crouching:
+		spd *= 1.06
+	if is_sprinting and perks.has("adrenal"):
+		spd *= 1.10
+	if _melee_charging:
+		spd *= 0.62
+	if grabbed_by != null:
+		spd *= 0.16
+	spd *= slow_mult
 
-	velocity.x = lerp(velocity.x, move_dir.x * spd, delta * 10.5)
-	velocity.z = lerp(velocity.z, move_dir.z * spd, delta * 10.5)
+	var accel := 10.5 if is_on_floor() else 3.2
+	velocity.x = lerp(velocity.x, move_dir.x * spd, delta * accel)
+	velocity.z = lerp(velocity.z, move_dir.z * spd, delta * accel)
+	if _melee_lunge_timer > 0.0:
+		_melee_lunge_timer = maxf(0.0, _melee_lunge_timer - delta)
+		velocity.x += _melee_lunge_vel.x
+		velocity.z += _melee_lunge_vel.z
+	if _ext_vel.length_squared() > 0.01:
+		velocity.x += _ext_vel.x
+		velocity.z += _ext_vel.z
+		_ext_vel = _ext_vel.lerp(Vector3.ZERO, minf(1.0, delta * 7.5))
+	else:
+		_ext_vel = Vector3.ZERO
 
+	if Input.is_action_just_pressed("jump"):
+		_jump_buffer = 0.12
+	elif _jump_buffer > 0.0:
+		_jump_buffer = maxf(0.0, _jump_buffer - delta)
 	if not is_on_floor():
 		velocity.y -= 18.0 * delta
 		_pre_land_vy = minf(_pre_land_vy, velocity.y)
 		_was_on_floor = false
+		_coyote_timer = maxf(0.0, _coyote_timer - delta)
 	else:
 		if not _was_on_floor and _pre_land_vy < -2.2:
 			var imp := clampf(-_pre_land_vy / 9.5, 0.08, 0.42)
@@ -3098,8 +3291,15 @@ func _physics_process(delta: float) -> void:
 		_was_on_floor = true
 		_pre_land_vy = 0.0
 		velocity.y = 0.0
-		if Input.is_action_just_pressed("jump"):
-			velocity.y = 5.4
+		_coyote_timer = 0.11
+	# Buffered jump with coyote time: a press slightly early or slightly late still jumps
+	if _jump_buffer > 0.0 and _coyote_timer > 0.0 and grabbed_by == null:
+		_jump_buffer = 0.0
+		_coyote_timer = 0.0
+		velocity.y = 5.4
+		floor_snap_length = 0.0
+	elif is_on_floor() and velocity.y <= 0.0:
+		floor_snap_length = 0.45
 
 	move_and_slide()
 
@@ -3108,22 +3308,14 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_just_pressed("reload"):
 		start_reload()
 	if Input.is_action_just_pressed("melee"):
-		trigger_melee()
+		if grabbed_by != null:
+			struggle_against_grab()
+		elif holding_melee:
+			trigger_shove()
+		else:
+			trigger_melee()
 
-	if _melee_hitstop_timer > 0.0:
-		_melee_hitstop_timer = maxf(0.0, _melee_hitstop_timer - delta)
-	elif _melee_timer > 0.0:
-		_melee_timer = maxf(0.0, _melee_timer - delta)
-		var m_elapsed := _melee_dur - _melee_timer
-		var hit_t := 0.16 if _melee_is_heavy else 0.11
-		if not _melee_hit_done and m_elapsed >= hit_t:
-			_melee_hit_done = true
-			_perform_melee_hit()
-		if _melee_timer <= 0.0 and _quick_melee_active:
-			_quick_melee_active = false
-			for ri in range(_weapon_rigs.size()):
-				if is_instance_valid(_weapon_rigs[ri]):
-					_weapon_rigs[ri].visible = (ri == current_weapon)
+	_update_melee_swing(delta)
 
 	# Single authoritative simulation clock for reloads + firing + shell-cancel!
 	if is_reloading:
@@ -3151,12 +3343,27 @@ func _physics_process(delta: float) -> void:
 		_fire_buffer_timer = 0.22
 	var wants_fire := Input.is_action_pressed("fire") if is_auto else (just_fire or _fire_buffer_timer > 0.0)
 	if bool(w.get("is_melee", false)):
-		if wants_fire:
-			trigger_melee(false)
+		# LMB (held) chains the light combo; RMB is hold-to-charge, release-to-swing for the heavy move
+		if _melee_charging:
+			var m_ch: Dictionary = MELEE_CATALOG.get(equipped_melee_id, MELEE_CATALOG["knife"])
+			_melee_charge = minf(1.0, _melee_charge + delta / maxf(float(m_ch.get("charge", 0.45)), 0.05))
+			if not Input.is_action_pressed("aim"):
+				_melee_charging = false
+				trigger_melee(true)
+		elif Input.is_action_just_pressed("aim") and _melee_timer <= 0.10 and grabbed_by == null:
+			_melee_charging = true
+			_melee_charge = 0.0
+		elif wants_fire or Input.is_action_pressed("fire"):
+			if grabbed_by != null:
+				if just_fire:
+					struggle_against_grab()
+			else:
+				trigger_melee(false)
 			_fire_buffer_timer = 0.0
-			wants_fire = false
-		elif Input.is_action_just_pressed("aim"):
-			trigger_melee(true)
+		wants_fire = false
+	elif _melee_charging:
+		_melee_charging = false
+		_melee_charge = 0.0
 	if bool(w.get("is_bow", false)):
 		_update_bow_input(delta)
 		wants_fire = false
@@ -3294,8 +3501,8 @@ func _process(delta: float) -> void:
 	head.rotation.z = _base_head_roll + hit_roll_kick + shake_r
 	camera.rotation.z = lerpf(-0.061, -0.042, _ads_blend) + recoil_roll
 
-	# Reloads advance in _physics_process; smoothly relax offsets when idle
-	if not is_reloading:
+	# Reloads & Bow re-nock advance in _physics_process; smoothly relax offsets when idle
+	if not is_reloading and not (current_weapon == 4 and _bow_nock_timer > 0.0):
 		reload_pos_off = reload_pos_off.lerp(Vector3.ZERO, 1.0 - exp(-delta * 14.0))
 		reload_rot_off = reload_rot_off.lerp(Vector3.ZERO, 1.0 - exp(-delta * 14.0))
 
@@ -3348,35 +3555,25 @@ func _process(delta: float) -> void:
 	var melee_p := Vector3.ZERO
 	var melee_r := Vector3.ZERO
 	if _melee_timer > 0.0:
+		# Wind-up eases back, the strike snaps through, the follow-through hangs for a beat, then recovers
 		var mu := clampf(1.0 - _melee_timer / maxf(_melee_dur, 0.01), 0.0, 1.0)
-		var wind := sin(smoothstep(0.0, 0.24, mu) * PI * 0.5) * (1.0 - smoothstep(0.24, 0.44, mu))
-		var slash := sin(smoothstep(0.20, 0.68, mu) * PI)
-		if _melee_is_gun_bash:
-			# Weapon-specific gun-butt / forend bash when unarmed (no melee weapon equipped!)
-			if current_weapon == 0 or current_weapon == 6:
-				# Pistol whip arc
-				melee_p = Vector3(0.08 * wind - 0.18 * slash, 0.06 * wind - 0.04 * slash, 0.05 * wind - 0.16 * slash)
-				melee_r = Vector3(0.24 * wind - 0.48 * slash, -0.35 * wind + 0.85 * slash, -0.40 * wind + 0.78 * slash)
-			else:
-				# Rifle / shotgun forward buttstroke & muzzle jab
-				melee_p = Vector3(-0.04 * wind + 0.03 * slash, -0.03 * wind + 0.04 * slash, 0.09 * wind - 0.22 * slash)
-				melee_r = Vector3(-0.18 * wind + 0.26 * slash, 0.45 * wind - 0.55 * slash, 0.52 * wind + 0.32 * slash)
-		elif _melee_is_heavy:
-			# Heavy overhead cleave / alternate power attack (RMB)
-			melee_p = Vector3(0.04 * wind - 0.10 * slash, 0.18 * wind - 0.18 * slash, 0.10 * wind - 0.24 * slash)
-			melee_r = Vector3(0.72 * wind - 1.25 * slash, -0.20 * wind + 0.32 * slash, -0.22 * wind + 0.35 * slash)
-		elif _melee_combo_idx == 1:
-			# Backhand left-to-right slash
-			melee_p = Vector3(-0.16 * wind + 0.22 * slash, 0.04 * wind - 0.03 * slash, 0.05 * wind - 0.18 * slash)
-			melee_r = Vector3(0.18 * wind - 0.42 * slash, 0.55 * wind - 1.05 * slash, 0.48 * wind - 0.68 * slash)
-		elif _melee_combo_idx == 2:
-			# Crisp forward lunge stab / thrust
-			melee_p = Vector3(0.02 * wind - 0.04 * slash, -0.02 * wind + 0.02 * slash, 0.12 * wind - 0.30 * slash)
-			melee_r = Vector3(-0.15 * wind - 0.65 * slash, -0.10 * wind + 0.15 * slash, -0.12 * wind + 0.18 * slash)
-		else:
-			# Classic right-to-left diagonal slash (also used for quick-melee knife whip-out!)
-			melee_p = Vector3(0.10 * wind - 0.26 * slash, 0.07 * wind - 0.05 * slash, 0.06 * wind - 0.20 * slash)
-			melee_r = Vector3(0.32 * wind - 0.65 * slash, -0.45 * wind + 1.15 * slash, -0.35 * wind + 0.72 * slash)
+		var wu_f := clampf(_melee_win0 / maxf(_melee_dur, 0.01), 0.05, 0.6)
+		var wind := smoothstep(0.0, wu_f * 0.85, mu) * (1.0 - smoothstep(wu_f, wu_f + 0.10, mu))
+		var slash := pow(smoothstep(wu_f, wu_f + 0.17, mu), 0.75) * (1.0 - smoothstep(0.62, 1.0, mu))
+		if _melee_is_heavy:
+			wind = 1.0 - smoothstep(wu_f * 0.5, wu_f + 0.10, mu)
+			slash *= 1.08
+		var mvp: Dictionary = MELEE_MOVES.get(_melee_move, MELEE_MOVES["slash_rl"])
+		melee_p = (mvp["wp"] as Vector3) * wind + (mvp["tp"] as Vector3) * slash
+		melee_r = (mvp["wr"] as Vector3) * wind + (mvp["tr"] as Vector3) * slash
+	elif _melee_charge_pose > 0.01 and current_weapon == 3:
+		# Held heavy attack: the weapon draws back into its wound-up pose and trembles at full charge
+		var mh: Dictionary = MELEE_CATALOG.get(equipped_melee_id, MELEE_CATALOG["knife"])
+		var mvh: Dictionary = MELEE_MOVES.get(str(mh.get("heavy", "overhead")), MELEE_MOVES["overhead"])
+		var cp := _melee_charge_pose
+		var shake_c := (sin(t_now * 61.0) * 0.004 + sin(t_now * 43.0) * 0.003) * smoothstep(0.85, 1.0, cp)
+		melee_p = (mvh["wp"] as Vector3) * cp + Vector3(shake_c, shake_c * 0.6, 0.0)
+		melee_r = (mvh["wr"] as Vector3) * cp
 	if _quick_melee_active and _melee_timer > 0.0:
 		# Anchor quick-melee knife rig neatly to melee hip pose during slash!
 		var mw: Dictionary = WEAPONS[3]
@@ -3393,7 +3590,7 @@ func _process(delta: float) -> void:
 		_sniper_ads_raw = move_toward(_sniper_ads_raw, 1.0 if want_scope else 0.0, delta * spd_s)
 		var s := _sniper_ads_raw * _sniper_ads_raw * (3.0 - 2.0 * _sniper_ads_raw)
 		var fov_s := pow(s, 1.55)
-		camera.fov = lerpf(94.0, ads_fov_val, fov_s) + _sprint_blend * 5.5 + recoil_fov
+		camera.fov = lerpf(base_fov, ads_fov_val, fov_s) + _sprint_blend * 5.5 + recoil_fov
 		if not (_quick_melee_active and _melee_timer > 0.0):
 			# Snap weapon_pivot cleanly along exact eye-relief path into ocular center
 			weapon_pivot.position = (w["hip_pos"] as Vector3).lerp(w["ads_pos"] as Vector3, s) + reload_pos_off + melee_p + Vector3(0.0, 0.0, recoil_z)
@@ -3406,7 +3603,7 @@ func _process(delta: float) -> void:
 		_sniper_ads_raw = 0.0
 		sniper_scope_alpha = 0.0
 		sniper_iris_scale = 1.0
-		var target_fov := lerpf(94.0, ads_fov_val, _ads_blend) + _sprint_blend * 5.5 + recoil_fov
+		var target_fov := lerpf(base_fov, ads_fov_val, _ads_blend) + _sprint_blend * 5.5 + recoil_fov
 		camera.fov = lerpf(camera.fov, target_fov, 1.0 - exp(-delta * 14.0))
 		if weapon_rig_holder and not weapon_rig_holder.visible:
 			weapon_rig_holder.visible = true
@@ -3483,6 +3680,100 @@ func _spawn_dropped_mag(weapon_idx: int) -> void:
 		"node": mi,
 		"vel": ej_vel,
 		"ang": Vector3(randf_range(4.0, 9.0), randf_range(-6.0, 6.0), randf_range(-8.0, 8.0)),
+		"age": 0.0,
+		"bounced": false,
+		"floor_y": floor_y,
+		"is_hull": false,
+		"is_mag": true,
+	})
+
+
+static var _enbloc_clip_mesh: ArrayMesh = null
+static var _enbloc_clip_mat: StandardMaterial3D = null
+
+
+static func _st_add_plate(st: SurfaceTool, c: Vector3, h: Vector3) -> void:
+	# Thin stamped plate (box with half-extents h) with per-face normals and size-proportional UVs
+	var faces := [
+		[Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, 1, 0)],
+		[Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 1, 0)],
+		[Vector3(0, 1, 0), Vector3(1, 0, 0), Vector3(0, 0, -1)],
+		[Vector3(0, -1, 0), Vector3(1, 0, 0), Vector3(0, 0, 1)],
+		[Vector3(0, 0, 1), Vector3(1, 0, 0), Vector3(0, 1, 0)],
+		[Vector3(0, 0, -1), Vector3(-1, 0, 0), Vector3(0, 1, 0)],
+	]
+	for f in faces:
+		var n: Vector3 = f[0]
+		var tu: Vector3 = f[1]
+		var tv: Vector3 = f[2]
+		var o := c + n * absf(n.dot(h))
+		var su := absf(tu.dot(h))
+		var sv := absf(tv.dot(h))
+		var corners := [o - tu * su - tv * sv, o + tu * su - tv * sv, o + tu * su + tv * sv, o - tu * su + tv * sv]
+		var uvs := [Vector2(0, sv * 2.0), Vector2(su * 2.0, sv * 2.0), Vector2(su * 2.0, 0), Vector2(0, 0)]
+		# Both windings with the outward normal: exactly one survives back-face culling from outside, whatever the convention
+		for idx: int in [0, 2, 1, 0, 3, 2, 0, 1, 2, 0, 2, 3]:
+			st.set_normal(n)
+			st.set_uv((uvs[idx] as Vector2) * 9.0)
+			st.add_vertex(corners[idx])
+
+
+static func _get_enbloc_clip_mesh() -> ArrayMesh:
+	# M1 en-bloc clip: stamped spring-steel U-channel (spine + two side walls with in-rolled rim lips)
+	if _enbloc_clip_mesh != null:
+		return _enbloc_clip_mesh
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var hw := 0.0108
+	var hh := 0.0295
+	var hd := 0.0062
+	var tk := 0.00055
+	_st_add_plate(st, Vector3(0.0, 0.0, hd), Vector3(hw, hh, tk))
+	_st_add_plate(st, Vector3(hw, 0.0, 0.0), Vector3(tk, hh, hd))
+	_st_add_plate(st, Vector3(-hw, 0.0, 0.0), Vector3(tk, hh, hd))
+	_st_add_plate(st, Vector3(hw - 0.0018, 0.0, -hd), Vector3(0.0018, hh * 0.92, tk))
+	_st_add_plate(st, Vector3(-hw + 0.0018, 0.0, -hd), Vector3(0.0018, hh * 0.92, tk))
+	# Pressed stiffening rib down the spine
+	_st_add_plate(st, Vector3(0.0, 0.0, hd + tk * 1.6), Vector3(0.0022, hh * 0.78, tk))
+	st.generate_tangents()
+	_enbloc_clip_mesh = st.commit()
+	return _enbloc_clip_mesh
+
+
+func _spawn_garand_clip_eject() -> void:
+	# Iconic M1 Garand empty steel en-bloc clip spinning upward-right out of the open top breech!
+	if _casings.size() >= 18:
+		var old: Dictionary = _casings.pop_front()
+		if is_instance_valid(old["node"]):
+			(old["node"] as Node).queue_free()
+	var mi := MeshInstance3D.new()
+	mi.mesh = _get_enbloc_clip_mesh()
+	# Tileable Parkerized-steel PBR (albedo + normal), triplanar so the stamped plates never sample a UV atlas
+	if _enbloc_clip_mat == null:
+		_enbloc_clip_mat = _make_vm_mat(Color(0.58, 0.60, 0.56), 0.50, 0.80, 0.55, Color.BLACK, "metal_tactical")
+		_enbloc_clip_mat.uv1_scale = Vector3(14.0, 14.0, 14.0)
+	mi.material_override = _enbloc_clip_mat
+	mi.layers = 1 | 2
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_fx_parent().add_child(mi)
+	var spawn_p := weapon_pivot.to_global(Vector3(0.008, 0.048, -0.10))
+	mi.global_position = spawn_p
+	mi.global_rotation = weapon_pivot.global_rotation
+	var right := camera.global_transform.basis.x
+	var up := camera.global_transform.basis.y
+	var fwd := -camera.global_transform.basis.z
+	var ej_vel := up * randf_range(2.6, 3.2) + right * randf_range(1.1, 1.6) - fwd * randf_range(0.35, 0.70) + velocity * 0.45
+	var floor_y := global_position.y + 0.02
+	var space := get_world_3d().direct_space_state
+	if space:
+		var fq := PhysicsRayQueryParameters3D.create(spawn_p, spawn_p - Vector3(0.0, 4.0, 0.0), 1)
+		var fhit := space.intersect_ray(fq)
+		if fhit:
+			floor_y = float(fhit["position"].y) + 0.02
+	_casings.append({
+		"node": mi,
+		"vel": ej_vel,
+		"ang": Vector3(randf_range(14.0, 22.0), randf_range(-10.0, 10.0), randf_range(12.0, 20.0)),
 		"age": 0.0,
 		"bounced": false,
 		"floor_y": floor_y,
@@ -3598,6 +3889,38 @@ func _commit_mag_ammo() -> void:
 	ammo_reserve[current_weapon] -= take
 
 
+# --- Call of Duty-grade reload motion & impulse helpers ---
+func _cod_ease_out(u: float) -> float:
+	# Energetic start, cushioned deceleration (cubic ease-out)
+	var x := clampf(u, 0.0, 1.0)
+	return 1.0 - pow(1.0 - x, 3.0)
+
+
+func _cod_punch(t: float, t0: float, dur: float) -> float:
+	# Sharp mechanical impact rise (peaks ~12% into the window) followed by a spring-damped rebound
+	if dur <= 0.0 or t <= t0 or t >= t0 + dur:
+		return 0.0
+	var x := (t - t0) / dur
+	var rise := smoothstep(0.0, 0.12, x)
+	return rise * exp(-3.6 * x) * cos((x - 0.12) * 11.0) * 1.54 * (1.0 - smoothstep(0.85, 1.0, x))
+
+
+func _reload_cam_kick(pitch_k: float, roll_k: float, z_k: float, tr: float) -> void:
+	# Subtle authentic camera/viewmodel impulse on mag clicks, seat slaps, bolt slams, lid slams & cylinder flicks
+	hit_pitch_kick += pitch_k
+	hit_roll_kick += roll_k
+	recoil_z += z_k
+	if tr > 0.0:
+		trauma = minf(1.0, trauma + tr)
+
+
+func _reload_settle(t: float) -> void:
+	# Weapon lands back on the shoulder at the end of the reload with a small damped bob
+	var pk := _cod_punch(t, reload_dur - 0.28, 0.28)
+	reload_pos_off += Vector3(0.0, -0.008, 0.004) * pk
+	reload_rot_off += Vector3(-0.025, 0.0, 0.012) * pk
+
+
 func start_reload() -> bool:
 	if _melee_timer > 0.0 or _quick_melee_active:
 		return false
@@ -3629,6 +3952,8 @@ func start_reload() -> bool:
 	_sniper_pending_eject = ((current_weapon == 7 or current_weapon == 14) and _hunting_bolt_timer > 0.0 and not _hunting_bolt_did_sfx)
 	_hunting_bolt_timer = 0.0
 	_magnum_spent_count = clampi(mag_cap - ammo_in_mag[6], 1, 6) if current_weapon == 6 else (clampi(2 - ammo_in_mag[11], 1, 2) if current_weapon == 11 else 0)
+	_rl_layer_p = Vector3.ZERO
+	_rl_layer_r = Vector3.ZERO
 
 	if current_weapon == 0:
 		reload_dur = 1.66 if reload_was_empty else 1.28
@@ -3651,11 +3976,11 @@ func start_reload() -> bool:
 	elif current_weapon == 12:
 		reload_dur = 2.25 if reload_was_empty else 1.78
 	elif current_weapon == 13:
-		reload_dur = 1.90
+		reload_dur = 1.90 if reload_was_empty else 2.14
 	elif current_weapon == 14:
 		reload_dur = 2.20
 	elif current_weapon == 15:
-		reload_dur = 1.38
+		reload_dur = 1.52
 	elif current_weapon == 17:
 		reload_dur = 2.35
 	else:
@@ -3664,8 +3989,29 @@ func start_reload() -> bool:
 
 
 func _update_reload(delta: float) -> void:
+	if perks.has("quickhands"):
+		delta *= 1.35
 	_reload_prev_t = reload_elapsed
 	reload_elapsed += delta
+	# Remove last frame's shared motion layer so branches that don't re-assign the offsets never accumulate it
+	reload_pos_off -= _rl_layer_p
+	reload_rot_off -= _rl_layer_r
+	_rl_layer_p = Vector3.ZERO
+	_rl_layer_r = Vector3.ZERO
+	_dispatch_reload(delta)
+	if is_reloading and current_weapon != 0 and current_weapon != 2:
+		# Shared CoD layer for every non-pistol/non-M870 reload: a quick anticipation dip on the first beat,
+		# then a living shoulder sway that scales with how far the weapon is canted (never frozen still)
+		var tt := reload_elapsed
+		var antic := sin(clampf(tt / 0.16, 0.0, 1.0) * PI) if tt < 0.16 else 0.0
+		var cant_mag := clampf(reload_rot_off.length() / 0.55, 0.0, 1.0)
+		_rl_layer_p = Vector3(-0.004, -0.014, 0.008) * antic + Vector3(sin(tt * 4.6) * 0.0035, sin(tt * 3.3 + 0.8) * 0.0042, sin(tt * 2.6) * 0.002) * cant_mag
+		_rl_layer_r = Vector3(-0.055, 0.0, 0.045) * antic + Vector3(sin(tt * 3.9 + 0.3) * 0.015, sin(tt * 2.7 + 1.1) * 0.011, sin(tt * 3.1 + 2.0) * 0.018) * cant_mag
+		reload_pos_off += _rl_layer_p
+		reload_rot_off += _rl_layer_r
+
+
+func _dispatch_reload(delta: float) -> void:
 	if current_weapon == 0:
 		_update_reload_pistol()
 	elif current_weapon == 1:
@@ -3699,121 +4045,231 @@ func _update_reload(delta: float) -> void:
 
 
 func _update_reload_sawed_off() -> void:
-	# Break-action double-barrel shotgun: hinge barrel down, eject spent hulls, push fresh shells along hinged axis, snap shut!
+	# Break-action DB: sharp downward break flick -> hulls kicked out -> two staggered thumb shoves -> upward wrist-whip snap shut
 	var t := reload_elapsed
 	var cant_p := Vector3(-0.045, 0.085, -0.045)
 	var cant_r := Vector3(0.24, 0.36, -0.34)
 	if _reload_event(0.24, 1):
 		weapon_chambered[11] = false
 		_play_reload_sfx(_sfx_bolt, 0.84)
+		_reload_cam_kick(-0.014, 0.008, 0.006, 0.0)
 		for _hi in range(maxi(1, _magnum_spent_count)):
 			_eject_brass_casing(WEAPONS[11], true)
-	if _reload_event(0.95, 2):
+	if _reload_event(0.98, 2):
 		_play_reload_sfx(_sfx_shell_in, 0.96)
-	if _reload_event(1.25, 4):
+		_reload_cam_kick(0.006, -0.004, 0.004, 0.0)
+	if _reload_event(1.26, 4):
 		_play_reload_sfx(_sfx_shell_in, 1.04)
+		_reload_cam_kick(0.006, 0.004, 0.004, 0.0)
 		_commit_mag_ammo()
-	if _reload_event(1.62, 8):
+	if _reload_event(1.60, 8):
 		weapon_chambered[11] = true
 		_play_reload_sfx(_sfx_bolt, 1.12)
-		trauma = minf(1.0, trauma + 0.14)
-	var hinge := smoothstep(0.18, 0.42, t) * (1.0 - smoothstep(1.50, 1.66, t))
-	reload_pos_off = cant_p * smoothstep(0.0, 0.22, t) * (1.0 - smoothstep(1.65, reload_dur, t))
-	reload_rot_off = cant_r * smoothstep(0.0, 0.22, t) * (1.0 - smoothstep(1.65, reload_dur, t))
+		_reload_cam_kick(0.018, -0.012, 0.010, 0.14)
+	# Break open is a quick flick (eased-out), the shut is an accelerating whip (eased-in)
+	var open_u := _cod_ease_out((t - 0.16) / 0.13)
+	var shut_u := pow(smoothstep(1.48, 1.60, t), 2.0)
+	var hinge := open_u * (1.0 - shut_u)
+	var env_u := _cod_ease_out(t / 0.22) * (1.0 - smoothstep(1.70, reload_dur, t))
+	reload_pos_off = cant_p * env_u
+	reload_rot_off = cant_r * env_u
 	var hinge_piv := Vector3(0.0, 0.004, -0.032)
 	var hinge_rot := Vector3(-0.62 * hinge, 0.0, 0.0)
 	_pose_part("barrel", Vector3.ZERO, hinge_rot, hinge_piv)
 	_pose_optic_hood(Vector3.ZERO, hinge_rot, hinge_piv)
+	# Staggered dual-shell feed: first thumb shove seats shell #1 halfway, second shove drives both home
 	var shell_vis := t < 0.42 or t >= 0.85
-	var shell_slide := lerpf(0.09, 0.0, smoothstep(0.85, 1.32, t)) if t >= 0.85 else (0.11 * smoothstep(0.24, 0.42, t))
+	var shell_slide := 0.0
+	if t >= 0.85:
+		var s1 := _cod_ease_out((t - 0.90) / 0.10)
+		var s2 := _cod_ease_out((t - 1.18) / 0.10)
+		shell_slide = lerpf(lerpf(0.09, 0.042, s1), 0.0, s2)
+	else:
+		shell_slide = 0.11 * smoothstep(0.24, 0.42, t)
 	var aligned_slide := Basis.from_euler(hinge_rot) * Vector3(0.0, 0.0, shell_slide)
 	_pose_part("mag", aligned_slide, hinge_rot, hinge_piv, shell_vis)
 	var lh_in := sin(smoothstep(0.75, 1.45, t) * PI)
-	_pose_part("arm_left", Vector3(0.02 * lh_in, -0.04 * lh_in, 0.10 * lh_in), Vector3(-0.35 * lh_in, 0.25 * lh_in, 0.22 * lh_in), PIVOT_AR_HAND)
+	var thumb := maxf(0.0, _cod_punch(t, 0.92, 0.18)) + maxf(0.0, _cod_punch(t, 1.20, 0.18))
+	_pose_part("arm_left", Vector3(0.02 * lh_in, -0.04 * lh_in, 0.10 * lh_in - 0.012 * thumb), Vector3(-0.35 * lh_in, 0.25 * lh_in, 0.22 * lh_in), PIVOT_AR_HAND)
+	# Impulses: muzzle-down break flick, two thumb-shove bumps, upward wrist-whip on shut
+	var pk_break := _cod_punch(t, 0.20, 0.30)
+	var pk_s1 := _cod_punch(t, 0.94, 0.22)
+	var pk_s2 := _cod_punch(t, 1.22, 0.22)
+	var pk_shut := _cod_punch(t, 1.58, 0.34)
+	reload_pos_off += Vector3(0.0, -0.020, 0.006) * pk_break + Vector3(0.0, 0.008, -0.004) * (pk_s1 + pk_s2) + Vector3(0.0, 0.022, 0.006) * pk_shut
+	reload_rot_off += Vector3(-0.10, 0.0, 0.03) * pk_break + Vector3(0.03, 0.0, 0.02) * (pk_s1 + pk_s2) + Vector3(0.14, 0.0, -0.05) * pk_shut
+	_reload_settle(t)
 	if t >= reload_dur:
 		is_reloading = false
 		_reset_weapon_parts()
 
 
 func _update_reload_famas() -> void:
-	# Bullpup rear magazine swap (scale=1.0 unparented GLB: extract -> empty magwell -> seat fresh mag -> cock!)
+	# Bullpup rear magazine swap -> on empty a visible sweep up to the carry-handle charging lever & sharp pull
 	var t := reload_elapsed
 	var cant_p := Vector3(-0.045, 0.068, -0.18)
 	var cant_r := Vector3(0.22, 0.62, -0.42)
 	var eject_dir := Vector3(0.0, -0.95, 0.30).normalized()
+	# Charging lever sits under the carry handle: roll the rifle back toward upright so the pull stays in frame
+	var rack_p := Vector3(-0.060, 0.072, -0.120)
+	var rack_r := Vector3(0.20, 0.30, -0.18)
+	var hand_ch_p := Vector3(0.020, 0.085, -0.035)
+	var hand_ch_r := Vector3(-0.30, 0.20, 0.30)
 	if _reload_event(0.24, 1):
 		_play_reload_sfx(_sfx_mag_out, 1.06)
+		_reload_cam_kick(-0.008, 0.006, 0.0, 0.0)
 	if _reload_event(0.56, 32):
 		_spawn_dropped_mag(12)
-	if _reload_event(1.16, 2):
+	if _reload_event(1.18, 2):
 		_play_reload_sfx(_sfx_mag_in, 1.06)
+		_reload_cam_kick(0.014, -0.008, 0.008, 0.0)
 	if _reload_event(1.26, 4):
 		_commit_mag_ammo()
 		if not reload_was_empty:
 			weapon_chambered[12] = true
 		trauma = minf(1.0, trauma + 0.09)
-	if reload_was_empty and _reload_event(1.68, 8):
+	if reload_was_empty and _reload_event(1.72, 8):
 		weapon_chambered[12] = true
 		_play_reload_sfx(_sfx_bolt, 1.08)
-		trauma = minf(1.0, trauma + 0.11)
-	var env_u := smoothstep(0.0, 0.22, t) * (1.0 - smoothstep(reload_dur - 0.35, reload_dur, t))
-	reload_pos_off = cant_p * env_u
-	reload_rot_off = cant_r * env_u
+		_reload_cam_kick(-0.012, 0.012, 0.008, 0.11)
+	var tail0 := 1.86 if reload_was_empty else reload_dur - 0.35
+	var env_u := _cod_ease_out(t / 0.22) * (1.0 - smoothstep(tail0, reload_dur, t))
+	var rack_u := 0.0
+	if reload_was_empty:
+		rack_u = smoothstep(1.36, 1.54, t) * (1.0 - smoothstep(1.80, 2.05, t))
+	reload_pos_off = cant_p.lerp(rack_p, rack_u) * env_u if rack_u > 0.0 else cant_p * env_u
+	reload_rot_off = cant_r.lerp(rack_r, rack_u) * env_u if rack_u > 0.0 else cant_r * env_u
+	if not reload_was_empty or t < 1.36:
+		# Lively shoulder drift during the pouch fetch
+		var fdip := sin(smoothstep(0.60, 0.92, t) * PI)
+		reload_pos_off += Vector3(-0.008, -0.022, 0.006) * fdip
+		reload_rot_off += Vector3(-0.04, 0.03, 0.05) * fdip
 	var hand_mag_p := Vector3(0.015, -0.085, 0.14)
 	var hand_mag_r := Vector3(-0.46, 0.24, 0.36)
 	if t < 0.62:
-		var u := smoothstep(0.22, 0.56, t)
+		var u := 0.12 * smoothstep(0.24, 0.29, t) + 0.88 * _cod_ease_out((t - 0.29) / 0.27)
 		var mp := eject_dir * (0.24 * u)
 		_pose_part("mag", mp, Vector3(0.18 * u, 0.0, 0.0), Vector3.ZERO, t < 0.56)
-		_pose_part("arm_left", hand_mag_p + mp, hand_mag_r, PIVOT_AR_HAND)
+		_pose_part("arm_left", hand_mag_p * _cod_ease_out(t / 0.22) + mp, hand_mag_r * _cod_ease_out(t / 0.22), PIVOT_AR_HAND)
 	elif t < 0.90:
 		_pose_part("mag", eject_dir * 0.24, Vector3.ZERO, Vector3.ZERO, false)
-		_pose_part("arm_left", hand_mag_p + eject_dir * 0.28, hand_mag_r + Vector3(-0.12, 0.06, 0.08), PIVOT_AR_HAND)
-	elif t < 1.38:
-		var u := smoothstep(0.90, 1.26, t)
-		var mp := eject_dir * lerpf(0.24, 0.0, u)
-		_pose_part("mag", mp, Vector3(lerpf(0.18, 0.0, u), 0.0, 0.0), Vector3.ZERO, true)
-		_pose_part("arm_left", hand_mag_p + mp, hand_mag_r, PIVOT_AR_HAND)
+		var fu := sin(smoothstep(0.62, 0.90, t) * PI)
+		_pose_part("arm_left", hand_mag_p + eject_dir * (0.28 + 0.04 * fu), hand_mag_r + Vector3(-0.12, 0.06, 0.08) * fu, PIVOT_AR_HAND)
+	elif t < 1.30:
+		# Two-stage: align the lip to the rear magwell, then a crisp punch-up seat
+		var u_al := _cod_ease_out((t - 0.90) / 0.16)
+		var u_seat := smoothstep(1.08, 1.19, t)
+		var dist := lerpf(lerpf(0.24, 0.07, u_al), 0.0, u_seat)
+		var mp := eject_dir * dist
+		_pose_part("mag", mp, Vector3(lerpf(lerpf(0.18, 0.07, u_al), 0.0, u_seat), 0.0, 0.0), Vector3.ZERO, true)
+		var hs := maxf(0.0, sin(smoothstep(1.14, 1.28, t) * PI))
+		_pose_part("arm_left", hand_mag_p + mp + Vector3(0.0, 0.016 * hs, 0.0), hand_mag_r, PIVOT_AR_HAND)
+	elif reload_was_empty and t < 2.05:
+		_pose_part("mag", Vector3.ZERO)
+		# Support hand sweeps up the receiver to the charging lever, rips it back, lets it fly home at 1.72s
+		var reach := _cod_ease_out((t - 1.30) / 0.22)
+		var pull := 0.0
+		if t < 1.70:
+			pull = _cod_ease_out((t - 1.58) / 0.10)
+		else:
+			pull = 1.0 - smoothstep(1.70, 1.74, t)
+		var back := smoothstep(1.82, 2.05, t)
+		var ap := hand_mag_p.lerp(hand_ch_p, reach).lerp(Vector3.ZERO, back) + Vector3(0.0, 0.0, 0.060 * pull)
+		var ar := hand_mag_r.lerp(hand_ch_r, reach).lerp(Vector3.ZERO, back)
+		_pose_part("arm_left", ap, ar, PIVOT_AR_HAND)
 	else:
 		_pose_part("mag", Vector3.ZERO)
-		var ret := smoothstep(1.38, reload_dur, t)
-		_pose_part("arm_left", hand_mag_p.lerp(Vector3.ZERO, ret), hand_mag_r.lerp(Vector3.ZERO, ret), PIVOT_AR_HAND)
+		if reload_was_empty:
+			_pose_part("arm_left", Vector3.ZERO, Vector3.ZERO, PIVOT_AR_HAND)
+		else:
+			var ret := _cod_ease_out((t - 1.30) / maxf(reload_dur - 1.30, 0.05))
+			_pose_part("arm_left", hand_mag_p.lerp(Vector3.ZERO, ret), hand_mag_r.lerp(Vector3.ZERO, ret), PIVOT_AR_HAND)
+	var pk_seat := _cod_punch(t, 1.17, 0.36)
+	reload_pos_off += Vector3(0.0, 0.026, -0.010) * pk_seat
+	reload_rot_off += Vector3(0.09, 0.0, 0.06) * pk_seat
+	if reload_was_empty:
+		var pk_ch := _cod_punch(t, 1.71, 0.34)
+		reload_pos_off += Vector3(0.0, -0.010, 0.016) * pk_ch
+		reload_rot_off += Vector3(-0.05, 0.0, -0.06) * pk_ch
+	_reload_settle(t)
 	if t >= reload_dur:
 		is_reloading = false
 		_reset_weapon_parts()
 
 
 func _update_reload_garand() -> void:
-	# M1 Garand top en-bloc 8-round clip push into breech with right thumb + bolt snap!
+	# M1 Garand: (tactical) yank op-rod & PING the part-spent clip free -> top en-bloc 8-round clip,
+	# two-stage thumb press -> quick thumb-pull clear -> violent op-rod/bolt slam home
 	var t := reload_elapsed
+	var o := 0.0 if reload_was_empty else 0.24
 	var cant_p := Vector3(-0.042, 0.095, -0.055)
 	var cant_r := Vector3(0.24, 0.34, -0.32)
-	if _reload_event(0.22, 1):
+	if not reload_was_empty and _reload_event(0.20, 16):
+		# Tactical top-off: rounds still in the ejected clip go back to the bandolier
+		ammo_reserve[13] += ammo_in_mag[13]
+		ammo_in_mag[13] = 0
+		weapon_chambered[13] = false
+		if sfx_casing and _sfx_garand_ping:
+			sfx_casing.stream = _sfx_garand_ping
+			sfx_casing.pitch_scale = randf_range(0.98, 1.04)
+			sfx_casing.play()
+		_spawn_garand_clip_eject()
+		_reload_cam_kick(-0.010, 0.010, 0.006, 0.04)
+	if _reload_event(0.22 + o, 1):
 		weapon_chambered[13] = false
 		_play_reload_sfx(_sfx_bolt, 0.95)
-	if _reload_event(0.88, 2):
-		_play_reload_sfx(_sfx_mag_in, 1.18)
-	if _reload_event(1.18, 4):
+	if _reload_event(0.80 + o, 2):
+		_play_reload_sfx(_sfx_mag_in, 1.10)
+		_reload_cam_kick(0.006, -0.004, 0.004, 0.0)
+	if _reload_event(1.06 + o, 32):
+		_play_reload_sfx(_sfx_mag_in, 1.22)
+		_reload_cam_kick(0.010, -0.006, 0.006, 0.0)
+	if _reload_event(1.20 + o, 4):
 		_commit_mag_ammo()
 		weapon_chambered[13] = true
 		_play_reload_sfx(_sfx_bolt, 1.06)
-		trauma = minf(1.0, trauma + 0.12)
-	var env_u := smoothstep(0.0, 0.24, t) * (1.0 - smoothstep(1.48, reload_dur, t))
+		_reload_cam_kick(-0.022, 0.014, 0.012, 0.14)
+	var env_u := _cod_ease_out(t / 0.24) * (1.0 - smoothstep(1.50 + o, reload_dur, t))
 	reload_pos_off = cant_p * env_u
 	reload_rot_off = cant_r * env_u
-	var clip_vis := t >= 0.42 and t < 1.24
-	var press_u := smoothstep(0.45, 1.16, t)
+	var tt := t - o
+	# Two-stage press: thumb drives the clip halfway, re-sets, then drives it fully home under the bolt
+	var clip_vis := tt >= 0.42 and tt < 1.22
+	var p1 := _cod_ease_out((tt - 0.46) / 0.30)
+	var p2 := _cod_ease_out((tt - 0.92) / 0.14)
+	var press_u := lerpf(0.0, 0.55, p1) + 0.45 * p2
 	var clip_drop := lerpf(0.085, -0.015, press_u)
 	_pose_part("mag", Vector3(0.0, clip_drop, 0.0), Vector3.ZERO, Vector3.ZERO, clip_vis)
-	var rh := sin(smoothstep(0.26, 1.42, t) * PI)
-	_pose_part("arm_right", Vector3(0.025 * rh, (0.145 - 0.085 * press_u) * rh, -0.075 * rh), Vector3(0.28 * rh, -0.22 * rh, -0.32 * rh))
+	# Right hand fetches the clip and is already holding it over the breech when it appears (never floats)
+	var rh := _cod_ease_out((tt - 0.16) / 0.26) * (1.0 - smoothstep(1.30, 1.50, tt))
+	# Thumb lifts for the re-set between presses, then snaps up & right clear of the bolt face
+	var reset_lift := sin(smoothstep(0.78, 0.92, tt) * PI) * 0.018
+	var clear := _cod_ease_out((tt - 1.10) / 0.09) * (1.0 - smoothstep(1.30, 1.50, tt))
+	var rh_p := Vector3(0.025 * rh, (0.145 - 0.085 * press_u) * rh + reset_lift + 0.045 * clear, -0.075 * rh)
+	rh_p += Vector3(0.030, 0.0, 0.020) * clear
+	if not reload_was_empty and t < o + 0.26:
+		# Tactical: right hand yanks the op-rod handle rearward to pop the clip
+		var yank := sin(smoothstep(0.04, o + 0.22, t) * PI)
+		rh_p = Vector3(0.030, 0.030, 0.060) * yank
+	_pose_part("arm_right", rh_p, Vector3(0.28 * rh, -0.22 * rh, -0.32 * rh) + Vector3(0.0, 0.0, -0.20) * clear)
+	var pk_p1 := _cod_punch(tt, 0.74, 0.24)
+	var pk_p2 := _cod_punch(tt, 1.04, 0.22)
+	var pk_slam := _cod_punch(tt, 1.19, 0.38)
+	reload_pos_off += Vector3(0.0, -0.010, 0.0) * (pk_p1 + pk_p2) + Vector3(0.0, -0.016, 0.022) * pk_slam
+	reload_rot_off += Vector3(-0.04, 0.0, 0.0) * (pk_p1 + pk_p2) + Vector3(-0.08, 0.02, 0.09) * pk_slam
+	if not reload_was_empty:
+		var pk_pop := _cod_punch(t, 0.18, 0.32)
+		reload_pos_off += Vector3(0.0, 0.012, 0.014) * pk_pop
+		reload_rot_off += Vector3(0.05, 0.0, -0.04) * pk_pop
+	_reload_settle(t)
 	if t >= reload_dur:
 		is_reloading = false
 		_reset_weapon_parts()
 
 
 func _update_reload_kar98k() -> void:
-	# Kar98k Mauser: lift & pull Bolt open -> press 5-round stripper clip (`FeedRound`) down into breech -> close Bolt!
+	# Kar98k Mauser: crisp bolt lift & pull -> stripper clip aligned in the charger guide -> five stepped
+	# thumb-strip pulses -> clip flicked clear -> authoritative bolt slam & lock
 	var t := reload_elapsed
 	var cant_p := Vector3(-0.046, 0.105, -0.058)
 	var cant_r := Vector3(0.26, 0.38, -0.36)
@@ -3823,73 +4279,147 @@ func _update_reload_kar98k() -> void:
 			_sniper_pending_eject = false
 			_eject_brass_casing(WEAPONS[14], false)
 		_play_reload_sfx(_sfx_bolt, 0.80)
-	if _reload_event(0.92, 2):
-		_play_reload_sfx(_sfx_shell_in, 1.08)
-	if _reload_event(1.30, 4):
+		_reload_cam_kick(-0.008, 0.008, 0.006, 0.0)
+	var step_t0 := 0.66
+	var step_len := 0.13
+	for k in range(5):
+		if _reload_event(step_t0 + step_len * float(k) + 0.07, 64 << k):
+			_play_reload_sfx(_sfx_shell_in, 1.02 + 0.04 * float(k))
+			_reload_cam_kick(0.004, -0.002, 0.002, 0.0)
+	if _reload_event(1.32, 4):
 		_commit_mag_ammo()
-	if _reload_event(1.66, 8):
+	if _reload_event(1.64, 8):
 		weapon_chambered[14] = true
 		_play_reload_sfx(_sfx_bolt, 0.92)
-		trauma = minf(1.0, trauma + 0.11)
-	var env_u := smoothstep(0.0, 0.25, t) * (1.0 - smoothstep(1.78, reload_dur, t))
+		_reload_cam_kick(-0.020, 0.014, 0.012, 0.11)
+	var env_u := _cod_ease_out(t / 0.25) * (1.0 - smoothstep(1.80, reload_dur, t))
 	reload_pos_off = cant_p * env_u
 	reload_rot_off = cant_r * env_u
-	var bolt_open := smoothstep(0.16, 0.38, t) * (1.0 - smoothstep(1.52, 1.72, t))
-	_pose_part("bolt", Vector3(0.0, 0.0, 0.082 * bolt_open), Vector3(0.0, 0.0, 1.05 * bolt_open))
-	var fr_vis := t >= 0.48 and t < 1.36
-	var press_u := smoothstep(0.55, 1.28, t)
-	var fr_drop := lerpf(0.085, -0.025, press_u)
-	_pose_part("feed_round", Vector3(0.0, fr_drop, 0.0), Vector3.ZERO, Vector3.ZERO, fr_vis)
-	var rh := sin(smoothstep(0.18, 1.78, t) * PI)
-	_pose_part("arm_right", Vector3(0.032 * rh, (0.135 - 0.075 * press_u) * rh, -0.055 * rh), Vector3(0.22 * rh, -0.22 * rh, -0.30 * rh))
+	# Bolt: snappy lift then pull open; on close it is thrown forward and slammed down into lock
+	var lift := _cod_ease_out((t - 0.14) / 0.10)
+	var pullb := _cod_ease_out((t - 0.22) / 0.14)
+	var fwd_u := pow(smoothstep(1.50, 1.60, t), 1.6)
+	var lock_u := smoothstep(1.60, 1.67, t)
+	var bolt_open := pullb * (1.0 - fwd_u)
+	var bolt_lift := lift * (1.0 - lock_u)
+	_pose_part("bolt", Vector3(0.0, 0.0, 0.082 * bolt_open), Vector3(0.0, 0.0, 1.05 * bolt_lift))
+	# Stripper clip: aligned into the charger guide, then stepped down one round per thumb pulse
+	var fr_vis := t >= 0.46 and t < 1.38
+	var align_u := _cod_ease_out((t - 0.46) / 0.16)
+	var steps := 0.0
+	for k in range(5):
+		steps += smoothstep(step_t0 + step_len * float(k) + 0.02, step_t0 + step_len * float(k) + 0.08, t)
+	var press_u := steps / 5.0
+	var fr_drop := lerpf(0.12, 0.085, align_u) - 0.11 * press_u
+	_pose_part("feed_round", Vector3(0.0, fr_drop, 0.0), Vector3(0.10 * (1.0 - align_u), 0.0, 0.0), Vector3.ZERO, fr_vis)
+	# Right hand is already on the clip when it appears in the charger guide (never a floating clip)
+	var rh := _cod_ease_out((t - 0.12) / 0.30) * (1.0 - smoothstep(1.62, 1.80, t))
+	var pulse := 0.0
+	for k in range(5):
+		pulse += maxf(0.0, sin(clampf((t - (step_t0 + step_len * float(k))) / step_len, 0.0, 1.0) * PI))
+	pulse = clampf(pulse, 0.0, 1.0) if (t >= step_t0 and t < step_t0 + step_len * 5.0) else 0.0
+	var flick := sin(smoothstep(1.30, 1.44, t) * PI)
+	_pose_part("arm_right", Vector3(0.032 * rh + 0.02 * flick, (0.135 - 0.075 * press_u) * rh - 0.010 * pulse + 0.03 * flick, -0.055 * rh), Vector3(0.22 * rh, -0.22 * rh, -0.30 * rh - 0.12 * flick))
+	var pk_open := _cod_punch(t, 0.33, 0.26)
+	var pk_slam := _cod_punch(t, 1.60, 0.36)
+	reload_pos_off += Vector3(0.0, 0.0, 0.008) * pk_open + Vector3(0.0, -0.012, -0.016) * pk_slam
+	reload_rot_off += Vector3(0.02, 0.0, 0.03) * pk_open + Vector3(-0.07, 0.0, 0.08) * pk_slam
+	if t >= step_t0 and t < step_t0 + step_len * 5.0:
+		var ph := fmod(t - step_t0, step_len) / step_len
+		var bump := sin(ph * PI) * (1.0 - ph)
+		reload_pos_off += Vector3(0.0, -0.006, 0.0) * bump
+		reload_rot_off += Vector3(-0.022, 0.0, 0.0) * bump
+	_reload_settle(t)
 	if t >= reload_dur:
 		is_reloading = false
 		_reset_weapon_parts()
 
 
 func _update_reload_crossbow() -> void:
-	# Heavy Crossbow: pull bowstring back into trigger latch & seat fresh bolt on rail!
+	# Heavy Crossbow: straining bowstring pull into the trigger latch (click) -> cant to a 3/4 view of the rail
+	# -> fresh broadhead bolt dropped onto the rail and slid home under the retention spring (nock)
 	var t := reload_elapsed
-	if _reload_event(0.28, 1):
+	if _reload_event(0.10, 1):
 		if _sfx_bow_draw:
 			_play_reload_sfx(_sfx_bow_draw, 1.15)
-	if _reload_event(0.95, 2):
-		_play_reload_sfx(_sfx_bolt, 1.22)
+	if _reload_event(0.50, 2):
+		_play_reload_sfx(_sfx_bolt, 1.36)
+		_reload_cam_kick(-0.016, 0.010, 0.010, 0.08)
+	if _reload_event(1.04, 4):
+		if _sfx_bow_nock:
+			_play_reload_sfx(_sfx_bow_nock, randf_range(0.97, 1.04))
+		else:
+			_play_reload_sfx(_sfx_shell_in, 1.2)
 		_commit_mag_ammo()
 		weapon_chambered[15] = true
-		trauma = minf(1.0, trauma + 0.08)
-	var pull := sin(smoothstep(0.0, reload_dur, t) * PI)
-	reload_pos_off = Vector3(-0.03 * pull, -0.08 * pull, 0.05 * pull)
-	reload_rot_off = Vector3(-0.28 * pull, 0.18 * pull, -0.14 * pull)
-	var bolt_vis := t >= 0.62
-	var bolt_z := lerpf(-0.18, 0.0, smoothstep(0.62, 1.05, t))
-	_pose_part("bow_arrow", Vector3(0.0, 0.0, bolt_z), Vector3.ZERO, Vector3.ZERO, bolt_vis)
-	_pose_part("arm_right", Vector3(0.0, 0.06 * pull, 0.14 * pull), Vector3(-0.22 * pull, 0.0, 0.0))
+		_reload_cam_kick(0.006, -0.004, 0.004, 0.0)
+	# Phase A (0.06..0.52): strain. Muzzle tips down & stock comes in while the right hand hauls the string
+	var strain := _cod_ease_out((t - 0.04) / 0.20) * (1.0 - smoothstep(0.50, 0.66, t))
+	var effort := smoothstep(0.16, 0.48, t) * (1.0 - smoothstep(0.48, 0.52, t))
+	var tremble := (sin(t * 57.0) * 0.6 + sin(t * 83.0) * 0.4) * effort
+	var pull := smoothstep(0.08, 0.50, t) * (1.0 - smoothstep(0.52, 0.64, t))
+	# Phase B (0.52..1.20): 3/4 cant so the rail, latch and bolt are read clearly
+	var cant := _cod_ease_out((t - 0.52) / 0.18) * (1.0 - smoothstep(1.16, reload_dur, t))
+	var strain_p := Vector3(-0.03, -0.025, 0.04)
+	var strain_r := Vector3(-0.15, 0.18, -0.14)
+	var cant_p := Vector3(-0.060, 0.060, -0.020)
+	var cant_r := Vector3(0.30, 0.52, -0.40)
+	reload_pos_off = strain_p * strain + cant_p * cant + Vector3(0.0015, 0.0012, 0.0) * tremble
+	reload_rot_off = strain_r * strain + cant_r * cant + Vector3(0.006, 0.0, 0.008) * tremble
+	_pose_part("arm_right", Vector3(0.0, 0.06 * pull, 0.14 * pull) + Vector3(0.0008, 0.0008, 0.0) * tremble, Vector3(-0.22 * pull, 0.0, 0.0))
+	# Bolt: drops onto the rail from above, then slides rearward to seat
+	var bolt_vis := t >= 0.70
+	var drop_u := _cod_ease_out((t - 0.70) / 0.16)
+	var slide_u := smoothstep(0.88, 1.05, t)
+	var by := lerpf(0.055, 0.0, drop_u)
+	var bz := lerpf(-0.12, 0.0, slide_u)
+	_pose_part("bow_arrow", Vector3(0.0, by, bz), Vector3(lerpf(0.12, 0.0, drop_u), 0.0, 0.0), Vector3.ZERO, bolt_vis)
+	var pk_latch := _cod_punch(t, 0.49, 0.30)
+	var pk_drop := _cod_punch(t, 0.85, 0.22)
+	var pk_seat := _cod_punch(t, 1.03, 0.28)
+	reload_pos_off += Vector3(0.0, 0.018, 0.014) * pk_latch + Vector3(0.0, -0.006, 0.0) * pk_drop + Vector3(0.0, 0.0, 0.010) * pk_seat
+	reload_rot_off += Vector3(0.07, 0.0, 0.03) * pk_latch + Vector3(-0.02, 0.0, 0.0) * pk_drop + Vector3(0.02, 0.0, 0.03) * pk_seat
+	_reload_settle(t)
 	if t >= reload_dur:
 		is_reloading = false
 		_reset_weapon_parts()
 
 
 func _update_reload_rpg7() -> void:
-	# RPG-7: cant launcher tube across view -> slide fresh PG-7V Warhead into front muzzle (PIVOT_AR_HAND -> ZERO sleeve bloat!)
+	# RPG-7: weighty launcher cant -> heavy PG-7V heave up from the pack -> nose-first insertion
+	# down the muzzle -> firm palm twist & shove until the locating lug clicks home
 	var t := reload_elapsed
-	var cant_p := Vector3(-0.085, 0.035, 0.12)
-	var cant_r := Vector3(0.22, 0.56, -0.28)
+	# Launcher comes off the shoulder, muzzle swung in toward screen centre so the warhead insertion reads clearly
+	var cant_p := Vector3(0.050, -0.020, -0.150)
+	var cant_r := Vector3(0.25, 0.90, 0.10)
 	if _reload_event(0.32, 1):
 		_play_reload_sfx(_sfx_mag_out, 0.72)
-	if _reload_event(1.38, 2):
+	if _reload_event(1.40, 2):
 		_play_reload_sfx(_sfx_mag_in, 0.68)
 		_commit_mag_ammo()
 		weapon_chambered[17] = true
-		trauma = minf(1.0, trauma + 0.14)
-	var env_u := smoothstep(0.0, 0.35, t) * (1.0 - smoothstep(1.80, reload_dur, t))
+		_reload_cam_kick(0.012, -0.012, 0.014, 0.14)
+	# Heavy tube: slower ease-in with an inertial overshoot as it settles onto the shoulder
+	var env_u := smoothstep(0.0, 0.40, t) * (1.0 - smoothstep(1.82, reload_dur, t))
 	reload_pos_off = cant_p * env_u
 	reload_rot_off = cant_r * env_u
-	var wh_vis := t >= 0.65
-	var wh_z := lerpf(-0.24, 0.0, smoothstep(0.68, 1.44, t))
-	_pose_part("warhead", Vector3(0.0, 0.0, wh_z), Vector3.ZERO, Vector3.ZERO, wh_vis)
+	var wh_vis := t >= 0.62
+	var heave := _cod_ease_out((t - 0.62) / 0.26)
+	var ins := smoothstep(0.88, 1.28, t)
+	var shove := _cod_ease_out((t - 1.30) / 0.10)
+	var wh_y := lerpf(-0.10, 0.0, heave)
+	var wh_z := lerpf(-0.24, lerpf(-0.045, 0.0, shove), ins)
+	var twist := sin(smoothstep(1.26, 1.42, t) * PI) * 0.42
+	_pose_part("warhead", Vector3(0.0, wh_y, wh_z), Vector3(0.10 * (1.0 - heave), 0.0, twist), Vector3.ZERO, wh_vis)
 	var lh := sin(smoothstep(0.45, 1.65, t) * PI)
-	_pose_part("arm_left", Vector3(0.02 * lh, -0.02 * lh, (-0.12 + wh_z * 0.45) * lh), Vector3(-0.42 * lh, 0.24 * lh, 0.32 * lh), PIVOT_AR_HAND)
+	_pose_part("arm_left", Vector3(0.02 * lh, -0.02 * lh + wh_y * 0.55 * lh, (-0.12 + wh_z * 0.45) * lh), Vector3(-0.42 * lh, 0.24 * lh, 0.32 * lh + twist * 0.6), PIVOT_AR_HAND)
+	# Weight: the launcher dips as the warhead's mass comes onto it, then jolts with the lock-in shove
+	var weight := sin(smoothstep(0.62, 1.10, t) * PI)
+	var pk_settle := _cod_punch(t, 0.36, 0.40)
+	var pk_lock := _cod_punch(t, 1.39, 0.40)
+	reload_pos_off += Vector3(0.0, -0.014, 0.0) * weight + Vector3(0.0, -0.010, 0.0) * pk_settle + Vector3(0.0, 0.006, 0.024) * pk_lock
+	reload_rot_off += Vector3(-0.05, 0.0, 0.0) * weight + Vector3(-0.03, 0.0, 0.02) * pk_settle + Vector3(0.04, 0.0, -0.06) * pk_lock
+	_reload_settle(t)
 	if t >= reload_dur:
 		is_reloading = false
 		_reset_weapon_parts()
@@ -3907,81 +4437,86 @@ func _update_reload_mp5() -> void:
 	var hand_extract_end := hand_mag_p + eject_dir * 0.24
 	var hand_pouch_p := hand_extract_end + Vector3(-0.035, -0.055, 0.025)
 	# Keep forearm rolled +Z and pitched -X like M16 bolt-catch slap -> ZERO sleeve bloat in camera!
-	var slap_gun_p := Vector3(-0.035, 0.068, -0.065)
-	var slap_gun_r := Vector3(0.14, 0.26, -0.28)
-	var hand_slap_hi := Vector3(-0.036, 0.044, 0.012)
+	var slap_gun_p := Vector3(-0.040, 0.050, -0.135)
+	var slap_gun_r := Vector3(0.22, 0.20, -0.36)
+	var hand_slap_hi := Vector3(-0.036, 0.050, 0.012)
 	var hand_slap_hit := Vector3(-0.016, 0.004, 0.016)
-	var hand_slap_r := Vector3(-0.46, 0.24, 0.36)
+	# Positive pitch about the palm keeps the elbow DOWN out of the lens while the palm strikes
+	var hand_slap_r := Vector3(0.10, 0.22, 0.32)
 
-	# Timestamp-crossing authoritative events (never skipped on long frames!)
 	if _reload_event(0.24, 1):
 		_play_reload_sfx(_sfx_mag_out, 1.12)
+		_reload_cam_kick(-0.008, 0.006, 0.0, 0.0)
 	if _reload_event(0.56, 32):
 		_spawn_dropped_mag(5)
-	if _reload_event(1.12, 2):
+	if _reload_event(1.14, 2):
 		_play_reload_sfx(_sfx_mag_in, 1.14)
+		_reload_cam_kick(0.014, -0.008, 0.008, 0.0)
 	if _reload_event(1.22, 4):
 		_commit_mag_ammo()
 		if not reload_was_empty:
 			weapon_chambered[5] = true
 		trauma = minf(1.0, trauma + 0.08)
 	if reload_was_empty and _reload_event(1.56, 8):
-		# Strictly on palm contact at 1.56s!
+		# The iconic HK slap: palm strikes the cocking handle down out of its notch at 1.56s
 		weapon_chambered[5] = true
 		_play_reload_sfx(_sfx_bolt, 1.18)
-		trauma = minf(1.0, trauma + 0.12)
+		_reload_cam_kick(-0.018, 0.022, 0.012, 0.14)
 
-	# Charging handle stays locked rearward & upward in HK notch until palm strikes at 1.56s!
 	if reload_was_empty:
-		var ch_u := 1.0 if t < 1.56 else (1.0 - smoothstep(1.56, 1.62, t))
+		var ch_u := 1.0 if t < 1.56 else (1.0 - smoothstep(1.56, 1.60, t))
 		_pose_part("charge", Vector3(0.0, 0.0, 0.068 * ch_u), Vector3(0.0, 0.0, -0.52 * ch_u))
 	else:
 		_pose_part("charge", Vector3.ZERO)
 
 	if t < 0.22:
-		var u := smoothstep(0.0, 0.22, t)
+		var u := _cod_ease_out(t / 0.22)
 		reload_pos_off = cant_p * u
 		reload_rot_off = cant_r * u
 		_pose_part("mag", Vector3.ZERO)
 		_pose_part("arm_left", hand_mag_p * u, hand_mag_r * u, PIVOT_AR_HAND)
 	elif t < 0.64:
-		var u := smoothstep(0.22, 0.58, t)
-		reload_pos_off = cant_p + Vector3(0, -0.020 * sin(u * PI), 0)
-		reload_rot_off = cant_r + Vector3(0.05 * sin(u * PI), 0, -0.06 * sin(u * PI))
+		# Paddle release pops the mag a few mm, then the hand strips it out
+		var u := 0.12 * smoothstep(0.24, 0.29, t) + 0.88 * _cod_ease_out((t - 0.29) / 0.27)
+		var sw := sin(smoothstep(0.22, 0.62, t) * PI)
+		reload_pos_off = cant_p + Vector3(0, -0.020 * sw, 0)
+		reload_rot_off = cant_r + Vector3(0.05 * sw, 0, -0.06 * sw)
 		var mp := eject_dir * (0.24 * u)
 		_pose_part("mag", mp, Vector3(0.24 * u, 0.0, -0.08 * u), Vector3.ZERO, t < 0.56)
 		_pose_part("arm_left", hand_mag_p + mp, hand_mag_r.lerp(hand_drop_r, u), PIVOT_AR_HAND)
 	elif t < 0.94:
-		# Clear 0.30s empty magwell pause while left hand dips to pouch and fetches fresh mag
+		# Empty magwell beat while the support hand dips to the pouch; the shoulder rolls with it
 		var u := smoothstep(0.64, 0.94, t)
 		var dip := sin(u * PI)
-		reload_pos_off = cant_p + Vector3(-0.008 * dip, -0.024 * dip, 0.01)
-		reload_rot_off = cant_r
+		reload_pos_off = cant_p + Vector3(-0.010 * dip, -0.026 * dip, 0.010 * dip)
+		reload_rot_off = cant_r + Vector3(-0.04 * dip, 0.03 * dip, 0.06 * dip)
 		_pose_part("mag", eject_dir * 0.24, Vector3.ZERO, Vector3.ZERO, false)
 		var arm_p := hand_extract_end.lerp(hand_pouch_p, smoothstep(0.0, 0.45, u)) if u < 0.5 else hand_pouch_p.lerp(hand_mag_p + eject_dir * 0.22, smoothstep(0.5, 1.0, u))
 		_pose_part("arm_left", arm_p, hand_drop_r.lerp(hand_mag_r, smoothstep(0.5, 1.0, u)), PIVOT_AR_HAND)
 	elif t < 1.30:
-		var u := smoothstep(0.94, 1.22, t)
-		var slap := sin(smoothstep(1.18, 1.30, t) * PI)
-		reload_pos_off = cant_p + Vector3(0, 0.024 * slap, -0.01 * slap)
-		reload_rot_off = cant_r + Vector3(0.07 * slap, 0, 0.05 * slap)
-		var mp := eject_dir * lerpf(0.22, 0.0, u)
-		_pose_part("mag", mp, Vector3(lerpf(0.22, 0.0, u), 0.0, 0.0), Vector3.ZERO, true)
-		_pose_part("arm_left", hand_mag_p + mp + Vector3(0.0, 0.018 * slap, 0.0), hand_mag_r, PIVOT_AR_HAND)
+		# Two-stage: angle the mag into the well, then a hard punch-up seat
+		var u_al := _cod_ease_out((t - 0.94) / 0.14)
+		var u_seat := smoothstep(1.06, 1.16, t)
+		var dist := lerpf(lerpf(0.22, 0.06, u_al), 0.0, u_seat)
+		reload_pos_off = cant_p
+		reload_rot_off = cant_r
+		var mp := eject_dir * dist
+		_pose_part("mag", mp, Vector3(lerpf(lerpf(0.22, 0.08, u_al), 0.0, u_seat), 0.0, 0.0), Vector3.ZERO, true)
+		var hs := maxf(0.0, sin(smoothstep(1.12, 1.26, t) * PI))
+		_pose_part("arm_left", hand_mag_p + mp + Vector3(0.0, 0.018 * hs, 0.0), hand_mag_r, PIVOT_AR_HAND)
 	elif reload_was_empty and t < 1.80:
-		# Iconic HK slap: palm winds up over forward handle (1.30..1.48) -> strikes down at 1.56s!
+		# Palm winds up high over the cocking tube, then strikes DOWN hard at 1.56s
 		var u := smoothstep(1.30, 1.80, t)
-		var wind := smoothstep(1.30, 1.48, t)
-		var strike := smoothstep(1.48, 1.58, t)
-		var slap_hit := sin(smoothstep(1.54, 1.70, t) * PI)
-		reload_pos_off = cant_p.lerp(slap_gun_p, u) + Vector3(0.016 * slap_hit, -0.022 * slap_hit, 0.0)
-		reload_rot_off = cant_r.lerp(slap_gun_r, u) + Vector3(0.0, 0.0, -0.14 * slap_hit)
+		var wind := _cod_ease_out((t - 1.30) / 0.16)
+		var strike := pow(smoothstep(1.47, 1.56, t), 1.8)
+		reload_pos_off = cant_p.lerp(slap_gun_p, u)
+		reload_rot_off = cant_r.lerp(slap_gun_r, u)
 		_pose_part("mag", Vector3.ZERO)
-		var arm_p := hand_mag_p.lerp(hand_slap_hi, wind) if t < 1.48 else hand_slap_hi.lerp(hand_slap_hit, strike)
+		var arm_p := hand_mag_p.lerp(hand_slap_hi, wind) if t < 1.47 else hand_slap_hi.lerp(hand_slap_hit, strike)
 		_pose_part("arm_left", arm_p, hand_mag_r.lerp(hand_slap_r, wind), PIVOT_AR_HAND)
 	else:
 		var s0 := 1.80 if reload_was_empty else 1.30
-		var u := smoothstep(s0, reload_dur, t)
+		var u := _cod_ease_out((t - s0) / maxf(reload_dur - s0, 0.05))
 		var prev_p := slap_gun_p if reload_was_empty else cant_p
 		var prev_r := slap_gun_r if reload_was_empty else cant_r
 		reload_pos_off = prev_p.lerp(Vector3.ZERO, u)
@@ -3990,6 +4525,14 @@ func _update_reload_mp5() -> void:
 		var prev_arm := hand_slap_hit if reload_was_empty else hand_mag_p
 		var prev_ar := hand_slap_r if reload_was_empty else hand_mag_r
 		_pose_part("arm_left", prev_arm.lerp(Vector3.ZERO, u), prev_ar.lerp(Vector3.ZERO, u), PIVOT_AR_HAND)
+	var pk_seat := _cod_punch(t, 1.14, 0.36)
+	reload_pos_off += Vector3(0.0, 0.028, -0.012) * pk_seat
+	reload_rot_off += Vector3(0.09, 0.0, 0.06) * pk_seat
+	if reload_was_empty:
+		var pk_slap := _cod_punch(t, 1.555, 0.36)
+		reload_pos_off += Vector3(0.018, -0.028, 0.006) * pk_slap
+		reload_rot_off += Vector3(0.02, 0.0, -0.17) * pk_slap
+	_reload_settle(t)
 	if t >= reload_dur:
 		is_reloading = false
 		_reset_weapon_parts()
@@ -4014,11 +4557,17 @@ func _update_reload_ak74() -> void:
 
 	if _reload_event(0.24, 1):
 		_play_reload_sfx(_sfx_mag_out, 0.94)
+		_reload_cam_kick(-0.008, 0.006, 0.0, 0.0)
 	if _reload_event(0.66, 32):
 		_spawn_dropped_mag(8)
-	if _reload_event(1.30, 2):
+	if _reload_event(1.26, 16):
+		# Front lug hooks into the magwell: a dull metal tick before the rock
+		_play_reload_sfx(_sfx_shell_in, 0.80)
+		_reload_cam_kick(0.004, 0.0, 0.002, 0.0)
+	if _reload_event(1.42, 2):
 		_play_reload_sfx(_sfx_mag_in, 0.92)
-	if _reload_event(1.42, 4):
+		_reload_cam_kick(0.014, -0.010, 0.008, 0.0)
+	if _reload_event(1.44, 4):
 		_commit_mag_ammo()
 		if not reload_was_empty:
 			weapon_chambered[8] = true
@@ -4026,77 +4575,91 @@ func _update_reload_ak74() -> void:
 	if reload_was_empty and _reload_event(1.82, 8):
 		weapon_chambered[8] = true
 		_play_reload_sfx(_sfx_bolt, 0.92)
-		trauma = minf(1.0, trauma + 0.11)
+		_reload_cam_kick(-0.016, 0.016, 0.010, 0.12)
 
 	if t < 0.24:
-		var u := smoothstep(0.0, 0.24, t)
+		var u := _cod_ease_out(t / 0.24)
 		reload_pos_off = cant_p * u
 		reload_rot_off = cant_r * u
 		_pose_part("mag", Vector3.ZERO)
 		_pose_part("bolt", Vector3.ZERO)
 		_pose_part("arm_left", hand_mag_p * u, hand_mag_r * u, PIVOT_AR_HAND)
 	elif t < 0.72:
-		# Unmistakable AK rock-forward off rear latch, then full downward pull out of magwell!
-		var u := smoothstep(0.24, 0.66, t)
-		var u_rock := smoothstep(0.0, 0.45, u)
-		var u_pull := smoothstep(0.20, 1.0, u)
-		reload_pos_off = cant_p + Vector3(0.0, -0.022 * sin(u * PI), 0.010)
-		reload_rot_off = cant_r + Vector3(0.07 * sin(u * PI), 0.0, -0.07 * sin(u * PI))
-		var mp := Vector3(-0.015 * u_pull, -0.25 * u_pull, -0.055 * u_pull)
+		# Thumb on the paddle, mag rocked FORWARD off the rear latch, then stripped down & out
+		var u_rock := _cod_ease_out((t - 0.24) / 0.14)
+		var u_pull := _cod_ease_out((t - 0.36) / 0.28)
+		var sw := sin(smoothstep(0.24, 0.66, t) * PI)
+		reload_pos_off = cant_p + Vector3(0.0, -0.022 * sw, 0.010 * sw)
+		reload_rot_off = cant_r + Vector3(0.07 * sw, 0.0, -0.07 * sw)
+		var mp := extract_end_mp * u_pull
 		var mr := Vector3(0.52 * u_rock, 0.0, 0.0)
 		_pose_part("mag", mp, mr, Vector3.ZERO, t < 0.66)
 		_pose_part("bolt", Vector3.ZERO)
-		_pose_part("arm_left", hand_mag_p + mp, hand_mag_r.lerp(hand_drop_r, u), PIVOT_AR_HAND)
+		_pose_part("arm_left", hand_mag_p + mp, hand_mag_r.lerp(hand_drop_r, u_pull), PIVOT_AR_HAND)
 	elif t < 1.04:
-		# Clear 0.32s EMPTY MAGWELL pause while left hand dips to pouch & grabs fresh plum mag!
+		# EMPTY MAGWELL beat; the shoulder rolls toward the pouch and never freezes
 		var u := smoothstep(0.72, 1.04, t)
 		var dip := sin(u * PI)
-		reload_pos_off = cant_p + Vector3(-0.008 * dip, -0.024 * dip, 0.010)
-		reload_rot_off = cant_r + Vector3(-0.04 * dip, 0.02, 0.03)
+		reload_pos_off = cant_p + Vector3(-0.010 * dip, -0.026 * dip, 0.010 * dip)
+		reload_rot_off = cant_r + Vector3(-0.05 * dip, 0.03 * dip, 0.06 * dip)
 		_pose_part("mag", extract_end_mp, Vector3(0.52, 0.0, 0.0), Vector3.ZERO, false)
 		_pose_part("bolt", Vector3.ZERO)
 		var arm_p := hand_extract_end.lerp(hand_pouch_p, smoothstep(0.0, 0.45, u)) if u < 0.5 else hand_pouch_p.lerp(hand_mag_p + extract_end_mp, smoothstep(0.5, 1.0, u))
 		_pose_part("arm_left", arm_p, hand_drop_r.lerp(hand_mag_r, smoothstep(0.5, 1.0, u)), PIVOT_AR_HAND)
 	elif t < 1.52:
-		# Bring fresh plum mag up tilted forward, hook front lug, rock backward into crisp latch click!
-		var u_up := smoothstep(1.04, 1.28, t)
-		var u_rock := smoothstep(1.26, 1.42, t)
-		var rock_bump := sin(smoothstep(1.38, 1.52, t) * PI)
-		reload_pos_off = cant_p + Vector3(0.0, 0.026 * rock_bump, -0.010 * rock_bump)
-		reload_rot_off = cant_r + Vector3(0.09 * rock_bump, 0.0, 0.06 * rock_bump)
+		# ROCK-AND-LOCK: mag comes up nose-tilted, front lug HOOKS (beat), then rocks back into the latch CLICK
+		var u_up := _cod_ease_out((t - 1.04) / 0.20)
+		var u_rock := _cod_ease_out((t - 1.32) / 0.10)
+		var hook_hold := smoothstep(1.22, 1.26, t) * (1.0 - smoothstep(1.32, 1.36, t))
+		reload_pos_off = cant_p + Vector3(0.0, 0.004 * hook_hold, 0.0)
+		reload_rot_off = cant_r + Vector3(0.012 * hook_hold, 0.0, 0.0)
 		var mp := extract_end_mp.lerp(Vector3.ZERO, u_up)
 		var mr := Vector3(lerpf(0.52, 0.0, u_rock), 0.0, 0.0)
 		_pose_part("mag", mp, mr, Vector3.ZERO, true)
 		_pose_part("bolt", Vector3.ZERO)
-		_pose_part("arm_left", hand_mag_p + mp + Vector3(0.0, 0.016 * rock_bump, 0.0), hand_mag_r, PIVOT_AR_HAND)
+		var hs := maxf(0.0, sin(smoothstep(1.38, 1.52, t) * PI))
+		_pose_part("arm_left", hand_mag_p + mp + Vector3(0.0, 0.016 * hs, 0.0), hand_mag_r, PIVOT_AR_HAND)
 	elif reload_was_empty and t < 2.06:
-		# Roll AK 3/4 right-side-up so support hand visibly grabs & pulls the right-side charging handle!
-		var reach := smoothstep(1.52, 1.72, t)
-		var pull := sin(smoothstep(1.72, 2.02, t) * PI)
-		reload_pos_off = cant_p.lerp(rack_pos, reach) + Vector3(0.0, -0.010 * pull, 0.014 * pull)
-		reload_rot_off = cant_r.lerp(rack_rot, reach) + Vector3(0.05 * pull, 0.0, 0.06 * pull)
+		# Roll the rifle onto its left side; overhand grab of the right-side charging handle, rip it back, let it slam
+		var reach := _cod_ease_out((t - 1.52) / 0.16)
+		var pull := 0.0
+		if t < 1.80:
+			pull = _cod_ease_out((t - 1.69) / 0.09)
+		else:
+			pull = 1.0 - smoothstep(1.80, 1.84, t)
+		var hold := smoothstep(1.86, 2.06, t)
+		reload_pos_off = cant_p.lerp(rack_pos, reach)
+		reload_rot_off = cant_r.lerp(rack_rot, reach)
 		_pose_part("mag", Vector3.ZERO)
 		_pose_part("bolt", Vector3(0.0, 0.0, 0.078 * pull))
-		_pose_part("arm_left", hand_mag_p.lerp(hand_bolt_p, reach) + Vector3(0.0, 0.0, 0.072 * pull), hand_mag_r.lerp(hand_bolt_r, reach), PIVOT_AR_HAND)
+		_pose_part("arm_left", hand_mag_p.lerp(hand_bolt_p, reach) + Vector3(0.0, 0.0, 0.072 * pull) + Vector3(0.0, 0.006, 0.0) * hold, hand_mag_r.lerp(hand_bolt_r, reach), PIVOT_AR_HAND)
 	else:
 		var s0 := 2.06 if reload_was_empty else 1.52
-		var u := smoothstep(s0, reload_dur, t)
+		var u := _cod_ease_out((t - s0) / maxf(reload_dur - s0, 0.05))
 		var prev_p := rack_pos if reload_was_empty else cant_p
 		var prev_r := rack_rot if reload_was_empty else cant_r
-		var prev_ap := hand_bolt_p if reload_was_empty else hand_mag_p
+		var prev_ap := (hand_bolt_p + Vector3(0.0, 0.006, 0.0)) if reload_was_empty else hand_mag_p
 		var prev_ar := hand_bolt_r if reload_was_empty else hand_mag_r
 		reload_pos_off = prev_p.lerp(Vector3.ZERO, u)
 		reload_rot_off = prev_r.lerp(Vector3.ZERO, u)
 		_pose_part("mag", Vector3.ZERO)
 		_pose_part("bolt", Vector3.ZERO)
 		_pose_part("arm_left", prev_ap.lerp(Vector3.ZERO, u), prev_ar.lerp(Vector3.ZERO, u), PIVOT_AR_HAND)
+	var pk_lock := _cod_punch(t, 1.42, 0.38)
+	reload_pos_off += Vector3(0.0, 0.026, -0.012) * pk_lock
+	reload_rot_off += Vector3(0.10, 0.0, 0.07) * pk_lock
+	if reload_was_empty:
+		var pk_bolt := _cod_punch(t, 1.81, 0.36)
+		reload_pos_off += Vector3(0.012, -0.012, 0.008) * pk_bolt
+		reload_rot_off += Vector3(-0.04, 0.0, 0.09) * pk_bolt
+	_reload_settle(t)
 	if t >= reload_dur:
 		is_reloading = false
 		_reset_weapon_parts()
 
 
 func _update_reload_benelli(delta: float) -> void:
-	# Real interruptible shell-by-shell loading with visible 12ga shell + chrome Lifter + Bolt chambering!
+	# Interruptible shell-by-shell: brisk rhythmic thumb shoves with an upward receiver bump; empty = fast side-bolt rack
 	reload_shell_timer += delta
 	# Push Benelli forward (-0.088 Z) & counter-roll arm_left (+0.85 Z) so elbow stays tucked down-left (ZERO sleeve bloat!)
 	var cant_p := Vector3(-0.044, 0.118, -0.088)
@@ -4129,7 +4692,7 @@ func _update_reload_benelli(delta: float) -> void:
 			_shotgun_exit_arm_p = hand_caddy_p * smoothstep(0.0, 0.24, reload_shell_timer)
 			_shotgun_exit_arm_r = hand_caddy_r * smoothstep(0.0, 0.24, reload_shell_timer)
 			return
-		var u := smoothstep(0.0, 0.24, reload_shell_timer)
+		var u := _cod_ease_out(reload_shell_timer / 0.24)
 		reload_pos_off = cant_p * u
 		reload_rot_off = cant_r * u
 		_pose_part("arm_left", hand_caddy_p * u, hand_caddy_r * u, PIVOT_AR_HAND)
@@ -4139,16 +4702,18 @@ func _update_reload_benelli(delta: float) -> void:
 			reload_flags = 0
 	elif reload_shell_phase == 1:
 		var st := reload_shell_timer
-		var push := sin(smoothstep(0.13, 0.31, st) * PI)
-		reload_pos_off = cant_p + Vector3(0.0, 0.016 * push, -0.010 * push)
-		reload_rot_off = cant_r + Vector3(-0.05 * push, 0.0, 0.07 * push)
+		# Upward receiver bump on every thumb shove (spring-damped), plus a light rhythmic shoulder bob
+		var bump := _cod_punch(st, 0.25, 0.14) if st < 0.39 else 0.0
+		var bob := sin(clampf(st / 0.38, 0.0, 1.0) * PI)
+		reload_pos_off = cant_p + Vector3(0.0, 0.020 * bump - 0.004 * bob, -0.010 * bump)
+		reload_rot_off = cant_r + Vector3(-0.06 * bump, 0.0, 0.08 * bump + 0.02 * bob)
 		var lift_u := sin(smoothstep(0.13, 0.31, st) * PI) if (st >= 0.13 and st < 0.31) else 0.0
 		_pose_part("lifter", Vector3(0.0, 0.012 * lift_u, 0.0), Vector3(0.24 * lift_u, 0.0, 0.0))
 
 		var cur_ap := hand_caddy_p
 		var cur_ar := hand_caddy_r
 		if st < 0.14:
-			var a := smoothstep(0.0, 0.14, st)
+			var a := _cod_ease_out(st / 0.14)
 			cur_ap = hand_caddy_p.lerp(hand_port_p, a)
 			cur_ar = hand_caddy_r.lerp(hand_port_r, a)
 			if is_instance_valid(_benelli_shell_rig):
@@ -4164,7 +4729,8 @@ func _update_reload_benelli(delta: float) -> void:
 				_benelli_shell_rig.position = p_port.lerp(p_enter, b)
 				_benelli_shell_rig.rotation = Vector3(lerpf(0.22, 0.08, b), 0.0, 0.0)
 		elif st < 0.30:
-			var c := smoothstep(0.22, 0.30, st)
+			# Hard thumb shove: accelerates into the tube
+			var c := pow(smoothstep(0.22, 0.29, st), 1.5)
 			cur_ap = hand_port_p.lerp(hand_push_p, lerpf(0.55, 1.0, c))
 			cur_ar = hand_port_r.lerp(hand_push_r, lerpf(0.55, 1.0, c))
 			if is_instance_valid(_benelli_shell_rig):
@@ -4172,7 +4738,7 @@ func _update_reload_benelli(delta: float) -> void:
 				_benelli_shell_rig.position = p_enter.lerp(p_seat, c)
 				_benelli_shell_rig.rotation = Vector3(lerpf(0.08, 0.0, c), 0.0, 0.0)
 		else:
-			var d := smoothstep(0.30, 0.38, st)
+			var d := _cod_ease_out((st - 0.30) / 0.08)
 			cur_ap = hand_push_p.lerp(hand_caddy_p, d)
 			cur_ar = hand_push_r.lerp(hand_caddy_r, d)
 			if is_instance_valid(_benelli_shell_rig):
@@ -4183,6 +4749,7 @@ func _update_reload_benelli(delta: float) -> void:
 		if st >= 0.28 and not (reload_flags & 1):
 			reload_flags |= 1
 			_play_reload_sfx(_sfx_shell_in, randf_range(1.00, 1.08))
+			_reload_cam_kick(0.006, -0.004, 0.004, 0.0)
 			if ammo_in_mag[9] < mag_cap and ammo_reserve[9] > 0:
 				ammo_in_mag[9] += 1
 				ammo_reserve[9] -= 1
@@ -4205,23 +4772,30 @@ func _update_reload_benelli(delta: float) -> void:
 		if is_instance_valid(_benelli_shell_rig):
 			_benelli_shell_rig.visible = false
 		_pose_part("lifter", Vector3.ZERO)
+		var et := reload_shell_timer
 		var exit_dur := 0.50 if reload_was_empty else (0.14 if reload_cancel_req else 0.24)
-		var u := smoothstep(0.0, exit_dur, reload_shell_timer)
+		var u := _cod_ease_out(et / exit_dur)
 		if reload_was_empty:
-			var roll_in := smoothstep(0.0, 0.16, reload_shell_timer)
-			var roll_out := smoothstep(0.36, exit_dur, reload_shell_timer)
-			var rack := sin(smoothstep(0.14, 0.38, reload_shell_timer) * PI)
-			reload_pos_off = cant_p.lerp(rack_p, roll_in).lerp(Vector3.ZERO, roll_out)
-			reload_rot_off = cant_r.lerp(rack_r, roll_in).lerp(Vector3.ZERO, roll_out)
+			var roll_in := _cod_ease_out(et / 0.14)
+			var roll_out := smoothstep(0.34, exit_dur, et)
+			# Fast side-bolt rack: snatch back (0.14..0.21), release slams forward (0.23..0.26)
+			var rack := 0.0
+			if et < 0.23:
+				rack = _cod_ease_out((et - 0.14) / 0.07)
+			else:
+				rack = 1.0 - smoothstep(0.23, 0.26, et)
+			var pk_r := _cod_punch(et, 0.245, 0.26)
+			reload_pos_off = cant_p.lerp(rack_p, roll_in).lerp(Vector3.ZERO, roll_out) + Vector3(0.010, -0.010, 0.008) * pk_r
+			reload_rot_off = cant_r.lerp(rack_r, roll_in).lerp(Vector3.ZERO, roll_out) + Vector3(-0.03, 0.0, 0.08) * pk_r
 			_pose_part("bolt", Vector3(0.0, 0.0, 0.068 * rack))
 			var arm_p := _shotgun_exit_arm_p.lerp(hand_bolt_p, roll_in).lerp(Vector3.ZERO, roll_out) + Vector3(0.0, 0.0, 0.064 * rack)
 			var arm_r := _shotgun_exit_arm_r.lerp(hand_bolt_r, roll_in).lerp(Vector3.ZERO, roll_out)
 			_pose_part("arm_left", arm_p, arm_r, PIVOT_AR_HAND)
-			if reload_shell_timer >= 0.24 and not (reload_flags & 4):
+			if et >= 0.24 and not (reload_flags & 4):
 				reload_flags |= 4
 				weapon_chambered[9] = true
 				_play_reload_sfx(_sfx_bolt, 0.96)
-				trauma = minf(1.0, trauma + 0.10)
+				_reload_cam_kick(-0.014, 0.014, 0.010, 0.10)
 		else:
 			reload_pos_off = cant_p.lerp(Vector3.ZERO, u)
 			reload_rot_off = cant_r.lerp(Vector3.ZERO, u)
@@ -4234,8 +4808,8 @@ func _update_reload_benelli(delta: float) -> void:
 
 
 func _update_reload_m249() -> void:
-	# Fixed hinge sign (-1.15 rad X lifts TopCover UP cleanly revealing FeedTray!),
-	# Forward hand_lid_p + 3/4 rack view eliminate sleeve bloat while preserving awesome box/belt visuals!
+	# Weighty LMG: TopCover pops up (optic rides with it) -> heavy box swap -> belt draped & patted onto the tray
+	# -> brutal downward TopCover slam -> heavy charging-handle pull
 	var t := reload_elapsed
 	var cant_p := Vector3(-0.048, 0.095, -0.055)
 	var cant_r := Vector3(0.20, 0.30, -0.26)
@@ -4252,41 +4826,44 @@ func _update_reload_m249() -> void:
 
 	if _reload_event(0.24, 1):
 		_play_reload_sfx(_sfx_bolt, 0.72)
+		_reload_cam_kick(0.008, -0.006, 0.0, 0.0)
 	if _reload_event(0.62, 2):
 		_play_reload_sfx(_sfx_mag_out, 0.78)
 	if _reload_event(1.02, 32):
 		_spawn_dropped_mag(10)
+		_reload_cam_kick(0.006, 0.006, 0.0, 0.0)
 	if _reload_event(1.94, 4):
 		_play_reload_sfx(_sfx_mag_in, 0.76)
-		trauma = minf(1.0, trauma + 0.10)
+		_reload_cam_kick(0.014, -0.010, 0.008, 0.10)
 	if _reload_event(2.26, 16):
 		_play_reload_sfx(_sfx_shell_in, 0.84)
-	if _reload_event(2.62, 8):
+	if _reload_event(2.60, 8):
 		_commit_mag_ammo()
 		_play_reload_sfx(_sfx_bolt, 0.76)
-		trauma = minf(1.0, trauma + 0.14)
-	if _reload_event(2.96, 64):
+		_reload_cam_kick(-0.024, 0.008, 0.012, 0.16)
+	if _reload_event(3.07, 64):
 		weapon_chambered[10] = true
 		_play_reload_sfx(_sfx_bolt, 0.88)
-		trauma = minf(1.0, trauma + 0.10)
+		_reload_cam_kick(-0.016, 0.016, 0.012, 0.10)
 
 	var lid_piv := Vector3(0.0, 0.0371, -0.3087)
 	if t < 0.48:
-		# Left hand reaches up & pops TopCover UP (-1.15 rad X) cleanly with ZERO sleeve bloat!
+		# Heavy gun: slower ease into the cant; TopCover springs UP off its latch at 0.24s
 		var u := smoothstep(0.0, 0.48, t)
-		var lid_u := smoothstep(0.18, 0.46, t)
+		var lid_u := _cod_ease_out((t - 0.20) / 0.14)
 		reload_pos_off = cant_p * u
 		reload_rot_off = cant_r * u
 		var lid_rot := Vector3(-1.15 * lid_u, 0.0, 0.0)
 		_pose_part("top_cover", Vector3.ZERO, lid_rot)
 		_pose_optic_hood(Vector3.ZERO, lid_rot, lid_piv)
 		_pose_part("ammo_belt", Vector3.ZERO)
-		_pose_part("arm_left", hand_lid_p * smoothstep(0.0, 0.22, t) + Vector3(0.0, 0.032 * lid_u, -0.016 * lid_u), hand_lid_r * smoothstep(0.0, 0.22, t), PIVOT_AR_HAND)
+		_pose_part("arm_left", hand_lid_p * _cod_ease_out(t / 0.22) + Vector3(0.0, 0.032 * lid_u, -0.016 * lid_u), hand_lid_r * _cod_ease_out(t / 0.22), PIVOT_AR_HAND)
 	elif t < 1.15:
-		# Sweep old belt off tray and pull 100-rd box mag down & drop it
-		var u := smoothstep(0.55, 1.05, t)
-		reload_pos_off = cant_p
-		reload_rot_off = cant_r
+		# Sweep old belt off tray and pull 100-rd box down & drop it
+		var u := _cod_ease_out((t - 0.55) / 0.50)
+		var sw := sin(smoothstep(0.50, 1.15, t) * PI)
+		reload_pos_off = cant_p + Vector3(-0.006, -0.016, 0.004) * sw
+		reload_rot_off = cant_r + Vector3(-0.03, 0.02, 0.04) * sw
 		_pose_part("top_cover", Vector3.ZERO, Vector3(-1.15, 0.0, 0.0))
 		_pose_optic_hood(Vector3.ZERO, Vector3(-1.15, 0.0, 0.0), lid_piv)
 		var mp := Vector3(-0.04 * u, -0.24 * u, 0.0)
@@ -4296,19 +4873,20 @@ func _update_reload_m249() -> void:
 		var arm_to_box := (hand_lid_p + Vector3(0.0, 0.032, -0.016)).lerp(hand_box_p, to_box)
 		_pose_part("arm_left", arm_to_box + mp, hand_lid_r.lerp(hand_box_r, to_box), PIVOT_AR_HAND)
 	elif t < 2.08:
-		# Bring fresh box mag up and lock under receiver
-		var u := smoothstep(1.32, 1.98, t)
-		reload_pos_off = cant_p + Vector3(0.0, 0.018 * sin(smoothstep(1.90, 2.08, t) * PI), 0.0)
-		reload_rot_off = cant_r
+		# Heavy fresh 200-rd box hauled up: gun sags under the load, then locks with a jolt at 1.94s
+		var u := smoothstep(1.32, 1.96, t)
+		var haul := sin(smoothstep(1.15, 1.94, t) * PI)
+		reload_pos_off = cant_p + Vector3(0.0, -0.018, 0.006) * haul
+		reload_rot_off = cant_r + Vector3(-0.05, 0.02, 0.03) * haul
 		_pose_part("top_cover", Vector3.ZERO, Vector3(-1.15, 0.0, 0.0))
 		_pose_optic_hood(Vector3.ZERO, Vector3(-1.15, 0.0, 0.0), lid_piv)
 		var mp := Vector3(lerpf(-0.04, 0.0, u), lerpf(-0.24, 0.0, u), 0.0)
 		_pose_part("mag", mp, Vector3.ZERO, Vector3.ZERO, t >= 1.28)
 		_pose_part("ammo_belt", Vector3(-0.06, -0.12, 0.0), Vector3(0.0, 0.0, 0.55), Vector3.ZERO, false)
 		_pose_part("arm_left", hand_box_p + mp, hand_box_r, PIVOT_AR_HAND)
-	elif t < 2.42:
-		# Left hand drapes fresh brass AmmoBelt cleanly across the exposed steel FeedTray!
-		var u := smoothstep(2.08, 2.38, t)
+	elif t < 2.46:
+		# Belt drawn up and draped across the steel FeedTray, then patted flat twice
+		var u := _cod_ease_out((t - 2.08) / 0.18)
 		reload_pos_off = cant_p
 		reload_rot_off = cant_r
 		_pose_part("top_cover", Vector3.ZERO, Vector3(-1.15, 0.0, 0.0))
@@ -4316,24 +4894,29 @@ func _update_reload_m249() -> void:
 		_pose_part("mag", Vector3.ZERO)
 		var bp := Vector3(lerpf(-0.06, 0.0, u), lerpf(-0.08, 0.0, u), 0.0)
 		_pose_part("ammo_belt", bp, Vector3(0.0, 0.0, lerpf(0.48, 0.0, u)), Vector3.ZERO, true)
-		_pose_part("arm_left", hand_box_p.lerp(hand_belt_p, u), hand_box_r.lerp(hand_belt_r, u), PIVOT_AR_HAND)
+		var pat := maxf(0.0, sin(clampf((t - 2.26) / 0.08, 0.0, 1.0) * PI)) + maxf(0.0, sin(clampf((t - 2.36) / 0.08, 0.0, 1.0) * PI))
+		_pose_part("arm_left", hand_box_p.lerp(hand_belt_p, u) + Vector3(0.0, -0.010 * pat, 0.0), hand_box_r.lerp(hand_belt_r, u), PIVOT_AR_HAND)
 	elif t < 2.76:
-		# Left hand slams TopCover shut (-1.15 -> 0.0 rad X)!
-		var close_u := smoothstep(2.46, 2.66, t)
-		var slam := sin(smoothstep(2.60, 2.74, t) * PI)
-		reload_pos_off = cant_p + Vector3(0.0, -0.022 * slam, 0.0)
-		reload_rot_off = cant_r + Vector3(-0.06 * slam, 0.0, 0.0)
+		# BRUTAL slam: the cover accelerates down (eased-in) and hits at 2.60s
+		var close_u := pow(smoothstep(2.48, 2.60, t), 2.2)
+		reload_pos_off = cant_p
+		reload_rot_off = cant_r
 		var close_rot := Vector3(-1.15 * (1.0 - close_u), 0.0, 0.0)
 		_pose_part("top_cover", Vector3.ZERO, close_rot)
 		_pose_optic_hood(Vector3.ZERO, close_rot, lid_piv)
 		_pose_part("mag", Vector3.ZERO)
 		_pose_part("ammo_belt", Vector3.ZERO)
-		_pose_part("arm_left", hand_belt_p.lerp(hand_lid_p + Vector3(0.0, 0.015, 0.0), close_u), hand_belt_r.lerp(hand_lid_r, close_u), PIVOT_AR_HAND)
+		var raise := sin(smoothstep(2.46, 2.52, t) * PI) * 0.012
+		_pose_part("arm_left", hand_belt_p.lerp(hand_lid_p + Vector3(0.0, 0.015, 0.0), close_u) + Vector3(0.0, raise, 0.0), hand_belt_r.lerp(hand_lid_r, close_u), PIVOT_AR_HAND)
 	elif t < 3.16:
-		# Roll M249 3/4 right-side-up so charging handle pull is crisp & unmistakable!
-		var reach := smoothstep(2.76, 2.92, t)
-		var pull := sin(smoothstep(2.90, 3.14, t) * PI)
-		reload_pos_off = cant_p.lerp(rack_p, reach)
+		# Roll 3/4 right-side-up: heavy two-stage charge pull, release lets the bolt slam forward at 3.07s
+		var reach := _cod_ease_out((t - 2.76) / 0.16)
+		var pull := 0.0
+		if t < 3.05:
+			pull = smoothstep(2.90, 3.04, t)
+		else:
+			pull = 1.0 - smoothstep(3.05, 3.09, t)
+		reload_pos_off = cant_p.lerp(rack_p, reach) + Vector3(0.0, -0.006, 0.006) * pull
 		reload_rot_off = cant_r.lerp(rack_r, reach)
 		_pose_part("top_cover", Vector3.ZERO)
 		_pose_optic_hood(Vector3.ZERO)
@@ -4349,27 +4932,41 @@ func _update_reload_m249() -> void:
 		_pose_part("mag", Vector3.ZERO)
 		_pose_part("ammo_belt", Vector3.ZERO)
 		_pose_part("arm_left", hand_charge_p.lerp(Vector3.ZERO, u), hand_charge_r.lerp(Vector3.ZERO, u), PIVOT_AR_HAND)
+	var pk_pop := _cod_punch(t, 0.24, 0.34)
+	var pk_drop := _cod_punch(t, 1.02, 0.36)
+	var pk_lock := _cod_punch(t, 1.94, 0.40)
+	var pk_slam := _cod_punch(t, 2.59, 0.42)
+	var pk_bolt := _cod_punch(t, 3.07, 0.32)
+	reload_pos_off += Vector3(0.0, -0.008, 0.0) * pk_pop + Vector3(0.0, 0.014, 0.0) * pk_drop + Vector3(0.0, 0.024, -0.008) * pk_lock
+	reload_pos_off += Vector3(0.0, -0.034, 0.006) * pk_slam + Vector3(0.012, -0.012, 0.010) * pk_bolt
+	reload_rot_off += Vector3(-0.03, 0.0, 0.0) * pk_pop + Vector3(0.04, 0.0, 0.0) * pk_drop + Vector3(0.07, 0.0, 0.05) * pk_lock
+	reload_rot_off += Vector3(-0.10, 0.0, 0.03) * pk_slam + Vector3(-0.04, 0.0, 0.08) * pk_bolt
+	_reload_settle(t)
 	if t >= reload_dur:
 		is_reloading = false
 		_reset_weapon_parts()
 
 
 func _update_reload_magnum() -> void:
-	# Strong left-side presentation cant so open chrome 6-shot cylinder + brass dumping + 6-round SpeedLoader are unmistakable!
+	# .44: thumb the latch, crane swings out -> sharp upward wrist-whip with a double ejector-rod tap dumping brass
+	# -> SpeedLoader pressed home & twisted to release -> classic wrist-flick snaps the cylinder shut
 	var t := reload_elapsed
-	var cant_p := Vector3(-0.072, 0.116, 0.018)
-	var cant_r := Vector3(0.26, 0.58, -0.46)
-	var load_p := Vector3(-0.072, 0.122, 0.018)
-	var load_r := Vector3(-0.32, 0.56, -0.38)
-	var hand_clear_p := Vector3(-0.135, -0.140, 0.035)
+	# Held forward & high with modest yaw so the shooting forearm drops below the lens instead of sweeping across it
+	var cant_p := Vector3(-0.048, 0.128, -0.075)
+	var cant_r := Vector3(0.34, 0.30, -0.44)
+	var load_p := Vector3(-0.050, 0.045, 0.070)
+	# Load muzzle-UP (muzzle-down would pivot the forearm up into the lens); loader comes in from below-rear
+	var load_r := Vector3(0.20, 0.30, -0.46)
+	var hand_clear_p := Vector3(-0.10, -0.32, 0.16)
 	var hand_clear_r := Vector3(-0.30, 0.25, 0.22)
 	# Fingers support the SpeedLoader from below-left so all 6 gleaming brass .44 rounds & chrome cylinder stay 100% unobstructed!
-	var hand_load_p := Vector3(-0.082, -0.064, 0.014)
+	var hand_load_p := Vector3(-0.034, 0.028, -0.070)
 	var hand_load_r := Vector3(-0.18, 0.20, 0.18)
 
 	if _reload_event(0.14, 1):
 		_play_reload_sfx(_sfx_mag_out, 0.90)
-	if _reload_event(0.46, 2):
+		_reload_cam_kick(-0.006, 0.010, 0.0, 0.0)
+	if _reload_event(0.44, 2):
 		var cyl_w := weapon_pivot.to_global(Vector3(-0.045, 0.015, -0.130))
 		if _w_parts.has("cylinder") and not (_w_parts["cylinder"] as Array).is_empty():
 			var cn := _w_parts["cylinder"][0] as Node3D
@@ -4377,60 +4974,77 @@ func _update_reload_magnum() -> void:
 				cyl_w = cn.global_position
 		for _c in range(maxi(1, _magnum_spent_count)):
 			_eject_brass_casing(WEAPONS[6], false, cyl_w)
-	if _reload_event(1.22, 4):
+		_reload_cam_kick(0.010, 0.0, 0.004, 0.0)
+	if _reload_event(0.56, 16):
+		_play_reload_sfx(_sfx_shell_in, 0.70)
+		_reload_cam_kick(0.006, 0.0, 0.002, 0.0)
+	if _reload_event(1.20, 4):
 		_play_reload_sfx(_sfx_shell_in, 0.88)
-	if _reload_event(1.72, 8):
+		_reload_cam_kick(0.008, -0.004, 0.004, 0.0)
+	if _reload_event(1.66, 8):
 		_commit_mag_ammo()
 		weapon_chambered[6] = true
 		_play_reload_sfx(_sfx_mag_in, 0.92)
-		trauma = minf(1.0, trauma + 0.12)
+		_reload_cam_kick(0.004, 0.024, 0.008, 0.12)
 
 	if t < 0.28:
-		var u := smoothstep(0.0, 0.28, t)
+		var u := _cod_ease_out(t / 0.24)
 		reload_pos_off = cant_p * u
 		reload_rot_off = cant_r * u
-		_pose_part("crane", Vector3.ZERO, Vector3(0.0, 0.0, 1.32 * u))
+		_pose_part("crane", Vector3.ZERO, Vector3(0.0, 0.0, 1.32 * _cod_ease_out((t - 0.10) / 0.12)))
 		_pose_part("speed_loader", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, false)
 		_pose_part("arm_left", hand_clear_p * u, hand_clear_r * u)
 	elif t < 0.74:
-		# Tilt muzzle UP so spent brass visibly dumps out the open chrome cylinder with unobstructed sightline!
-		var u := smoothstep(0.28, 0.74, t)
-		var dump := sin(u * PI)
-		reload_pos_off = cant_p + Vector3(0.0, 0.028 * dump, 0.018 * dump)
-		reload_rot_off = cant_r + Vector3(0.62 * dump, 0.0, -0.12 * dump)
+		# Sharp whip UP (fast attack, held), two ejector taps punch the brass out, then a cushioned drop
+		var whip := _cod_ease_out((t - 0.28) / 0.10) * (1.0 - smoothstep(0.62, 0.74, t))
+		var tap := maxf(0.0, _cod_punch(t, 0.42, 0.12)) + maxf(0.0, _cod_punch(t, 0.54, 0.12))
+		reload_pos_off = cant_p + Vector3(0.0, 0.028 * whip, 0.018 * whip)
+		reload_rot_off = cant_r + Vector3(0.66 * whip, 0.0, -0.12 * whip)
 		_pose_part("crane", Vector3.ZERO, Vector3(0.0, 0.0, 1.32))
 		_pose_part("speed_loader", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, false)
-		_pose_part("arm_left", hand_clear_p + Vector3(-0.02 * dump, -0.02 * dump, 0.02 * dump), hand_clear_r)
+		_pose_part("arm_left", hand_clear_p + Vector3(-0.02 * whip, -0.02 * whip, 0.02 * whip + 0.016 * tap), hand_clear_r)
 	elif t < 1.54:
-		# Tilt muzzle DOWN so open rear of all 6 chambers faces camera while visible 6-shot brass SpeedLoader slides in!
-		var u_tilt := smoothstep(0.74, 0.94, t)
-		var u_in := smoothstep(0.80, 1.24, t)
-		var u_out := smoothstep(1.30, 1.52, t)
-		var seat := sin(smoothstep(1.18, 1.36, t) * PI)
-		reload_pos_off = cant_p.lerp(load_p, u_tilt) + Vector3(0.0, 0.018 * seat, 0.0)
+		# Muzzle DOWN: SpeedLoader aligned, pressed home (1.20s), knob twisted to release, loader pulled away
+		var u_tilt := _cod_ease_out((t - 0.74) / 0.18)
+		var u_in := _cod_ease_out((t - 0.84) / 0.30)
+		var twist := smoothstep(1.24, 1.32, t)
+		var u_out := smoothstep(1.34, 1.52, t)
+		reload_pos_off = cant_p.lerp(load_p, u_tilt)
 		reload_rot_off = cant_r.lerp(load_r, u_tilt)
 		_pose_part("crane", Vector3.ZERO, Vector3(0.0, 0.0, 1.32))
-		_pose_part("cylinder", Vector3.ZERO, Vector3(0.0, 0.0, _revolver_cyl_angle + u_in * TAU))
+		_pose_part("cylinder", Vector3.ZERO, Vector3(0.0, 0.0, _revolver_cyl_angle + twist * (TAU / 24.0)))
 		var sl_z := lerpf(0.11, 0.0, u_in) + 0.14 * u_out
-		_pose_part("speed_loader", Vector3(0.0, 0.0, sl_z), Vector3(0.0, 0.0, u_out * 0.65), Vector3.ZERO, t < 1.48)
-		var arm_in := hand_clear_p.lerp(hand_load_p + Vector3(0.0, 0.0, sl_z), smoothstep(0.74, 0.94, t))
-		_pose_part("arm_left", arm_in + Vector3(0.0, -0.04 * u_out, 0.0), hand_clear_r.lerp(hand_load_r, u_tilt))
+		_pose_part("speed_loader", Vector3(0.0, 0.0, sl_z), Vector3(0.0, 0.0, -0.55 * twist + u_out * 0.40), Vector3.ZERO, t < 1.48)
+		var arm_in := hand_clear_p.lerp(hand_load_p + Vector3(0.0, 0.0, sl_z), _cod_ease_out((t - 0.74) / 0.20))
+		_pose_part("arm_left", arm_in + Vector3(0.0, -0.04 * u_out, 0.0), hand_clear_r.lerp(hand_load_r, u_tilt) + Vector3(0.0, 0.0, -0.30 * twist))
 	else:
-		var u := smoothstep(1.54, reload_dur, t)
-		var snap := smoothstep(1.58, 1.76, t)
-		var flick := sin(smoothstep(1.56, 1.84, t) * PI)
+		# Wrist-flick: the gun rolls hard right as the crane snaps shut at 1.62s, then settles back
+		var u := _cod_ease_out((t - 1.62) / maxf(reload_dur - 1.62, 0.05))
+		var snap := pow(smoothstep(1.56, 1.63, t), 1.6)
+		var flick := sin(smoothstep(1.54, 1.80, t) * PI)
 		reload_pos_off = load_p.lerp(Vector3.ZERO, u) + Vector3(-0.025 * flick, 0.0, 0.0)
-		reload_rot_off = load_r.lerp(Vector3.ZERO, u) + Vector3(0.0, 0.0, 0.34 * flick)
+		reload_rot_off = load_r.lerp(Vector3.ZERO, u) + Vector3(0.0, 0.0, 0.38 * flick)
 		_pose_part("crane", Vector3.ZERO, Vector3(0.0, 0.0, 1.32 * (1.0 - snap)))
 		_pose_part("speed_loader", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, false)
-		_pose_part("arm_left", (hand_load_p + Vector3(0.0, -0.04, 0.14)).lerp(Vector3.ZERO, u), hand_load_r.lerp(Vector3.ZERO, u))
+		var hb := smoothstep(1.50, 1.68, t)
+		_pose_part("arm_left", (hand_load_p + Vector3(0.0, -0.04, 0.14)).lerp(Vector3.ZERO, hb), hand_load_r.lerp(Vector3.ZERO, hb))
+	var pk_seat := _cod_punch(t, 1.19, 0.28)
+	var pk_shut := _cod_punch(t, 1.62, 0.36)
+	reload_pos_off += Vector3(0.0, 0.016, -0.006) * pk_seat + Vector3(-0.010, 0.006, 0.0) * pk_shut
+	reload_rot_off += Vector3(0.05, 0.0, 0.0) * pk_seat + Vector3(0.02, 0.0, 0.12) * pk_shut
+	if t >= 0.28 and t < 0.74:
+		var tapk := _cod_punch(t, 0.43, 0.14) + _cod_punch(t, 0.55, 0.14)
+		reload_pos_off += Vector3(0.0, 0.008, 0.0) * tapk
+		reload_rot_off += Vector3(0.05, 0.0, 0.0) * tapk
+	_reload_settle(t)
 	if t >= reload_dur:
 		is_reloading = false
 		_reset_weapon_parts()
 
 
 func _update_reload_hunting(delta: float) -> void:
-	# Interruptible per-round Springfield M1903 reload — 3/4 yaw (-0.58 Y) & roll (+0.68 Z) show open breech, bolt & gleaming brass .30-06!
+	# Interruptible per-round Springfield M1903 — sharp bolt lift/pull, a tactile thumb-press bump per .30-06 round,
+	# forceful bolt slam & lock. 3/4 yaw (-0.62 Y) & roll (+0.72 Z) keep the open breech in view
 	reload_shell_timer += delta
 	var cant_p := Vector3(-0.115, 0.114, -0.026)
 	var cant_r := Vector3(0.24, -0.62, 0.72)
@@ -4441,39 +5055,43 @@ func _update_reload_hunting(delta: float) -> void:
 	var mag_cap := get_weapon_mag_size(7)
 
 	if reload_shell_phase == 0:
-		# Roll rifle 3/4 right-side-up & visibly grab + lift + pull bolt rearward with right hand!
-		var u := smoothstep(0.0, 0.36, reload_shell_timer)
-		reload_pos_off = cant_p * u
-		reload_rot_off = cant_r * u
-		var lift := smoothstep(0.04, 0.20, reload_shell_timer)
-		var pull := smoothstep(0.16, 0.36, reload_shell_timer)
+		var st := reload_shell_timer
+		var u := _cod_ease_out(st / 0.30)
+		var lift := _cod_ease_out((st - 0.04) / 0.10)
+		var pull := _cod_ease_out((st - 0.15) / 0.14)
+		var pk_open := _cod_punch(st, 0.28, 0.20)
+		reload_pos_off = cant_p * u + Vector3(0.0, 0.0, 0.010) * pk_open
+		reload_rot_off = cant_r * u + Vector3(0.03, 0.0, -0.04) * pk_open
 		_pose_part("bolt", Vector3(0.0, 0.0, 0.085 * pull), Vector3(0.0, 0.0, 1.05 * lift))
 		_pose_part("feed_round", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, false)
 		_pose_part("arm_right", hand_bolt_p * lift + Vector3(0.0, 0.0, 0.085 * pull), hand_bolt_r * lift)
-		if reload_shell_timer >= 0.16 and not (reload_flags & 1):
+		if st >= 0.16 and not (reload_flags & 1):
 			reload_flags |= 1
 			_play_reload_sfx(_sfx_bolt, 0.78)
+			_reload_cam_kick(-0.008, 0.008, 0.006, 0.0)
 			if _sniper_pending_eject:
 				_sniper_pending_eject = false
 				_eject_brass_casing(WEAPONS[7], false)
-		if reload_shell_timer >= 0.36:
+		if st >= 0.36:
 			reload_shell_phase = 1
 			reload_shell_timer = 0.0
 			reload_flags = 0
 	elif reload_shell_phase == 1:
 		var st := reload_shell_timer
-		var push := sin(smoothstep(0.12, 0.30, st) * PI)
-		reload_pos_off = cant_p + Vector3(0.0, 0.014 * push, 0.0)
-		reload_rot_off = cant_r
+		# Tactile thumb press: round driven down past the feed lips with a crisp downward bump
+		var press := _cod_punch(st, 0.23, 0.13) if st < 0.36 else 0.0
+		var bob := sin(clampf(st / 0.36, 0.0, 1.0) * PI)
+		reload_pos_off = cant_p + Vector3(0.0, -0.012 * press + 0.006 * bob, 0.0)
+		reload_rot_off = cant_r + Vector3(-0.04 * press, 0.0, 0.02 * bob)
 		_pose_part("bolt", Vector3(0.0, 0.0, 0.085), Vector3(0.0, 0.0, 1.05))
-		# Arc bright brass .30-06 round visibly from right-side down under scope into open breech!
-		var u_in := smoothstep(0.0, 0.28, st)
+		var u_in := _cod_ease_out(st / 0.24)
 		var fp := Vector3(lerpf(0.088, 0.0, u_in), lerpf(0.048, -0.014, u_in), lerpf(0.008, 0.0, u_in))
 		_pose_part("feed_round", fp, Vector3(-0.14 * (1.0 - u_in), 0.18 * (1.0 - u_in), -0.32 * (1.0 - u_in)), Vector3.ZERO, st < 0.28)
-		_pose_part("arm_right", hand_feed_p + fp, hand_feed_r)
+		_pose_part("arm_right", hand_feed_p + fp + Vector3(0.0, -0.006 * maxf(0.0, press), 0.0), hand_feed_r)
 		if st >= 0.25 and not (reload_flags & 2):
 			reload_flags |= 2
 			_play_reload_sfx(_sfx_shell_in, randf_range(1.06, 1.16))
+			_reload_cam_kick(0.005, -0.003, 0.002, 0.0)
 			if ammo_in_mag[7] < mag_cap and ammo_reserve[7] > 0:
 				ammo_in_mag[7] += 1
 				ammo_reserve[7] -= 1
@@ -4488,22 +5106,25 @@ func _update_reload_hunting(delta: float) -> void:
 				reload_shell_timer = 0.0
 				reload_flags = 0
 	elif reload_shell_phase == 2:
+		var st := reload_shell_timer
 		var exit_dur := 0.52
-		var u := smoothstep(0.0, exit_dur, reload_shell_timer)
-		var close_u := smoothstep(0.04, 0.28, reload_shell_timer)
-		var lock_u := smoothstep(0.24, 0.38, reload_shell_timer)
-		reload_pos_off = cant_p.lerp(Vector3.ZERO, smoothstep(0.24, exit_dur, reload_shell_timer))
-		reload_rot_off = cant_r.lerp(Vector3.ZERO, smoothstep(0.24, exit_dur, reload_shell_timer))
+		# Bolt thrown forward (accelerating), slammed down into lock at 0.22s
+		var close_u := pow(smoothstep(0.04, 0.18, st), 1.5)
+		var lock_u := smoothstep(0.18, 0.26, st)
+		var back := smoothstep(0.24, exit_dur, st)
+		var pk_slam := _cod_punch(st, 0.21, 0.30)
+		reload_pos_off = cant_p.lerp(Vector3.ZERO, back) + Vector3(0.0, -0.010, -0.014) * pk_slam
+		reload_rot_off = cant_r.lerp(Vector3.ZERO, back) + Vector3(-0.06, 0.0, -0.07) * pk_slam
 		_pose_part("bolt", Vector3(0.0, 0.0, 0.085 * (1.0 - close_u)), Vector3(0.0, 0.0, 1.05 * (1.0 - lock_u)))
 		_pose_part("feed_round", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, false)
-		var ret := smoothstep(0.34, exit_dur, reload_shell_timer)
+		var ret := smoothstep(0.30, exit_dur, st)
 		_pose_part("arm_right", (hand_bolt_p + Vector3(0.0, 0.0, 0.085 * (1.0 - close_u))).lerp(Vector3.ZERO, ret), hand_bolt_r.lerp(Vector3.ZERO, ret))
-		if reload_shell_timer >= 0.24 and not (reload_flags & 4):
+		if st >= 0.21 and not (reload_flags & 4):
 			reload_flags |= 4
 			weapon_chambered[7] = true
 			_play_reload_sfx(_sfx_bolt, 0.88)
-			trauma = minf(1.0, trauma + 0.10)
-		if reload_shell_timer >= exit_dur:
+			_reload_cam_kick(-0.016, 0.012, 0.010, 0.10)
+		if st >= exit_dur:
 			weapon_chambered[7] = true
 			is_reloading = false
 			reload_cancel_req = false
@@ -4525,13 +5146,14 @@ func _update_reload_rifle() -> void:
 	_pose_part("dust_cover", Vector3.ZERO, Vector3.ZERO if (_m16_dust_open or reload_was_empty) else Vector3(0.0, 0.0, 1.48), PIVOT_AR_DUST)
 	_pose_part("mag_bullet", Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, round_vis)
 
-	# Authoritative timestamp-crossing events
 	if _reload_event(0.24, 1):
 		_play_reload_sfx(_sfx_mag_out, 1.0)
+		_reload_cam_kick(-0.008, 0.006, 0.0, 0.0)
 	if _reload_event(0.58, 32):
 		_spawn_dropped_mag(1)
 	if _reload_event(1.18, 2):
 		_play_reload_sfx(_sfx_mag_in, 1.0)
+		_reload_cam_kick(0.014, -0.008, 0.008, 0.0)
 	if _reload_event(1.28, 4):
 		_commit_mag_ammo()
 		if not reload_was_empty:
@@ -4542,69 +5164,72 @@ func _update_reload_rifle() -> void:
 		weapon_chambered[1] = true
 		_m16_dust_open = true
 		_play_reload_sfx(_sfx_bolt, 1.04)
-		trauma = minf(1.0, trauma + 0.11)
+		_reload_cam_kick(-0.012, 0.012, 0.006, 0.11)
 
 	# Keep bolt locked back cleanly until bolt-catch slap at 1.66s!
 	if reload_was_empty:
-		var bolt_u := 1.0 if t < 1.66 else (1.0 - smoothstep(1.66, 1.73, t))
+		var bolt_u := 1.0 if t < 1.66 else (1.0 - smoothstep(1.66, 1.70, t))
 		_pose_part("slide", Vector3(0.0, 0.0, 0.052 * bolt_u))
 	else:
 		_pose_part("slide", Vector3.ZERO)
 
 	if t < 0.22:
-		var u := smoothstep(0.0, 0.22, t)
+		var u := _cod_ease_out(t / 0.22)
 		reload_pos_off = base_cant_p * u
 		reload_rot_off = base_cant_r * u
 		_pose_part("mag", Vector3.ZERO)
 		_pose_part("arm_left", hand_mag_p * u, hand_mag_r * u, PIVOT_AR_HAND)
 	elif t < 0.66:
-		var u := smoothstep(0.24, 0.62, t)
-		reload_pos_off = base_cant_p + Vector3(0.0, -0.022 * sin(u * PI), 0.012)
-		reload_rot_off = base_cant_r + Vector3(0.06 * sin(u * PI), 0.0, -0.08 * sin(u * PI))
+		# Mag-release pop (a few mm drop), then the hand strips it out with an energetic pull
+		var u := 0.12 * smoothstep(0.24, 0.29, t) + 0.88 * _cod_ease_out((t - 0.29) / 0.29)
+		var sw := sin(smoothstep(0.22, 0.62, t) * PI)
+		reload_pos_off = base_cant_p + Vector3(0.0, -0.022 * sw, 0.012 * smoothstep(0.22, 0.34, t))
+		reload_rot_off = base_cant_r + Vector3(0.06 * sw, 0.0, -0.08 * sw)
 		var mp := EJECT_AR * (0.25 * u)
 		_pose_part("mag", mp, Vector3(-0.22 * u, 0.0, 0.0), PIVOT_AR_MAG, t < 0.58)
 		_pose_part("arm_left", hand_mag_p + mp, hand_mag_r.lerp(hand_drop_r, u), PIVOT_AR_HAND)
 	elif t < 0.92:
-		# Continuous hand dip from hand_extract_end -> pouch -> align (ZERO jump at 0.66s!)
+		# Continuous hand dip to the pouch; the shoulder rolls with it so the frame is never dead still
 		var u := smoothstep(0.66, 0.92, t)
 		var dip := sin(u * PI)
-		reload_pos_off = base_cant_p + Vector3(-0.008 * dip, -0.024 * dip, 0.012)
-		reload_rot_off = base_cant_r + Vector3(-0.05 * dip, 0.03, 0.04)
+		reload_pos_off = base_cant_p + Vector3(-0.010 * dip, -0.026 * dip, 0.012)
+		reload_rot_off = base_cant_r + Vector3(-0.05 * dip, 0.035 * dip, 0.06 * dip)
 		_pose_part("mag", EJECT_AR * 0.25, Vector3.ZERO, PIVOT_AR_MAG, false)
 		var fetch_p := hand_extract_end.lerp(hand_pouch_p, smoothstep(0.0, 0.45, u)) if u < 0.5 else hand_pouch_p.lerp(hand_mag_p + EJECT_AR * 0.24, smoothstep(0.5, 1.0, u))
 		_pose_part("arm_left", fetch_p, hand_drop_r, PIVOT_AR_HAND)
 	elif t < 1.40:
 		var mp := Vector3.ZERO
 		var mrot := Vector3.ZERO
-		var slap := 0.0
 		if t < 1.12:
-			var u_align := smoothstep(0.92, 1.12, t)
+			# Stage 1: tilt the feed lips up into the well
+			var u_align := _cod_ease_out((t - 0.92) / 0.18)
 			mp = EJECT_AR * lerpf(0.24, 0.085, u_align)
 			mrot = Vector3(lerpf(-0.22, -0.07, u_align), 0.0, 0.0)
 			_pose_part("arm_left", hand_mag_p + mp, hand_drop_r.lerp(hand_mag_r, u_align), PIVOT_AR_HAND)
 		else:
-			var u_seat := smoothstep(1.12, 1.28, t)
-			slap = sin(smoothstep(1.26, 1.40, t) * PI)
+			# Stage 2: hard punch-up seat
+			var u_seat := pow(smoothstep(1.12, 1.24, t), 1.4)
+			var hs := maxf(0.0, sin(smoothstep(1.20, 1.36, t) * PI))
 			mp = EJECT_AR * lerpf(0.085, 0.0, u_seat)
 			mrot = Vector3(lerpf(-0.07, 0.0, u_seat), 0.0, 0.0)
-			_pose_part("arm_left", hand_mag_p + mp + Vector3(0.0, 0.018 * slap, 0.0), hand_mag_r, PIVOT_AR_HAND)
-		reload_pos_off = base_cant_p + Vector3(0.0, 0.026 * slap, -0.012 * slap)
-		reload_rot_off = base_cant_r + Vector3(0.09 * slap, 0.0, 0.07 * slap)
+			_pose_part("arm_left", hand_mag_p + mp + Vector3(0.0, 0.018 * hs, 0.0), hand_mag_r, PIVOT_AR_HAND)
+		reload_pos_off = base_cant_p + Vector3(0.0, 0.0, 0.012 * (1.0 - smoothstep(0.92, 1.12, t)))
+		reload_rot_off = base_cant_r
 		_pose_part("mag", mp, mrot, PIVOT_AR_MAG, true)
 	elif reload_was_empty and t < 1.88:
-		# Clean single bolt-catch ping-pong paddle slap (no simultaneous charge/forward-assist clutter!)
+		# Clean single bolt-catch paddle slap
 		var u := smoothstep(1.40, 1.88, t)
-		var reach := smoothstep(1.40, 1.62, t)
-		var slap := sin(smoothstep(1.62, 1.76, t) * PI)
-		reload_pos_off = base_cant_p.lerp(Vector3(-0.02, 0.03, -0.02), u) + Vector3(0.015 * slap, 0.0, 0.0)
-		reload_rot_off = base_cant_r.lerp(Vector3(0.10, 0.16, -0.22), u) + Vector3(0.0, 0.0, -0.08 * slap)
+		var reach := _cod_ease_out((t - 1.40) / 0.20)
+		var slap := sin(smoothstep(1.60, 1.72, t) * PI)
+		reload_pos_off = base_cant_p.lerp(Vector3(-0.02, 0.03, -0.02), u)
+		reload_rot_off = base_cant_r.lerp(Vector3(0.10, 0.16, -0.22), u)
 		_pose_part("mag", Vector3.ZERO)
 		_pose_part("bolt_catch", Vector3.ZERO, Vector3(0.0, 0.0, 0.28 * slap), PIVOT_AR_CATCH)
 		var h_eff_start := hand_mag_p + (PIVOT_AR_HAND - Basis.from_euler(hand_mag_r) * PIVOT_AR_HAND)
 		_pose_part("arm_left", h_eff_start.lerp(hand_catch_p, reach) + Vector3(0.025 * slap, 0.0, 0.0), hand_mag_r.lerp(hand_catch_r, reach))
 	else:
 		var start_s := 1.88 if reload_was_empty else 1.40
-		var u := smoothstep(start_s, reload_dur, t)
+		var u := _cod_ease_out((t - start_s) / maxf(reload_dur - start_s, 0.05))
 		var prev_p := Vector3(-0.02, 0.03, -0.02) if reload_was_empty else base_cant_p
 		var prev_r := Vector3(0.10, 0.16, -0.22) if reload_was_empty else base_cant_r
 		reload_pos_off = prev_p.lerp(Vector3.ZERO, u)
@@ -4615,7 +5240,14 @@ func _update_reload_rifle() -> void:
 			_pose_part("arm_left", hand_catch_p.lerp(Vector3.ZERO, u), hand_catch_r.lerp(Vector3.ZERO, u))
 		else:
 			_pose_part("arm_left", hand_mag_p.lerp(Vector3.ZERO, u), hand_mag_r.lerp(Vector3.ZERO, u), PIVOT_AR_HAND)
-
+	var pk_seat := _cod_punch(t, 1.22, 0.38)
+	reload_pos_off += Vector3(0.0, 0.030, -0.012) * pk_seat
+	reload_rot_off += Vector3(0.10, 0.0, 0.07) * pk_seat
+	if reload_was_empty:
+		var pk_b := _cod_punch(t, 1.66, 0.32)
+		reload_pos_off += Vector3(0.012, -0.012, 0.004) * pk_b
+		reload_rot_off += Vector3(-0.03, 0.0, -0.08) * pk_b
+	_reload_settle(t)
 	if t >= reload_dur:
 		is_reloading = false
 		_reset_weapon_parts()
@@ -4927,16 +5559,41 @@ func _pose_bow_rig() -> void:
 	_align_bow_string_segment(buss_1, top_buss_l, bot_buss_l)
 
 	if _bow_nock_timer > 0.0 and ammo_reserve[4] > 0:
-		# Synchronized 0.35s quiver-pickup re-nock constrained to actual right-side Quiver (0.048, -0.02, -0.02)!
-		var nu := clampf(1.0 - _bow_nock_timer / 0.35, 0.0, 1.0)
-		var quiv_p := Vector3(0.048, -0.025, 0.025)
+		# Unmistakable 4-beat 0.78s AAA quiver-draw & string re-nock choreography:
+		# 0.00..0.18: cant bow inward into frame & sweep draw hand to quiver
+		# 0.18..0.52: draw fresh broadhead arrow visibly up & arc across onto whisker-biscuit rest
+		# 0.52..0.78: slide shaft cleanly back & SNAP nock onto bowstring with audible click & settle bump!
+		var nu := clampf(1.0 - _bow_nock_timer / BOW_NOCK_DUR, 0.0, 1.0)
+		var cant_in := smoothstep(0.04, 0.24, nu)
+		var cant_out := 1.0 - smoothstep(0.76, 1.0, nu)
+		var cant_env := cant_in * cant_out
+		var nock_bump := sin(smoothstep(0.68, 0.84, nu) * PI)
+		var sway_n := sin(nu * TAU) * 0.008 * cant_env
+		reload_pos_off = Vector3(-0.046 + sway_n, -0.024 + 0.012 * nock_bump, 0.036 + 0.014 * nock_bump) * cant_env
+		reload_rot_off = Vector3(0.15 + 0.04 * nock_bump, 0.34, 0.44 - 0.05 * nock_bump) * cant_env
+
+		var quiv_pick := Vector3(0.115, -0.155, 0.115)
+		var arc_mid := Vector3(0.068, 0.018, 0.040)
+		var rest_entry := Vector3(-0.014, 0.038, 0.018)
 		var hand_nock_off := Vector3.ZERO
 		if is_instance_valid(arrow):
-			arrow.visible = nu >= 0.28
+			arrow.visible = nu >= 0.18
 			if arrow.visible:
-				var au := smoothstep(0.28, 0.86, nu)
-				arrow.position = quiv_p.lerp(nock_rest, au)
-				var dir_a := (arrow_rest - arrow.position).normalized()
+				var ap: Vector3
+				if nu < 0.48:
+					var u1 := smoothstep(0.18, 0.48, nu)
+					var a1 := quiv_pick.lerp(arc_mid, u1)
+					var a2 := arc_mid.lerp(rest_entry, u1)
+					ap = a1.lerp(a2, u1)
+				elif nu < 0.74:
+					var u2 := smoothstep(0.48, 0.74, nu)
+					ap = rest_entry.lerp(nock_rest + Vector3(0.0, 0.0, 0.012), u2)
+				else:
+					var u3 := smoothstep(0.74, 0.88, nu)
+					ap = (nock_rest + Vector3(0.0, 0.0, 0.012)).lerp(nock_rest, u3)
+				arrow.position = ap
+				var aim_tgt := arrow_rest + Vector3(0.055 * (1.0 - smoothstep(0.18, 0.56, nu)), 0.04 * sin(smoothstep(0.18, 0.58, nu) * PI), -0.04 * (1.0 - smoothstep(0.18, 0.56, nu)))
+				var dir_a := (aim_tgt - arrow.position).normalized()
 				if dir_a.length_squared() > 0.01:
 					var rl := dir_a.cross(Vector3.UP).normalized()
 					var ul := rl.cross(dir_a).normalized()
@@ -4945,10 +5602,22 @@ func _pose_bow_rig() -> void:
 		if is_instance_valid(arm_draw):
 			var rp: Vector3 = _w_rest_pos.get(arm_draw.get_instance_id(), Vector3.ZERO)
 			var rr: Vector3 = _w_rest_rot.get(arm_draw.get_instance_id(), Vector3.ZERO)
-			var reach := sin(nu * PI)
-			var dp := (Vector3(0.065, -0.08, -0.04) * smoothstep(0.0, 0.28, nu)) if nu < 0.28 else hand_nock_off
+			var dp: Vector3
+			var dr: Vector3
+			if nu < 0.18:
+				var u0 := smoothstep(0.0, 0.18, nu)
+				dp = (quiv_pick - nock_rest) * u0
+				dr = Vector3(0.24, -0.32, 0.22) * u0
+			elif nu < 0.78:
+				dp = hand_nock_off
+				var reach_w := 1.0 - smoothstep(0.48, 0.78, nu)
+				dr = Vector3(0.24 * reach_w, -0.32 * reach_w, 0.22 * reach_w)
+			else:
+				var u_set := smoothstep(0.78, 1.0, nu)
+				dp = hand_nock_off.lerp(Vector3.ZERO, u_set)
+				dr = Vector3.ZERO
 			arm_draw.position = rp + dp
-			arm_draw.rotation = rr + Vector3(0.14 * reach, -0.18 * reach, 0.12 * reach)
+			arm_draw.rotation = rr + dr
 	else:
 		if is_instance_valid(arrow):
 			var has_arrow := ammo_in_mag[4] > 0
@@ -4971,10 +5640,18 @@ func _update_bow_input(delta: float) -> void:
 		_bow_release_timer = maxf(0.0, _bow_release_timer - delta)
 	if _bow_nock_timer > 0.0:
 		_bow_nock_timer = maxf(0.0, _bow_nock_timer - delta)
+		var nu := clampf(1.0 - _bow_nock_timer / BOW_NOCK_DUR, 0.0, 1.0)
+		if nu >= 0.70 and not _bow_nock_sfx_played and ammo_reserve[4] > 0:
+			_bow_nock_sfx_played = true
+			if _sfx_bow_nock:
+				_play_reload_sfx(_sfx_bow_nock, randf_range(0.96, 1.05))
+			else:
+				_play_reload_sfx(_sfx_shell_in, 1.45)
+			trauma = minf(1.0, trauma + 0.025)
 		if _bow_nock_timer <= 0.0 and ammo_in_mag[4] <= 0 and ammo_reserve[4] > 0:
 			ammo_in_mag[4] = 1
 			ammo_reserve[4] -= 1
-			_play_reload_sfx(_sfx_shell_in, 1.45)
+			_bow_nock_sfx_played = false
 
 	var holding := Input.is_action_pressed("fire")
 	if _bow_require_repull:
@@ -5046,9 +5723,10 @@ func _fire_bow_arrow(power: float, weapon_idx: int = 4) -> void:
 	var is_xbow := (weapon_idx == 15)
 	if not is_xbow:
 		ammo_in_mag[4] = maxi(0, ammo_in_mag[4] - 1)
-		# Only start 0.35s quiver re-nock if we actually have reserve arrows!
-		_bow_nock_timer = 0.35 if ammo_reserve[4] > 0 else 0.0
-		fire_cd = 0.36
+		# Trigger full 0.78s visible quiver-draw & string re-nock sequence if reserve arrows remain!
+		_bow_nock_timer = BOW_NOCK_DUR if ammo_reserve[4] > 0 else 0.0
+		_bow_nock_sfx_played = false
+		fire_cd = 0.22
 		recoil_vel.y += 0.024 * power
 		recoil_z += 0.022 * power
 		trauma = minf(1.0, trauma + 0.07 * power)
@@ -5165,7 +5843,8 @@ func _update_arrows(delta: float) -> void:
 					if not blocked and unlocked_weapons[a_widx] and ammo_reserve[a_widx] < int(WEAPONS[a_widx]["reserve_max"]):
 						ammo_reserve[a_widx] = mini(int(WEAPONS[a_widx]["reserve_max"]), ammo_reserve[a_widx] + 1)
 						if a_widx == 4 and current_weapon == 4 and ammo_in_mag[4] <= 0 and _bow_nock_timer <= 0.0:
-							_bow_nock_timer = 0.35
+							_bow_nock_timer = BOW_NOCK_DUR
+							_bow_nock_sfx_played = false
 						_play_reload_sfx(_sfx_shell_in, 1.35)
 						node.queue_free()
 						_arrows.remove_at(i)
@@ -5298,6 +5977,10 @@ func _eject_brass_casing(w: Dictionary, is_hull := false, override_world_pos := 
 	})
 
 
+func _melee_profile() -> Dictionary:
+	return MELEE_CATALOG.get(equipped_melee_id, MELEE_CATALOG["knife"])
+
+
 func trigger_melee(heavy: bool = false) -> bool:
 	if _melee_timer > 0.08 or dead:
 		return false
@@ -5312,12 +5995,16 @@ func trigger_melee(heavy: bool = false) -> bool:
 		reload_pos_off = Vector3.ZERO
 		reload_rot_off = Vector3.ZERO
 		_reset_weapon_parts()
+	var m: Dictionary = _melee_profile()
+	var weight := float(m.get("weight", 1.0))
 	_melee_is_heavy = heavy and current_weapon == 3
+	_melee_power = 1.0
 	if current_weapon != 3 and equipped_melee_id != "":
-		# Quick melee while holding a firearm: whip out actual photoreal knife/melee weapon for a fast slash!
+		# Quick melee while holding a firearm: whip out the equipped melee weapon for one fast slash
 		_quick_melee_active = true
 		_melee_is_gun_bash = false
 		_melee_combo_idx = 0
+		_melee_move = "slash_rl"
 		if sniper_scope_alpha > 0.35 and is_instance_valid(weapon_pivot):
 			sniper_scope_alpha = 0.0
 			_sniper_ads_raw = 0.0
@@ -5327,61 +6014,223 @@ func trigger_melee(heavy: bool = false) -> bool:
 			if is_instance_valid(_weapon_rigs[ri]):
 				_weapon_rigs[ri].visible = (ri == 3)
 	elif current_weapon != 3:
-		# No melee weapon equipped -> weapon-specific gun-butt bash!
+		# No melee weapon equipped: weapon-specific gun-butt bash
 		_quick_melee_active = false
 		_melee_is_gun_bash = true
 		_melee_combo_idx = 0
+		_melee_move = "bash_pistol" if (current_weapon == 0 or current_weapon == 6) else "bash_rifle"
 	else:
-		# Holding melee weapon directly -> cycle 3-hit directional combo or heavy cleave!
+		# Holding the melee weapon: three-hit directional combo, or the weapon's charged heavy move
 		_quick_melee_active = false
 		_melee_is_gun_bash = false
-		if not _melee_is_heavy:
+		if _melee_is_heavy:
+			_melee_move = str(m.get("heavy", "overhead"))
+			_melee_power = lerpf(1.25, float(m.get("heavy_mult", 1.6)), clampf(_melee_charge, 0.0, 1.0))
+			_melee_combo_idx = 0
+			_melee_combo_reset = 0.0
+		else:
 			_melee_combo_idx = (_melee_combo_idx + 1) % 3 if _melee_combo_reset > 0.0 else 0
-			_melee_combo_reset = 0.95
-	var m: Dictionary = MELEE_CATALOG.get(equipped_melee_id, MELEE_CATALOG["knife"])
+			_melee_combo_reset = float(m["dur"]) + 0.55
+			if _melee_combo_idx == 2:
+				# Combo finisher: a thrust for the knife, an overhead chop for everything with a head
+				_melee_move = "stab" if equipped_melee_id == "knife" else "overhead"
+				_melee_power = 1.3
+			else:
+				_melee_move = "slash_rl" if _melee_combo_idx == 0 else "slash_lr"
 	if _melee_is_gun_bash:
 		_melee_dur = 0.38
 	elif _melee_is_heavy:
-		_melee_dur = float(m["dur"]) * 1.32
+		_melee_dur = float(m["dur"]) * 1.34
 	else:
 		_melee_dur = float(m["dur"]) if current_weapon == 3 else minf(0.38, float(m["dur"]))
+	# Heavier weapons spend longer winding up; the edge is live for ~20% of the swing after that
+	var wu := 0.24 if _melee_is_gun_bash else clampf(0.20 + 0.10 * weight, 0.22, 0.36)
+	if _melee_is_heavy:
+		wu = 0.18 # the wind-up already happened while charging
+	_melee_win0 = wu * _melee_dur
+	_melee_win1 = (wu + 0.20) * _melee_dur
 	_melee_timer = _melee_dur
 	_melee_hit_done = false
+	_melee_prev_u = 0.0
+	_melee_swing_hits.clear()
+	_melee_hits_left = 1 if (_melee_is_gun_bash or _quick_melee_active) else (int(m.get("cleave", 1)) + (1 if _melee_is_heavy else 0))
+	_melee_any_hit = false
+	_melee_wall_done = false
+	_melee_charging = false
+	_melee_hitstop_timer = 0.0
 	fire_cd = maxf(fire_cd, _melee_dur)
-	recoil_roll += (-0.075 if _melee_is_heavy else -0.055) * (-1.0 if _melee_combo_idx == 1 else 1.0)
-	trauma = minf(1.0, trauma + (0.12 if _melee_is_heavy else 0.08))
+	var mv: Dictionary = MELEE_MOVES.get(_melee_move, MELEE_MOVES["slash_rl"])
+	recoil_roll += (-0.085 if _melee_is_heavy else -0.055) * float(mv.get("sign", 1.0)) * (0.4 if str(mv["arc"]) != "yaw" else 1.0)
+	trauma = minf(1.0, trauma + (0.14 if _melee_is_heavy else 0.07) * weight)
+	_start_melee_lunge(m, mv)
 	if sfx_misc and _sfx_melee_swing:
 		sfx_misc.stream = _sfx_melee_swing
-		sfx_misc.pitch_scale = randf_range(0.76, 0.86) if _melee_is_heavy else randf_range(0.92, 1.08)
+		var base_pitch := lerpf(1.22, 0.78, clampf((weight - 0.6) / 0.7, 0.0, 1.0))
+		sfx_misc.pitch_scale = base_pitch * (0.86 if _melee_is_heavy else 1.0) * randf_range(0.95, 1.06)
+		sfx_misc.volume_db = -3.5 if _melee_is_heavy else -5.5
 		sfx_misc.play()
 	return true
 
 
-func _perform_melee_hit() -> void:
-	var space := get_world_3d().direct_space_state
-	if space == null:
+func _start_melee_lunge(m: Dictionary, mv: Dictionary) -> void:
+	# Soft target magnetism: step into a zombie that is just out of reach so swings connect instead of whiffing
+	_melee_lunge_timer = 0.0
+	if camera == null:
 		return
-	var m: Dictionary = MELEE_CATALOG.get(equipped_melee_id, MELEE_CATALOG["knife"])
-	var reach: float = 1.85 if _melee_is_gun_bash else (float(m["reach"]) * (1.12 if _melee_is_heavy else 1.0))
-	var dmg: float = 34.0 if _melee_is_gun_bash else (float(m["damage"]) * (1.55 if _melee_is_heavy else 1.0))
-	var origin := camera.global_position
 	var fwd := -camera.global_transform.basis.z
-	var right := camera.global_transform.basis.x
-	var up := camera.global_transform.basis.y
-	# Directional melee swing vector for authentic zombie hit reactions & ragdoll knock-direction!
-	var swing_dir := fwd
-	if _melee_is_heavy:
-		swing_dir = (fwd * 0.72 - up * 0.65).normalized()
-	elif not _melee_is_gun_bash:
-		if _melee_combo_idx == 0:
-			swing_dir = (fwd * 0.62 - right * 0.76).normalized()
-		elif _melee_combo_idx == 1:
-			swing_dir = (fwd * 0.62 + right * 0.76).normalized()
-	var z_hits := {}
+	var flat := Vector3(fwd.x, 0.0, fwd.z)
+	if flat.length_squared() < 0.01:
+		return
+	flat = flat.normalized()
+	var reach := float(m.get("reach", 2.2))
+	var best_d := 99.0
+	for z_raw in ZombieAI._all_zombies:
+		var z := z_raw as ZombieAI
+		if not is_instance_valid(z) or z.dead:
+			continue
+		var to := z.global_position - global_position
+		if absf(to.y) > 1.3:
+			continue
+		to.y = 0.0
+		var d := to.length()
+		if d < 1.15 or d > reach + 1.35:
+			continue
+		if flat.dot(to / d) < 0.86:
+			continue
+		best_d = minf(best_d, d)
+	var is_lunge := _melee_move == "lunge"
+	if best_d < 90.0 or is_lunge:
+		var step := clampf(best_d - 1.25, 0.0, 1.6) if best_d < 90.0 else 1.1
+		if is_lunge:
+			step = maxf(step, 1.1)
+		_melee_lunge_timer = 0.16
+		_melee_lunge_vel = flat * (step / 0.16) * 0.55
 
-	for ang_deg: float in [0.0, -7.0, 7.0, -14.0, 14.0]:
-		var rad := deg_to_rad(ang_deg)
-		var dir := (fwd * cos(rad) + right * sin(rad)).normalized()
+
+func trigger_shove() -> bool:
+	# [V] with a melee weapon in hand: a two-handed shove that staggers everything in front and makes space
+	if _shove_cd > 0.0 or _melee_timer > 0.08 or dead or camera == null:
+		return false
+	_shove_cd = 0.85
+	_melee_charging = false
+	_quick_melee_active = false
+	_melee_is_gun_bash = false
+	_melee_is_heavy = false
+	_melee_move = "shove"
+	_melee_power = 1.0
+	_melee_dur = 0.34
+	_melee_win0 = 0.07
+	_melee_win1 = 0.15
+	_melee_timer = _melee_dur
+	_melee_hit_done = false
+	_melee_prev_u = 0.0
+	_melee_swing_hits.clear()
+	_melee_hits_left = 4
+	_melee_any_hit = false
+	_melee_wall_done = true
+	fire_cd = maxf(fire_cd, _melee_dur)
+	trauma = minf(1.0, trauma + 0.06)
+	if sfx_misc and (_sfx_shove or _sfx_melee_swing):
+		sfx_misc.stream = _sfx_shove if _sfx_shove else _sfx_melee_swing
+		sfx_misc.pitch_scale = randf_range(0.94, 1.06)
+		sfx_misc.volume_db = -5.0
+		sfx_misc.play()
+	return true
+
+
+func _update_melee_swing(delta: float) -> void:
+	_melee_charge_pose = lerpf(_melee_charge_pose, _melee_charge if _melee_charging else 0.0, 1.0 - exp(-delta * 16.0))
+	if _melee_hitstop_timer > 0.0:
+		_melee_hitstop_timer = maxf(0.0, _melee_hitstop_timer - delta)
+		return
+	if _melee_timer <= 0.0:
+		return
+	_melee_timer = maxf(0.0, _melee_timer - delta)
+	var elapsed := _melee_dur - _melee_timer
+	if elapsed >= _melee_win0 and not _melee_hit_done:
+		var span_t := maxf(_melee_win1 - _melee_win0, 0.01)
+		var u1 := clampf((elapsed - _melee_win0) / span_t, 0.0, 1.0)
+		_sweep_melee(_melee_prev_u, u1)
+		_melee_prev_u = u1
+		if u1 >= 1.0:
+			_melee_hit_done = true
+	if _melee_timer <= 0.0 and _quick_melee_active:
+		_quick_melee_active = false
+		for ri in range(_weapon_rigs.size()):
+			if is_instance_valid(_weapon_rigs[ri]):
+				_weapon_rigs[ri].visible = (ri == current_weapon)
+
+
+func _perform_melee_hit() -> void:
+	# Whole-arc resolve in one call (scripted tests and anything that needs an instant swing result)
+	_sweep_melee(0.0, 1.0)
+	_melee_prev_u = 1.0
+	_melee_hit_done = true
+
+
+func _melee_ray_dirs(u0: float, u1: float) -> Array[Vector3]:
+	var cb := camera.global_transform.basis
+	var fwd := -cb.z
+	var right := cb.x
+	var up := cb.y
+	var mv: Dictionary = MELEE_MOVES.get(_melee_move, MELEE_MOVES["slash_rl"])
+	var span := deg_to_rad(float(mv.get("span", 40.0)))
+	var sgn := float(mv.get("sign", 1.0))
+	var out: Array[Vector3] = []
+	match str(mv.get("arc", "yaw")):
+		"thrust":
+			if u0 <= 0.001:
+				for a: float in [0.0, -0.5, 0.5, -1.0, 1.0]:
+					var ang := a * span * 0.5
+					out.append((fwd * cos(ang) + right * sin(ang)).normalized())
+				out.append((fwd * 0.97 - up * 0.24).normalized())
+			else:
+				out.append(fwd)
+		"pitch":
+			for k in range(3):
+				var uu := lerpf(u0, u1, float(k + 1) / 3.0)
+				# An overhead chop carries on down to the floor, so it finishes crawlers and anything knocked flat
+				var ang_p := lerpf(span * 0.5, -span * 0.95, uu)
+				var base := (fwd * cos(ang_p) + up * sin(ang_p)).normalized()
+				out.append(base)
+				out.append((base + right * 0.11).normalized())
+				out.append((base - right * 0.11).normalized())
+		_:
+			for k in range(4):
+				var uu := lerpf(u0, u1, float(k + 1) / 4.0)
+				var ang_y := lerpf(span * 0.5, -span * 0.5, uu) * sgn
+				var base_y := (fwd * cos(ang_y) + right * sin(ang_y)).normalized()
+				out.append(base_y)
+				out.append((base_y - up * 0.16).normalized())
+	return out
+
+
+func _melee_swing_dir() -> Vector3:
+	var cb := camera.global_transform.basis
+	var fwd := -cb.z
+	var mv: Dictionary = MELEE_MOVES.get(_melee_move, MELEE_MOVES["slash_rl"])
+	match str(mv.get("arc", "yaw")):
+		"pitch":
+			return (fwd * 0.72 - cb.y * 0.65).normalized()
+		"thrust":
+			return fwd
+		_:
+			return (fwd * 0.62 - cb.x * 0.76 * float(mv.get("sign", 1.0))).normalized()
+
+
+func _sweep_melee(u0: float, u1: float) -> void:
+	var space := get_world_3d().direct_space_state
+	if space == null or camera == null:
+		return
+	var m: Dictionary = _melee_profile()
+	var is_shove := _melee_move == "shove"
+	var reach: float = 1.85 if _melee_is_gun_bash else (1.95 if is_shove else float(m["reach"]) * (1.12 if _melee_is_heavy else 1.0))
+	var origin := camera.global_position
+	var swing_dir := _melee_swing_dir()
+	var fwd := -camera.global_transform.basis.z
+	for dir: Vector3 in _melee_ray_dirs(u0, u1):
+		if _melee_hits_left <= 0:
+			break
 		var wq := PhysicsRayQueryParameters3D.create(origin, origin + dir * reach, 1)
 		wq.exclude = [get_rid()]
 		var wh := space.intersect_ray(wq)
@@ -5389,64 +6238,205 @@ func _perform_melee_hit() -> void:
 		var zh := ZombieAI.raycast_all_zombies(origin, dir, max_d)
 		if not zh.is_empty():
 			var z := zh["zombie"] as ZombieAI
-			if is_instance_valid(z) and not z_hits.has(z):
-				z_hits[z] = [{
-					"zone": str(zh["zone"]),
-					"pos": zh["pos"],
-					"dir": swing_dir,
-					"dmg": dmg,
-					"dist": float(zh["dist"]),
-				}]
+			if is_instance_valid(z) and not _melee_swing_hits.has(z):
+				_melee_swing_hits[z] = true
+				_melee_hits_left -= 1
+				_apply_melee_to_zombie(z, zh, swing_dir, m, is_shove)
+		elif not wh.is_empty() and not _melee_wall_done and not _melee_any_hit and dir.dot(fwd) > 0.965 and max_d < reach * 0.82:
+			_melee_wall_done = true
+			_melee_wall_impact(wh, dir, m)
 
-	if z_hits.is_empty():
+
+func _apply_melee_to_zombie(z: ZombieAI, zh: Dictionary, swing_dir: Vector3, m: Dictionary, is_shove: bool) -> void:
+	var m_class := "blunt" if (_melee_is_gun_bash or is_shove) else str(m.get("class", "blade"))
+	var zone := str(zh["zone"])
+	var dmg: float = 34.0 if _melee_is_gun_bash else (9.0 if is_shove else float(m["damage"]) * _melee_power)
+	if perks.has("adrenal") and not is_shove:
+		dmg *= 1.25
+	var poise_add := 45.0 if _melee_is_gun_bash else (140.0 if is_shove else float(m.get("poise", 40.0)) * (1.45 if _melee_is_heavy else 1.0))
+	var kb := 5.2 if _melee_is_gun_bash else (7.5 if is_shove else float(m.get("kb", 4.2)) * (1.35 if _melee_is_heavy else 1.0))
+	var horiz := Vector3(swing_dir.x, 0.0, swing_dir.z)
+	if is_shove or horiz.length_squared() < 0.01:
+		var f := -camera.global_transform.basis.z
+		horiz = Vector3(f.x, 0.0, f.z)
+	horiz = horiz.normalized()
+	# Knife backstab: a zombie facing away from the blade takes a multiplied hit
+	var backstab := false
+	if not _melee_is_gun_bash and not is_shove and m.has("backstab") and not z.dead:
+		var z_fwd := Vector3(sin(z.rotation.y), 0.0, cos(z.rotation.y))
+		var p_fwd := -camera.global_transform.basis.z
+		if z_fwd.dot(Vector3(p_fwd.x, 0.0, p_fwd.z).normalized()) > 0.35:
+			dmg *= float(m["backstab"])
+			backstab = true
+	var is_tool := not _melee_is_gun_bash and not is_shove
+	var opts := {
+		"class": m_class,
+		"poise": poise_add,
+		"kb": horiz * kb,
+		"sever": float(m.get("sever", 0.0)) * (1.25 if _melee_is_heavy else 1.0) if is_tool else 0.0,
+		"heavy": _melee_is_heavy,
+		"knockdown": (_melee_is_heavy and bool(m.get("knockdown", false)) and _melee_power >= 1.4) or (is_shove and z.variant == ZombieAI.Variant.RUNNER),
+		"armor_pierce": float(m.get("armor_pierce", 1.0)) if is_tool else 1.0,
+		"armor_break": is_tool and bool(m.get("armor_break", false)),
+		"bleed_dps": float(m.get("bleed_dps", 0.0)) if is_tool else 0.0,
+		"bleed_dur": float(m.get("bleed_dur", 0.0)),
+		"shove": is_shove,
+	}
+	var hit := {"zone": zone, "pos": zh["pos"], "dir": swing_dir, "dmg": dmg, "dist": float(zh["dist"])}
+	var res: Dictionary = z.apply_melee(hit, opts)
+	if bool(res.get("corpse_hit", false)):
 		return
+	var is_hs := bool(res.get("headshot", false))
+	var killed := bool(res.get("killed", false))
+	var blocked := bool(res.get("armor_block", false))
+	_melee_any_hit = true
+	if not is_shove:
+		emit_signal("hit_confirmed", is_hs, killed)
+	if killed:
+		if backstab:
+			emit_signal("score_event", "BACKSTAB", 50)
+		elif bool(res.get("dismembered", false)) and zone != "HEAD":
+			emit_signal("score_event", "DISMEMBER", 25)
+	# Impact feel: hit-stop scaled by weapon heft, a camera shove along the swing, and class-specific impact audio
+	var weight := float(m.get("weight", 1.0)) if is_tool else 0.7
+	var stop := (0.030 + 0.026 * weight) * (1.55 if (_melee_is_heavy or killed) else 1.0) * (1.25 if is_hs else 1.0)
+	if is_shove:
+		stop = 0.022
+	_melee_hitstop_timer = maxf(_melee_hitstop_timer, minf(stop, 0.115))
+	trauma = minf(1.0, trauma + (0.10 + 0.10 * weight) * (1.4 if _melee_is_heavy else 1.0))
+	var mv: Dictionary = MELEE_MOVES.get(_melee_move, MELEE_MOVES["slash_rl"])
+	if str(mv.get("arc", "yaw")) == "pitch":
+		hit_pitch_kick -= 0.035 * weight
+	else:
+		hit_roll_kick += 0.030 * weight * float(mv.get("sign", 1.0))
+	recoil_fov = maxf(recoil_fov, 0.9 * weight)
+	if sfx_hit:
+		var st: AudioStream = null
+		if blocked and _sfx_melee_wall:
+			st = _sfx_melee_wall
+		elif m_class == "blunt" or m_class == "bar":
+			st = _sfx_melee_blunt if _sfx_melee_blunt else _sfx_melee_cleave
+		else:
+			st = _sfx_melee_cleave
+		if st == null and not _sfx_hit_flesh.is_empty():
+			st = _sfx_hit_flesh[0]
+		if st:
+			sfx_hit.stream = st
+			sfx_hit.pitch_scale = (randf_range(0.76, 0.88) if _melee_is_heavy else randf_range(0.94, 1.10)) * (1.25 if blocked else 1.0)
+			sfx_hit.play()
+	if not is_shove and sfx_hit_tick and _sfx_hit_confirm:
+		sfx_hit_tick.stream = _sfx_hit_confirm
+		sfx_hit_tick.pitch_scale = 1.16 if is_hs else 0.94
+		sfx_hit_tick.play()
 
-	var any_live := false
-	var any_live_hs := false
-	var base_kb := float(m.get("kb", 4.2))
-	var base_poise := float(m.get("poise", 40.0))
-	var bleed_dps_val := float(m.get("bleed_dps", 0.0))
-	var bleed_dur_val := float(m.get("bleed_dur", 0.0))
-	var ap_mult := float(m.get("armor_pierce", 1.0))
-	var kb := (5.2 if _melee_is_gun_bash else base_kb * (1.35 if _melee_is_heavy else 1.0))
-	var horiz_kb := Vector3(swing_dir.x, 0.0, swing_dir.z)
-	if horiz_kb.length_squared() < 0.01:
-		horiz_kb = Vector3(fwd.x, 0.0, fwd.z)
-	horiz_kb = horiz_kb.normalized()
-	for z_key in z_hits.keys():
-		var z := z_key as ZombieAI
-		var hit_arr: Array = z_hits[z_key]
-		# Crowbar armor-pierce applies strictly against armored CHEST hits on Bruisers & Tactical Soldiers!
-		if not _melee_is_gun_bash and ap_mult > 1.0 and str(hit_arr[0].get("zone", "")) == "CHEST" and (z.variant == ZombieAI.Variant.BRUISER or z.variant == ZombieAI.Variant.TACTICAL_SOLDIER):
-			hit_arr[0]["dmg"] = float(hit_arr[0]["dmg"]) * ap_mult
-		# Apply melee poise bonus BEFORE apply_shot so poise >= poise_max triggers STAGGER immediately!
-		if not z.dead:
-			z.poise += (45.0 if _melee_is_gun_bash else base_poise * (1.45 if _melee_is_heavy else 1.0))
-		# Use weapon_idx = 3 (dedicated MELEE class — NOT M870 shotgun class 2!)
-		var res := z.apply_shot(hit_arr, 3)
-		var is_hs := bool(res.get("headshot", false))
-		var killed := bool(res.get("killed", false))
-		if not bool(res.get("corpse_hit", false)):
-			any_live = true
-			any_live_hs = any_live_hs or is_hs
-			emit_signal("hit_confirmed", is_hs, killed)
-			if not z.dead:
-				if z.has_method("apply_knockback"):
-					z.apply_knockback(horiz_kb * kb)
-				if not _melee_is_gun_bash and bleed_dps_val > 0.0 and z.has_method("apply_bleed"):
-					z.apply_bleed(bleed_dur_val, bleed_dps_val)
-	if any_live:
-		_melee_hitstop_timer = 0.062 if (_melee_is_heavy or any_live_hs) else 0.036
-		trauma = minf(1.0, trauma + (0.20 if _melee_is_heavy else 0.12))
-		if sfx_hit:
-			sfx_hit.stream = _sfx_melee_cleave if _sfx_melee_cleave else (_sfx_hit_flesh[0] if not _sfx_hit_flesh.is_empty() else null)
-			if sfx_hit.stream:
-				sfx_hit.pitch_scale = randf_range(0.78, 0.90) if _melee_is_heavy else randf_range(0.92, 1.08)
-				sfx_hit.play()
-		if sfx_hit_tick and _sfx_hit_confirm:
-			sfx_hit_tick.stream = _sfx_hit_confirm
-			sfx_hit_tick.pitch_scale = 1.16 if any_live_hs else 0.94
-			sfx_hit_tick.play()
+
+func _melee_wall_impact(wh: Dictionary, dir: Vector3, m: Dictionary) -> void:
+	# Swinging into a wall bites the surface, clanks, and bounces the swing short instead of passing through silently
+	var col = wh.get("collider")
+	if VFXManager.instance:
+		VFXManager.instance.spawn_surface_impact(wh["position"], wh["normal"], dir, col, 0)
+	var weight := 0.7 if _melee_is_gun_bash else float(m.get("weight", 1.0))
+	trauma = minf(1.0, trauma + 0.12 * weight)
+	hit_pitch_kick += 0.02 * weight
+	_melee_hitstop_timer = maxf(_melee_hitstop_timer, 0.03)
+	_melee_timer = minf(_melee_timer, _melee_dur * 0.42)
+	_melee_hit_done = true
+	if sfx_hit and (_sfx_melee_wall or _sfx_impact_hard):
+		sfx_hit.stream = _sfx_melee_wall if _sfx_melee_wall else _sfx_impact_hard
+		var surf := "plaster"
+		if col is Object and (col as Object).has_meta(&"surface"):
+			surf = str((col as Object).get_meta(&"surface"))
+		sfx_hit.pitch_scale = (1.25 if surf == "metal" else (0.72 if surf == "wood" else 0.95)) * randf_range(0.94, 1.06)
+		sfx_hit.play()
+
+
+func get_melee_focus() -> bool:
+	# True when a living zombie sits inside the equipped melee weapon's reach along the crosshair (HUD "in range" cue)
+	if camera == null or dead:
+		return false
+	var m: Dictionary = _melee_profile()
+	var zh := ZombieAI.raycast_all_zombies(camera.global_position, -camera.global_transform.basis.z, float(m.get("reach", 2.2)))
+	return not zh.is_empty() and is_instance_valid(zh["zombie"]) and not (zh["zombie"] as ZombieAI).dead
+
+
+func has_perk(id: String) -> bool:
+	return perks.has(id)
+
+
+func grant_perk(id: String) -> void:
+	if perks.has(id):
+		return
+	perks[id] = true
+	if id == "vitality":
+		max_health = 150.0
+		health = max_health
+
+
+func get_perk_tags() -> Array[String]:
+	var out: Array[String] = []
+	if perks.has("vitality"): out.append("VITALITY")
+	if perks.has("quickhands"): out.append("QUICK HANDS")
+	if perks.has("adrenal"): out.append("ADRENAL")
+	return out
+
+
+func apply_external_impulse(imp: Vector3) -> void:
+	_ext_vel = (_ext_vel + Vector3(imp.x, 0.0, imp.z)).limit_length(11.0)
+	if imp.y > 0.5 and is_on_floor():
+		velocity.y = minf(imp.y, 4.5)
+		floor_snap_length = 0.0
+
+
+func apply_slow(mult: float, dur: float) -> void:
+	var m := clampf(mult, 0.2, 1.0)
+	slow_mult = minf(slow_mult, m) if slow_timer > 0.0 else m
+	slow_timer = maxf(slow_timer, dur)
+
+
+func begin_grab(z: Node3D) -> bool:
+	if dead or god_mode or grabbed_by != null or grab_immunity > 0.0:
+		return false
+	grabbed_by = z
+	grab_struggle = 0.0
+	_melee_charging = false
+	if _bow_drawing:
+		cancel_bow_draw(true)
+	trauma = minf(1.0, trauma + 0.35)
+	return true
+
+
+func end_grab(broke_free: bool) -> void:
+	if grabbed_by == null:
+		return
+	var z := grabbed_by
+	grabbed_by = null
+	grab_struggle = 0.0
+	grab_immunity = 4.0
+	if broke_free and is_instance_valid(z) and z.has_method("on_grab_broken"):
+		z.on_grab_broken(-global_transform.basis.z)
+
+
+func struggle_against_grab() -> void:
+	if grabbed_by == null:
+		return
+	grab_struggle += 0.26
+	trauma = minf(1.0, trauma + 0.10)
+	hit_roll_kick += randf_range(-0.05, 0.05)
+	if sfx_misc and (_sfx_shove or _sfx_melee_swing):
+		sfx_misc.stream = _sfx_shove if _sfx_shove else _sfx_melee_swing
+		sfx_misc.pitch_scale = randf_range(1.1, 1.3)
+		sfx_misc.play()
+	if grab_struggle >= 1.0:
+		end_grab(true)
+
+
+func _update_grab(delta: float) -> void:
+	if grabbed_by == null:
+		return
+	if not is_instance_valid(grabbed_by) or bool(grabbed_by.get("dead")) or global_position.distance_to(grabbed_by.global_position) > 2.6:
+		end_grab(false)
+		return
+	grab_struggle = maxf(0.0, grab_struggle - delta * 0.22)
 
 
 static var _grenade_scene_cache: Dictionary = {}
@@ -5664,6 +6654,37 @@ func _ensure_fire_fx_assets() -> void:
 		_fire_shader = load("res://shaders/realistic_fire.gdshader") as Shader
 	if _smoke_wisp_tex == null and ResourceLoader.exists("res://assets/textures/gunsmoke_wisp.png"):
 		_smoke_wisp_tex = load("res://assets/textures/gunsmoke_wisp.png") as Texture2D
+	if _fire_plume_tex == null and ResourceLoader.exists("res://assets/textures/fire_plume_sheet.png"):
+		_fire_plume_tex = load("res://assets/textures/fire_plume_sheet.png") as Texture2D
+	if _napalm_puff_tex == null and ResourceLoader.exists("res://assets/textures/napalm_puff_sheet.png"):
+		_napalm_puff_tex = load("res://assets/textures/napalm_puff_sheet.png") as Texture2D
+	if _ember_mat == null:
+		# Soft radial incandescent spark: white-hot pinpoint core -> orange-gold glow -> transparent rim
+		var grad := Gradient.new()
+		grad.offsets = PackedFloat32Array([0.0, 0.16, 0.42, 1.0])
+		grad.colors = PackedColorArray([Color(1.0, 0.96, 0.82, 1.0), Color(1.0, 0.70, 0.22, 0.95), Color(1.0, 0.34, 0.04, 0.42), Color(0.8, 0.12, 0.0, 0.0)])
+		var gt := GradientTexture2D.new()
+		gt.gradient = grad
+		gt.fill = GradientTexture2D.FILL_RADIAL
+		gt.fill_from = Vector2(0.5, 0.5)
+		gt.fill_to = Vector2(1.0, 0.5)
+		gt.width = 32
+		gt.height = 32
+		_ember_mat = StandardMaterial3D.new()
+		_ember_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_ember_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_ember_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		_ember_mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+		_ember_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		_ember_mat.billboard_keep_scale = true
+		_ember_mat.disable_receive_shadows = true
+		_ember_mat.albedo_texture = gt
+		_ember_mat.albedo_color = Color(1.0, 0.62, 0.20, 1.0)
+		_ember_mat.disable_fog = true
+	if _ember_mesh == null:
+		_ember_mesh = QuadMesh.new()
+		_ember_mesh.size = Vector2(0.045, 0.045)
+		_ember_mesh.material = _ember_mat
 	if _char_shader == null:
 		_char_shader = Shader.new()
 		_char_shader.code = """shader_type spatial;
@@ -5684,13 +6705,180 @@ void fragment(){
 }"""
 
 
-func _spawn_hazard_pool(kind: String, pos: Vector3, dur: float, radius: float) -> void:
+static func _make_loop_stream(src: AudioStream) -> AudioStream:
+	# Seamless forward-looping copy of a one-shot WAV (keeps the shared imported resource untouched)
+	if src == null:
+		return null
+	var wav := src as AudioStreamWAV
+	if wav == null:
+		return src
+	if wav.loop_mode == AudioStreamWAV.LOOP_FORWARD and wav.loop_end > 0:
+		return wav
+	var dup := wav.duplicate() as AudioStreamWAV
+	dup.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	dup.loop_begin = 0
+	dup.loop_end = maxi(1, int(wav.get_length() * float(wav.mix_rate)) - 1)
+	return dup
+
+
+func _ensure_flamer_pilot() -> void:
+	if is_instance_valid(_flamer_pilot_node):
+		return
 	_ensure_fire_fx_assets()
+	if _fire_shader == null or weapon_pivot == null:
+		return
+	_flamer_pilot_mat = ShaderMaterial.new()
+	_flamer_pilot_mat.shader = _fire_shader
+	if _fire_plume_tex:
+		_flamer_pilot_mat.set_shader_parameter("fire_tex", _fire_plume_tex)
+		_flamer_pilot_mat.set_shader_parameter("has_fire_tex", 1.0)
+	_flamer_pilot_mat.set_shader_parameter("atlas_fps", 24.0)
+	_flamer_pilot_mat.set_shader_parameter("blue_core", 0.88)
+	_flamer_pilot_mat.set_shader_parameter("flame_speed", 5.2)
+	_flamer_pilot_mat.set_shader_parameter("phase_seed", randf_range(0.0, 40.0))
+	_flamer_pilot_mat.set_shader_parameter("intensity", 1.35)
+	_flamer_pilot_mat.set_shader_parameter("smoke_mix", 0.0)
+	_flamer_pilot_mat.set_shader_parameter("fade_alpha", 1.0)
+	_flamer_pilot_mat.set_shader_parameter("billboard_y", 0.0)
+	_flamer_pilot_mat.set_shader_parameter("jet_mode", 0.0)
+	# Crossed viewmodel quads (layer 2) so the pilot reads from every first-person angle without camera clipping
+	var qm := QuadMesh.new()
+	# Real M2 igniter flame is ~10-15 cm; at ~1 m from the eye anything smaller collapses to a few pixels
+	qm.size = Vector2(0.060, 0.120)
+	qm.center_offset = Vector3(0.0, 0.050, 0.0)
+	_flamer_pilot_node = MeshInstance3D.new()
+	_flamer_pilot_node.name = "FlamerPilot"
+	_flamer_pilot_node.mesh = qm
+	_flamer_pilot_node.material_override = _flamer_pilot_mat
+	_flamer_pilot_node.layers = 2
+	_flamer_pilot_node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var cross := MeshInstance3D.new()
+	cross.mesh = qm
+	cross.material_override = _flamer_pilot_mat
+	cross.layers = 2
+	cross.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	cross.rotation.y = PI * 0.5
+	_flamer_pilot_node.add_child(cross)
+	_flamer_pilot_node.position = (WEAPONS[16]["muzzle"] as Vector3) + Vector3(0.0, 0.012, -0.025)
+	_flamer_pilot_node.visible = false
+	weapon_pivot.add_child(_flamer_pilot_node)
+
+
+func _update_flamethrower_audio_and_pilot(delta: float) -> void:
+	var firing := _flame_firing_timer > 0.0 and current_weapon == 16 and ammo_in_mag[16] > 0 and not dead
+	var t_now := Time.get_ticks_msec() * 0.001
+	if firing:
+		_flame_firing_timer = maxf(0.0, _flame_firing_timer - delta)
+		if sfx_flame_loop:
+			if not sfx_flame_loop.playing:
+				if _sfx_flame_jet_loop == null:
+					_sfx_flame_jet_loop = _make_loop_stream(_sfx_flamethrower_jet)
+				if _sfx_flame_jet_loop:
+					sfx_flame_loop.stream = _sfx_flame_jet_loop
+					sfx_flame_loop.volume_db = -16.0
+					sfx_flame_loop.play(randf_range(0.0, 0.6))
+			sfx_flame_loop.volume_db = move_toward(sfx_flame_loop.volume_db, -1.5, delta * 120.0)
+			# Organic pressure flutter of the fuel valve & roaring burn
+			var flutter := 1.01 + 0.035 * sin(t_now * 7.3) + 0.022 * sin(t_now * 13.7 + 1.3) + randf_range(-0.008, 0.008)
+			sfx_flame_loop.pitch_scale = clampf(lerpf(sfx_flame_loop.pitch_scale, flutter, 1.0 - exp(-delta * 18.0)), 0.95, 1.07)
+	else:
+		if current_weapon != 16 or dead:
+			_flame_firing_timer = 0.0
+		if sfx_flame_loop and sfx_flame_loop.playing:
+			sfx_flame_loop.volume_db = move_toward(sfx_flame_loop.volume_db, -34.0, delta * (32.5 / 0.18))
+			if sfx_flame_loop.volume_db <= -33.9:
+				sfx_flame_loop.stop()
+	if is_instance_valid(_flamer_pilot_node):
+		var show_p := current_weapon == 16 and not is_reloading and not _quick_melee_active and ammo_in_mag[16] > 0 and not dead
+		_flamer_pilot_node.visible = show_p
+		_flamer_flare = move_toward(_flamer_flare, 1.0 if (firing and show_p) else 0.0, delta * (14.0 if firing else 5.0))
+		if show_p:
+			var flick := 1.0 + 0.09 * sin(t_now * 23.0) + 0.06 * sin(t_now * 41.0 + 0.7) + randf_range(-0.03, 0.03)
+			var sc := lerpf(1.0, 1.45, _flamer_flare) * flick
+			_flamer_pilot_node.scale = Vector3(sc * lerpf(1.0, 0.85, _flamer_flare), sc, sc)
+			if _flamer_pilot_mat:
+				_flamer_pilot_mat.set_shader_parameter("intensity", lerpf(1.35, 2.0, _flamer_flare) * flick)
+				_flamer_pilot_mat.set_shader_parameter("blue_core", lerpf(0.88, 0.50, _flamer_flare))
+
+
+func _spawn_flame_ember(pos: Vector3, vel: Vector3, dur: float) -> void:
+	_ensure_fire_fx_assets()
+	if _ember_mesh == null:
+		return
+	var cap := 20 if OS.has_feature("web") else 56
+	while _flame_embers.size() >= cap:
+		var old: Dictionary = _flame_embers.pop_front()
+		if is_instance_valid(old.get("node")):
+			(old["node"] as Node).queue_free()
+	var mi := MeshInstance3D.new()
+	mi.mesh = _ember_mesh
+	mi.layers = 1
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_fx_parent().add_child(mi)
+	mi.global_position = pos
+	var sz := randf_range(0.55, 1.25)
+	mi.scale = Vector3.ONE * sz
+	_flame_embers.append({
+		"node": mi,
+		"vel": vel,
+		"age": 0.0,
+		"dur": maxf(dur, 0.1),
+		"size": sz,
+		"seed": randf_range(0.0, TAU),
+	})
+
+
+func _update_flame_embers(delta: float) -> void:
+	if _flame_embers.is_empty():
+		return
+	var i := _flame_embers.size() - 1
+	while i >= 0:
+		var e: Dictionary = _flame_embers[i]
+		var node := e.get("node") as MeshInstance3D
+		e["age"] = float(e["age"]) + delta
+		var dur := float(e["dur"])
+		if not is_instance_valid(node) or float(e["age"]) >= dur:
+			if is_instance_valid(node):
+				node.queue_free()
+			_flame_embers.remove_at(i)
+			i -= 1
+			continue
+		var age := float(e["age"])
+		var u := age / dur
+		var sd := float(e["seed"])
+		var vel: Vector3 = e["vel"]
+		# Buoyant thermal lift + turbulent swirl, with air drag bleeding off the initial burst
+		vel *= exp(-delta * 1.6)
+		vel.y += 1.75 * delta
+		vel.x += sin(age * 8.5 + sd) * 1.1 * delta
+		vel.z += cos(age * 7.1 + sd * 1.7) * 1.1 * delta
+		e["vel"] = vel
+		node.global_position += vel * delta
+		var flick := 0.78 + 0.22 * sin(age * 31.0 + sd * 3.0)
+		node.scale = Vector3.ONE * (float(e["size"]) * (1.0 - u * u) * flick + 0.001)
+		node.transparency = clampf(smoothstep(0.55, 1.0, u), 0.0, 0.98)
+		i -= 1
+
+
+func _spawn_hazard_pool(kind: String, pos: Vector3, dur: float, radius: float, from_flamer := false) -> void:
+	_ensure_fire_fx_assets()
+	var is_web := OS.has_feature("web")
+	if from_flamer:
+		# Keep the clinging napalm trail bounded: retire the oldest flamethrower pools gracefully (fade, never pop)
+		var flamer_cap := 3 if is_web else 6
+		var live: Array[Dictionary] = []
+		for hh: Dictionary in _hazards:
+			if bool(hh.get("from_flamer", false)) and float(hh["age"]) < float(hh["dur"]) * 0.72:
+				live.append(hh)
+		var excess := live.size() - (flamer_cap - 1)
+		for li in range(maxi(0, excess)):
+			var oh: Dictionary = live[li]
+			oh["age"] = maxf(float(oh["age"]), float(oh["dur"]) * 0.72)
 	var root_n := Node3D.new()
 	root_n.position = pos + Vector3(0.0, 0.02, 0.0)
 	var light: OmniLight3D = null
 	# Skip dynamic hazard OmniLights on WebGL2 so overlapping flame pools never exceed 8-light per-object budget!
-	if not OS.has_feature("web") or kind == "frag_flash":
+	if not is_web or kind == "frag_flash":
 		light = OmniLight3D.new()
 		light.position = Vector3(0.0, 0.72, 0.0)
 		light.shadow_enabled = false
@@ -5734,20 +6922,29 @@ func _spawn_hazard_pool(kind: String, pos: Vector3, dur: float, radius: float) -
 		# Cohesive overlapping multi-tiered photoreal turbulent gasoline flame plumes
 		if _fire_shader != null:
 			var r_sc := clampf(radius / 3.0, 0.58, 1.32)
-			var plume_cnt := 6 if OS.has_feature("web") else 11
+			var plume_cnt := (4 if is_web else 7) if from_flamer else (6 if is_web else 11)
+			var core_cnt := 2 if from_flamer else 4
 			for fi in range(plume_cnt):
 				var sm := ShaderMaterial.new()
 				sm.shader = _fire_shader
+				var is_core := fi < core_cnt
+				if _fire_plume_tex:
+					# Real high-speed photographic gasoline flame plumes, mirrored alternately so neighbours never repeat
+					sm.set_shader_parameter("fire_tex", _fire_plume_tex)
+					sm.set_shader_parameter("has_fire_tex", 1.0)
+					sm.set_shader_parameter("flip_x", -1.0 if (fi % 2) == 1 else 1.0)
+					sm.set_shader_parameter("atlas_fps", randf_range(14.0, 22.0))
 				sm.set_shader_parameter("flame_speed", randf_range(2.3, 3.6))
 				sm.set_shader_parameter("phase_seed", randf_range(0.0, 40.0))
-				sm.set_shader_parameter("intensity", randf_range(0.90, 1.10))
-				sm.set_shader_parameter("smoke_mix", randf_range(0.54, 0.80))
+				sm.set_shader_parameter("intensity", randf_range(1.00, 1.18) if is_core else randf_range(0.82, 1.00))
+				sm.set_shader_parameter("smoke_mix", randf_range(0.40, 0.58) if is_core else randf_range(0.58, 0.82))
 				sm.set_shader_parameter("fade_alpha", 1.0)
 				sm.set_shader_parameter("billboard_y", 1.0)
 				sm.set_shader_parameter("jet_mode", 0.0)
-				var is_core := fi < 4
-				var pw := (randf_range(0.95, 1.32) if is_core else randf_range(0.68, 1.05)) * r_sc
-				var ph := (randf_range(1.08, 1.52) if is_core else randf_range(0.65, 1.15)) * r_sc
+				sm.set_shader_parameter("blue_core", 0.0)
+				# Layered body: tall dense inner core + shorter licking outer rim tongues
+				var pw := (randf_range(0.95, 1.32) if is_core else randf_range(0.62, 0.98)) * r_sc
+				var ph := (randf_range(1.08, 1.52) if is_core else randf_range(0.60, 1.08)) * r_sc
 				var qm := QuadMesh.new()
 				qm.size = Vector2(pw, ph)
 				qm.material = sm
@@ -5765,7 +6962,7 @@ func _spawn_hazard_pool(kind: String, pos: Vector3, dur: float, radius: float) -
 
 		# Rising dark oily soot smoke wisps curling above the gasoline fire
 		if _smoke_wisp_tex != null:
-			var smoke_cnt := 2 if OS.has_feature("web") else 4
+			var smoke_cnt := (1 if is_web else 2) if from_flamer else (2 if is_web else 4)
 			for si in range(smoke_cnt):
 				var smat := StandardMaterial3D.new()
 				smat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -5800,6 +6997,12 @@ func _spawn_hazard_pool(kind: String, pos: Vector3, dur: float, radius: float) -
 			for bi in range(blast_cnt):
 				var sm := ShaderMaterial.new()
 				sm.shader = _fire_shader
+				if _napalm_puff_tex:
+					sm.set_shader_parameter("fire_tex", _napalm_puff_tex)
+					sm.set_shader_parameter("has_fire_tex", 1.0)
+					sm.set_shader_parameter("atlas_fps", randf_range(16.0, 24.0))
+					sm.set_shader_parameter("flip_x", -1.0 if (bi % 2) == 1 else 1.0)
+				sm.set_shader_parameter("age_norm", 0.0)
 				sm.set_shader_parameter("flame_speed", 4.5)
 				sm.set_shader_parameter("phase_seed", randf_range(0.0, 30.0))
 				sm.set_shader_parameter("intensity", 1.55)
@@ -5833,7 +7036,28 @@ func _spawn_hazard_pool(kind: String, pos: Vector3, dur: float, radius: float) -
 		disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		root_n.add_child(disc)
 
+	# Spatial gasoline crackle & roar on burning pools (bounded voice count so many pools never stack into mud)
+	var crackle: AudioStreamPlayer3D = null
+	if kind == "fire" and _sfx_fire_crackle != null:
+		var voices := 0
+		for hh: Dictionary in _hazards:
+			if is_instance_valid(hh.get("crackle")):
+				voices += 1
+		if voices < (2 if is_web else 4):
+			if _sfx_fire_crackle_loop == null:
+				_sfx_fire_crackle_loop = _make_loop_stream(_sfx_fire_crackle)
+			crackle = AudioStreamPlayer3D.new()
+			crackle.stream = _sfx_fire_crackle_loop
+			crackle.unit_size = 3.5
+			crackle.max_distance = 14.0
+			crackle.volume_db = -20.0
+			crackle.pitch_scale = randf_range(0.92, 1.08)
+			crackle.position = Vector3(0.0, 0.45, 0.0)
+			root_n.add_child(crackle)
+
 	_fx_parent().add_child(root_n)
+	if crackle:
+		crackle.play(randf_range(0.0, 2.4))
 	_hazards.append({
 		"node": root_n,
 		"light": light,
@@ -5843,11 +7067,14 @@ func _spawn_hazard_pool(kind: String, pos: Vector3, dur: float, radius: float) -
 		"age": 0.0,
 		"dur": dur,
 		"tick": 0.0,
+		"ember_t": randf_range(0.0, 0.1),
 		"fire_mats": fire_mats,
 		"fire_nodes": fire_nodes,
 		"fire_base_hs": fire_base_hs,
 		"smoke": smoke_entries,
 		"char_mat": char_mat,
+		"crackle": crackle,
+		"from_flamer": from_flamer,
 	})
 
 
@@ -5893,6 +7120,18 @@ func _update_hazards(delta: float) -> void:
 			var cmat := h.get("char_mat") as ShaderMaterial
 			if cmat:
 				cmat.set_shader_parameter("fade_alpha", fade)
+			var crk := h.get("crackle") as AudioStreamPlayer3D
+			if is_instance_valid(crk):
+				crk.volume_db = lerpf(-30.0, -4.0, clampf(fade * rise_in, 0.0, 1.0))
+			# Glowing embers lofted off the burning fuel on the thermal column
+			h["ember_t"] = float(h.get("ember_t", 0.0)) - delta
+			if float(h["ember_t"]) <= 0.0 and fade > 0.2:
+				var web_e := OS.has_feature("web")
+				h["ember_t"] = randf_range(0.20, 0.34) if web_e else randf_range(0.07, 0.15)
+				var er := float(h["radius"]) * 0.42
+				var ep: Vector3 = (h["pos"] as Vector3) + Vector3(randf_range(-er, er), randf_range(0.20, 0.75), randf_range(-er, er))
+				var ev := Vector3(randf_range(-0.45, 0.45), randf_range(0.9, 2.1), randf_range(-0.45, 0.45))
+				_spawn_flame_ember(ep, ev, randf_range(0.9, 1.7))
 			var sm_arr: Array = h.get("smoke", [])
 			for se: Dictionary in sm_arr:
 				var snode := se.get("node") as MeshInstance3D
@@ -5916,6 +7155,7 @@ func _update_hazards(delta: float) -> void:
 					sm.set_shader_parameter("fade_alpha", clampf(1.0 - pow(u, 1.4), 0.0, 1.0))
 					sm.set_shader_parameter("intensity", lerpf(1.75, 0.35, u))
 					sm.set_shader_parameter("smoke_mix", lerpf(0.28, 0.94, u))
+					sm.set_shader_parameter("age_norm", u)
 			for fi in range(fnodes.size()):
 				var fn := fnodes[fi] as MeshInstance3D
 				if is_instance_valid(fn):
@@ -5942,12 +7182,57 @@ func _update_hazards(delta: float) -> void:
 		i -= 1
 
 
+const FLAME_JET_SPEED_MIN := 13.5
+const FLAME_JET_SPEED_MAX := 17.5
+
+
 func _spawn_flame_jet_stream(w: Dictionary) -> void:
 	_ensure_fire_fx_assets()
 	if _fire_shader == null:
 		return
-	var max_jets := 20 if OS.has_feature("web") else 42
-	var burst_cnt := 2 if OS.has_feature("web") else 4
+	var was_flowing := _flame_emit_window > 0.0
+	_flame_emit_w = w
+	_flame_emit_window = float(w["fire_rate"]) * 1.4
+	if was_flowing:
+		# Trigger held: the per-tick nozzle emitter in _update_flame_jets keeps the lance fed. Re-bursting
+		# every shot would leave the nozzle bare for most of each 75 ms shot interval (puffs outrun it at 15 m/s).
+		return
+	# Trigger pull: lay the whole lance out at once so fuel reaches 1.3 m on the very first frame
+	var staggers: Array[float] = [0.12, 0.36, 0.64, 0.96, 1.32]
+	if OS.has_feature("web"):
+		staggers = [0.12, 0.45, 0.85]
+	var fr := _flame_stream_frame(w, 0.022)
+	for ji in range(staggers.size()):
+		_emit_flame_puff(fr, staggers[ji], ji)
+	_flame_emit_accum = 0.0
+
+
+func _tick_flame_emitter(delta: float) -> void:
+	# Continuous nozzle emitter: one puff every ~0.18 m of travel (0.40 m on web) seeded at the 0.12 m stagger,
+	# so the stream stays attached to the nozzle tip on every rendered frame, not just on shot frames.
+	if _flame_emit_window <= 0.0:
+		return
+	_flame_emit_window -= delta
+	if current_weapon != 16 or dead or is_reloading or ammo_in_mag[16] <= 0 or _flame_emit_w.is_empty() or _fire_shader == null:
+		_flame_emit_window = 0.0
+		_flame_emit_accum = 0.0
+		return
+	var mean_speed := (FLAME_JET_SPEED_MIN + FLAME_JET_SPEED_MAX) * 0.5
+	var interval := (0.40 if OS.has_feature("web") else 0.18) / mean_speed
+	_flame_emit_accum += delta
+	if _flame_emit_accum < interval:
+		return
+	var fr := _flame_stream_frame(_flame_emit_w, 0.012)
+	var n := 0
+	while _flame_emit_accum >= interval and n < 3:
+		_flame_emit_accum -= interval
+		# Puffs released earlier within this tick have already travelled further down the stream
+		_emit_flame_puff(fr, 0.12 + minf(_flame_emit_accum * mean_speed, 0.30), randi() % 2)
+		n += 1
+	_flame_emit_accum = minf(_flame_emit_accum, interval)
+
+
+func _flame_stream_frame(w: Dictionary, axis_jitter: float) -> Dictionary:
 	var start_w := weapon_pivot.to_global(w["muzzle"] as Vector3)
 	var fwd := -camera.global_transform.basis.z
 	var right := camera.global_transform.basis.x
@@ -5960,52 +7245,80 @@ func _spawn_flame_jet_stream(w: Dictionary) -> void:
 		var ch := space.intersect_ray(cq)
 		if not ch.is_empty():
 			start_w = (ch["position"] as Vector3) + (ch["normal"] as Vector3) * 0.14
-	for ji in range(burst_cnt):
-		if _flame_jets.size() >= max_jets:
-			var old: Dictionary = _flame_jets.pop_front()
-			if is_instance_valid(old.get("node")):
-				(old["node"] as Node).queue_free()
-		var sm := ShaderMaterial.new()
-		sm.shader = _fire_shader
-		sm.set_shader_parameter("flame_speed", randf_range(3.6, 5.2))
-		sm.set_shader_parameter("phase_seed", randf_range(0.0, 50.0))
-		sm.set_shader_parameter("intensity", 1.48)
-		sm.set_shader_parameter("smoke_mix", 0.22)
-		sm.set_shader_parameter("fade_alpha", 1.0)
-		sm.set_shader_parameter("billboard_y", 1.0)
-		sm.set_shader_parameter("jet_mode", 1.0)
-		var qm := QuadMesh.new()
-		qm.size = Vector2(1.0, 1.0)
-		qm.material = sm
-		var mi := MeshInstance3D.new()
-		mi.mesh = qm
-		mi.layers = 1
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		var stagger := float(ji) * 0.34
-		var spread_dir := (fwd + right * randf_range(-0.055, 0.055) + up * randf_range(-0.045, 0.045)).normalized()
-		var spawn_pt := start_w + spread_dir * stagger
-		var hit_wall := false
-		if space and stagger > 0.01:
-			var sq := PhysicsRayQueryParameters3D.create(start_w, spawn_pt, 1)
-			sq.exclude = [get_rid()]
-			var sh := space.intersect_ray(sq)
-			if not sh.is_empty():
-				spawn_pt = (sh["position"] as Vector3) + (sh["normal"] as Vector3) * 0.14
-				hit_wall = true
-		_fx_parent().add_child(mi)
-		mi.global_position = spawn_pt
-		mi.scale = Vector3.ONE * lerpf(0.22, 0.36, float(ji) / maxf(float(burst_cnt - 1), 1.0))
-		_flame_jets.append({
-			"node": mi,
-			"mat": sm,
-			"vel": Vector3(0.0, 1.45, 0.0) if hit_wall else (spread_dir * randf_range(11.5, 14.5) + velocity * 0.35),
-			"age": 0.0,
-			"dur": randf_range(0.50, 0.66),
-			"stopped": hit_wall,
-		})
+	# Puffs share a jittered axis so the rope of fuel stays tight
+	var axis := (fwd + right * randf_range(-axis_jitter, axis_jitter) + up * randf_range(-axis_jitter * 0.73, axis_jitter * 0.73)).normalized()
+	return {"start": start_w, "axis": axis, "right": right, "up": up, "space": space}
+
+
+func _emit_flame_puff(fr: Dictionary, stagger: float, flip_idx: int) -> void:
+	var max_jets := 30 if OS.has_feature("web") else 80
+	if _flame_jets.size() >= max_jets:
+		var old: Dictionary = _flame_jets.pop_front()
+		if is_instance_valid(old.get("node")):
+			(old["node"] as Node).queue_free()
+	var start_w: Vector3 = fr["start"]
+	var axis: Vector3 = fr["axis"]
+	var right: Vector3 = fr["right"]
+	var up: Vector3 = fr["up"]
+	var space: PhysicsDirectSpaceState3D = fr["space"]
+	var sm := ShaderMaterial.new()
+	sm.shader = _fire_shader
+	if _napalm_puff_tex:
+		sm.set_shader_parameter("fire_tex", _napalm_puff_tex)
+		sm.set_shader_parameter("has_fire_tex", 1.0)
+		sm.set_shader_parameter("flip_x", -1.0 if (flip_idx % 2) == 1 else 1.0)
+	sm.set_shader_parameter("atlas_fps", randf_range(18.0, 26.0))
+	# Napalm fireballs are pure gold-orange: blue lives only on the pilot flame and gas burners
+	# (blue mixed into the orange atlas reads as a magenta/purple tint)
+	sm.set_shader_parameter("blue_core", 0.0)
+	sm.set_shader_parameter("age_norm", 0.0)
+	sm.set_shader_parameter("flame_speed", randf_range(3.6, 5.2))
+	sm.set_shader_parameter("phase_seed", randf_range(0.0, 50.0))
+	sm.set_shader_parameter("intensity", 1.50)
+	sm.set_shader_parameter("smoke_mix", 0.18)
+	sm.set_shader_parameter("fade_alpha", 1.0)
+	sm.set_shader_parameter("billboard_y", 1.0)
+	sm.set_shader_parameter("jet_mode", 1.0)
+	var qm := QuadMesh.new()
+	qm.size = Vector2(1.0, 1.0)
+	qm.material = sm
+	var mi := MeshInstance3D.new()
+	mi.mesh = qm
+	mi.layers = 1
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var spread_dir := (axis + right * randf_range(-0.012, 0.012) + up * randf_range(-0.010, 0.010)).normalized()
+	var spawn_pt := start_w + spread_dir * stagger
+	var hit_wall := false
+	if space and stagger > 0.01:
+		var sq := PhysicsRayQueryParameters3D.create(start_w, spawn_pt, 1)
+		sq.exclude = [get_rid()]
+		var sh := space.intersect_ray(sq)
+		if not sh.is_empty():
+			spawn_pt = (sh["position"] as Vector3) + (sh["normal"] as Vector3) * 0.14
+			hit_wall = true
+	_fx_parent().add_child(mi)
+	mi.global_position = spawn_pt
+	var sc0 := 0.26
+	mi.scale = Vector3(sc0, sc0, 1.0)
+	var dur := randf_range(0.66, 0.86)
+	_flame_jets.append({
+		"node": mi,
+		"mat": sm,
+		"vel": Vector3(0.0, 0.85, 0.0) if hit_wall else (spread_dir * randf_range(FLAME_JET_SPEED_MIN, FLAME_JET_SPEED_MAX) + velocity * 0.35),
+		"age": 0.0,
+		"dur": dur + (0.35 if hit_wall else 0.0),
+		"stopped": hit_wall,
+		"sc0": sc0,
+	})
 
 
 func _update_flame_jets(delta: float) -> void:
+	_advance_flame_jets(delta)
+	# Emit after advancing so fresh puffs render at the nozzle stagger instead of a tick downstream
+	_tick_flame_emitter(delta)
+
+
+func _advance_flame_jets(delta: float) -> void:
 	if _flame_jets.is_empty():
 		return
 	var space := get_world_3d().direct_space_state
@@ -6024,8 +7337,13 @@ func _update_flame_jets(delta: float) -> void:
 		var u := clampf(float(fj["age"]) / maxf(dur, 0.05), 0.0, 1.0)
 		var vel: Vector3 = fj["vel"]
 		if not bool(fj["stopped"]):
-			vel *= exp(-delta * 2.45)
-			vel.y += 1.65 * delta
+			# Liquid napalm: heavy fuel rope arcs DOWN under gravity with air drag; only the cooling
+			# smoke/ember tail turns buoyant and curls upward on the thermal
+			vel *= exp(-delta * 1.9)
+			if u < 0.55:
+				vel.y -= 4.6 * delta
+			else:
+				vel.y += 2.0 * delta
 			var p0 := node.global_position
 			var p1 := p0 + vel * delta
 			if space and p0.distance_squared_to(p1) > 0.0001:
@@ -6033,9 +7351,16 @@ func _update_flame_jets(delta: float) -> void:
 				q.exclude = [get_rid()]
 				var h := space.intersect_ray(q)
 				if not h.is_empty():
-					node.global_position = (h["position"] as Vector3) + (h["normal"] as Vector3) * 0.14
-					vel = Vector3(0.0, 1.45, 0.0)
+					# Clinging splash: burning fuel sticks to the wall/floor and licks upward
+					var hn := h["normal"] as Vector3
+					node.global_position = (h["position"] as Vector3) + hn * 0.12
+					vel = Vector3(0.0, 0.85, 0.0)
 					fj["stopped"] = true
+					fj["dur"] = minf(dur + 0.32, float(fj["age"]) + 0.62)
+					var n_emb := 1 + (randi() % 2)
+					for _e in range(n_emb):
+						var ev := (hn * randf_range(0.6, 1.4) + Vector3(randf_range(-0.9, 0.9), randf_range(0.8, 2.0), randf_range(-0.9, 0.9)))
+						_spawn_flame_ember(node.global_position, ev, randf_range(0.6, 1.2))
 				else:
 					node.global_position = p1
 			else:
@@ -6043,54 +7368,101 @@ func _update_flame_jets(delta: float) -> void:
 		else:
 			node.global_position += vel * delta
 		fj["vel"] = vel
-		var sc := lerpf(0.22, 1.28, pow(u, 0.60))
+		var sc0 := float(fj.get("sc0", 0.26))
+		var sc := lerpf(sc0, 1.38, pow(u, 0.58))
+		if bool(fj["stopped"]):
+			sc = maxf(sc, 0.55)
 		node.scale = Vector3(sc, sc, 1.0)
 		var sm := fj["mat"] as ShaderMaterial
 		if sm:
-			sm.set_shader_parameter("intensity", lerpf(1.48, 0.35, pow(u, 0.85)))
-			sm.set_shader_parameter("smoke_mix", lerpf(0.22, 0.90, smoothstep(0.25, 0.92, u)))
-			sm.set_shader_parameter("fade_alpha", clampf(1.0 - smoothstep(0.58, 1.0, u), 0.0, 1.0))
+			sm.set_shader_parameter("age_norm", u)
+			sm.set_shader_parameter("intensity", lerpf(1.50, 0.38, pow(u, 0.85)))
+			sm.set_shader_parameter("smoke_mix", lerpf(0.18, 0.92, smoothstep(0.30, 0.92, u)))
+			sm.set_shader_parameter("fade_alpha", clampf(1.0 - smoothstep(0.62, 1.0, u), 0.0, 1.0))
 		i -= 1
 
 
+func _flame_los(origin: Vector3, target: Vector3) -> bool:
+	var space := get_world_3d().direct_space_state
+	if space == null:
+		return true
+	var q := PhysicsRayQueryParameters3D.create(origin, target, 1)
+	q.exclude = [get_rid()]
+	return space.intersect_ray(q).is_empty()
+
+
 func _fire_flamethrower(w: Dictionary) -> void:
+	_flame_firing_timer = 0.16
 	_spawn_flame_jet_stream(w)
 	var origin := camera.global_position
 	var fwd := -camera.global_transform.basis.z
-	var right := camera.global_transform.basis.x
 	var space := get_world_3d().direct_space_state
-	var reach := 9.5
+	var reach := 11.5
 	var dmg_scale := 1.45 if is_weapon_upgraded(current_weapon) else 1.0
+	# Wall distance straight down the stream axis (the stream never punches through solid walls)
+	var wall_d := reach
+	if space:
+		var wq := PhysicsRayQueryParameters3D.create(origin, origin + fwd * reach, 1)
+		wq.exclude = [get_rid()]
+		var wh := space.intersect_ray(wq)
+		if not wh.is_empty():
+			wall_d = origin.distance_to(wh["position"])
 	var z_hit_set := {}
-	for ang_deg: float in [0.0, -5.0, 5.0, -10.0, 10.0]:
-		var rad := deg_to_rad(ang_deg)
-		var dir := (fwd * cos(rad) + right * sin(rad)).normalized()
-		var max_d := reach
-		if space:
-			var wq := PhysicsRayQueryParameters3D.create(origin, origin + dir * reach, 1)
-			wq.exclude = [get_rid()]
-			var wh := space.intersect_ray(wq)
-			if not wh.is_empty():
-				max_d = origin.distance_to(wh["position"])
-		var zh := ZombieAI.raycast_all_zombies(origin, dir, max_d)
-		if not zh.is_empty():
-			var z := zh["zombie"] as ZombieAI
-			if is_instance_valid(z) and not z.dead and not z_hit_set.has(z):
-				z_hit_set[z] = true
-				z.apply_burn(4.5, 48.0 * dmg_scale)
-				z.apply_status_damage(float(w["damage"]) * dmg_scale)
-				# apply_status_damage already emits hit_confirmed(false, true) on kill — never double-award points!
-				if not z.dead:
-					emit_signal("hit_confirmed", false, false)
-	# Periodically lay down burning floor patches safely ahead of player (never right under player's own boots!)
+	# Point-blank reliability: direct skeleton raycast down the nozzle axis
+	var zh := ZombieAI.raycast_all_zombies(origin, fwd, wall_d)
+	if not zh.is_empty():
+		var zd := zh["zombie"] as ZombieAI
+		if is_instance_valid(zd) and not zd.dead:
+			z_hit_set[zd] = true
+	# Swept 3D cone + stream-axis capsule against every living zombie, LOS-gated by world geometry
+	for z_raw in ZombieAI._all_zombies:
+		var z := z_raw as ZombieAI
+		if not is_instance_valid(z) or z.dead or not z.is_inside_tree() or z_hit_set.has(z):
+			continue
+		var best := false
+		for hgt: float in [1.05, 0.55, 1.50]:
+			var c := z.global_position + Vector3(0.0, hgt, 0.0)
+			var to := c - origin
+			var along := to.dot(fwd)
+			if along < 0.15 or along > reach:
+				continue
+			var dist := to.length()
+			var dotf := to.dot(fwd) / maxf(dist, 0.001)
+			# Liquid fuel sags under gravity: widen the capsule slightly with distance & allow for the arc drop
+			var sag := 0.5 * 5.4 * pow(along / 15.0, 2.0)
+			var perp := (to - fwd * along + Vector3(0.0, sag, 0.0)).length()
+			if dotf < 0.92 and perp > 0.95 + along * 0.02:
+				continue
+			if _flame_los(origin, c):
+				best = true
+				break
+		if best:
+			z_hit_set[z] = true
+	var any_live := false
+	for zk in z_hit_set.keys():
+		var z := zk as ZombieAI
+		if not is_instance_valid(z) or z.dead:
+			continue
+		z.apply_burn(5.5, 58.0 * dmg_scale, true)
+		z.apply_status_damage(float(w["damage"]) * dmg_scale)
+		# apply_status_damage already emits hit_confirmed(false, true) on kill — never double-award points!
+		if not z.dead:
+			any_live = true
+	if any_live and _flame_hit_tick_cd <= 0.0:
+		_flame_hit_tick_cd = 0.14
+		emit_signal("hit_confirmed", false, false)
+	if not z_hit_set.is_empty():
+		shots_hit += 1
+	# Lay down clinging burning napalm on the floor where the arcing stream lands (never under the player's boots)
 	if _flame_pool_cd <= 0.0 and space:
-		_flame_pool_cd = 0.55
-		var fq := PhysicsRayQueryParameters3D.create(origin, origin + fwd * reach, 1)
+		_flame_pool_cd = 0.42
+		var sag_dir := (fwd + Vector3(0.0, -0.10, 0.0)).normalized()
+		var fq := PhysicsRayQueryParameters3D.create(origin, origin + sag_dir * reach, 1)
 		fq.exclude = [get_rid()]
 		var fhit := space.intersect_ray(fq)
-		var pool_p := _project_to_floor(fhit["position"] as Vector3) if not fhit.is_empty() else _project_to_floor(origin + fwd * 5.8)
-		if pool_p.distance_to(global_position) >= 2.4:
-			_spawn_hazard_pool("fire", pool_p, 3.2, 2.2)
+		var pool_p := _project_to_floor(fhit["position"] as Vector3) if not fhit.is_empty() else _project_to_floor(origin + sag_dir * 7.5)
+		if pool_p.distance_to(global_position) >= 2.0 and absf(pool_p.y - global_position.y) <= 3.5:
+			_spawn_hazard_pool("fire", pool_p, 3.2, 2.0, true)
 
 
 func _fire_rpg_rocket() -> void:
@@ -6247,6 +7619,95 @@ func _detonate_rpg(pos: Vector3, base_dmg: float, blast_normal: Vector3 = Vector
 	_spawn_hazard_pool("fire", _project_to_floor(pos), 4.5, 2.8)
 
 
+func get_spread_now() -> float:
+	# Live cone half-angle (tangent units) shared by the shot maths and the HUD crosshair
+	var w: Dictionary = WEAPONS[current_weapon]
+	if bool(w.get("is_melee", false)) or bool(w.get("is_bow", false)):
+		return 0.0
+	var is_shotgun := (current_weapon == 2 or current_weapon == 9 or current_weapon == 11)
+	var mult := (0.55 if is_ads else 1.0) if is_shotgun else (0.14 if is_ads else 0.72)
+	var extra := 0.0
+	if not is_shotgun:
+		var move := clampf(Vector2(velocity.x, velocity.z).length() / 4.1, 0.0, 1.5)
+		extra = 0.0065 * move + _spread_bloom * 0.011 + _sprint_blend * 0.012
+		if not is_on_floor():
+			extra += 0.014
+		if is_ads:
+			extra *= 0.22
+		if is_crouching:
+			mult *= 0.8
+			extra *= 0.7
+	return float(w["spread"]) * mult + extra
+
+
+func get_fire_mode_label(idx: int) -> String:
+	var w: Dictionary = WEAPONS[idx]
+	if bool(w.get("is_melee", false)):
+		return "MELEE"
+	if bool(w.get("is_bow", false)):
+		return "DRAW"
+	if bool(w.get("is_flamethrower", false)):
+		return "STREAM"
+	if int(w.get("burst_count", 0)) > 1:
+		return "BURST"
+	if bool(w["auto"]):
+		return "AUTO"
+	if idx == 2:
+		return "PUMP"
+	if idx == 7 or idx == 14:
+		return "BOLT"
+	if idx == 11:
+		return "BREAK"
+	if idx == 6:
+		return "DA"
+	return "SEMI"
+
+
+static func get_penetration(idx: int) -> int:
+	# Extra bodies a round passes through
+	match idx:
+		7, 13, 14: return 2 # full-power rifle cartridges
+		1, 8, 10, 12, 6: return 1 # intermediate rifles and the .44
+	return 0
+
+
+static func get_falloff_mult(idx: int, dist: float) -> float:
+	# Damage falloff by weapon class: [full-damage range, minimum-damage range, floor]
+	var r0 := 30.0
+	var r1 := 70.0
+	var floor_m := 0.8
+	match idx:
+		0, 5: # 9mm pistol and SMG
+			r0 = 12.0; r1 = 34.0; floor_m = 0.55
+		6:
+			r0 = 16.0; r1 = 40.0; floor_m = 0.65
+		2, 9: # buckshot
+			r0 = 6.5; r1 = 22.0; floor_m = 0.30
+		11: # sawed-off
+			r0 = 4.0; r1 = 13.0; floor_m = 0.22
+		7, 13, 14:
+			return 1.0
+	if dist <= r0:
+		return 1.0
+	return lerpf(1.0, floor_m, clampf((dist - r0) / (r1 - r0), 0.0, 1.0))
+
+
+static func describe_weapon(idx: int) -> String:
+	# One-line stat readout for purchase prompts and the loadout screen
+	var w: Dictionary = WEAPONS[idx]
+	if bool(w.get("is_melee", false)):
+		return ""
+	var pel := int(w["pellets"])
+	var dmg_s := ("%dx%d" % [int(w["damage"]), pel]) if pel > 1 else str(int(w["damage"]))
+	var rpm := int(round(60.0 / maxf(float(w["fire_rate"]), 0.02)))
+	var mode := "AUTO" if bool(w["auto"]) else ("BURST" if int(w.get("burst_count", 0)) > 1 else "SEMI")
+	var parts: Array[String] = ["DMG %s" % dmg_s, "%d RPM" % rpm, "MAG %d" % int(w["mag_size"]), mode]
+	var pen := get_penetration(idx)
+	if pen > 0:
+		parts.append("PIERCES %d" % pen)
+	return "  ·  ".join(parts)
+
+
 func fire_weapon(is_burst_shot: bool = false) -> bool:
 	var w: Dictionary = WEAPONS[current_weapon]
 	if ammo_in_mag[current_weapon] <= 0:
@@ -6257,13 +7718,22 @@ func fire_weapon(is_burst_shot: bool = false) -> bool:
 		start_reload()
 		return false
 	ammo_in_mag[current_weapon] -= 1
+	shots_fired += 1
+	_spread_bloom = minf(1.0, _spread_bloom + (0.34 if not bool(w["auto"]) else 0.16))
 	if ammo_in_mag[current_weapon] <= 0:
 		weapon_chambered[current_weapon] = false
-		if current_weapon == 13 and sfx_casing and not _sfx_shell_clink.is_empty():
-			# Iconic M1 Garand en-bloc clip PING!
-			sfx_casing.stream = _sfx_shell_clink[0]
-			sfx_casing.pitch_scale = 2.15
-			sfx_casing.play()
+		if current_weapon == 13:
+			# Iconic M1 Garand en-bloc clip PING + the empty steel clip flipping out of the open breech!
+			if sfx_casing:
+				if _sfx_garand_ping:
+					sfx_casing.stream = _sfx_garand_ping
+					sfx_casing.pitch_scale = randf_range(0.97, 1.04)
+					sfx_casing.play()
+				elif not _sfx_shell_clink.is_empty():
+					sfx_casing.stream = _sfx_shell_clink[0]
+					sfx_casing.pitch_scale = 2.15
+					sfx_casing.play()
+			_spawn_garand_clip_eject()
 	# 3-Round Burst scheduling (FAMAS F1)!
 	var b_cnt := int(w.get("burst_count", 0))
 	if b_cnt > 1 and not is_burst_shot and ammo_in_mag[current_weapon] > 0:
@@ -6356,8 +7826,9 @@ func fire_weapon(is_burst_shot: bool = false) -> bool:
 			shot_stream = vars_arr[_gun_alt_flip]
 	elif current_weapon < _weapon_audio.size():
 		shot_stream = _weapon_audio[current_weapon]
-	if shot_stream:
-		var pitch_s := randf_range(1.25, 1.38) if is_sup else (0.68 if current_weapon == 16 else (0.58 if current_weapon == 17 else randf_range(0.95, 1.04)))
+	# The M2 flamethrower is carried by the continuous looping jet roar (sfx_flame_loop), never per-tick booms
+	if shot_stream and current_weapon != 16:
+		var pitch_s := randf_range(1.25, 1.38) if is_sup else (0.58 if current_weapon == 17 else randf_range(0.95, 1.04))
 		_play_gun_sfx(shot_stream, pitch_s)
 
 	# Specialized non-hitscan weapon dispatchers (Crossbow, Flamethrower, RPG-7)!
@@ -6377,9 +7848,9 @@ func fire_weapon(is_burst_shot: bool = false) -> bool:
 	var up := camera.global_transform.basis.y
 	# Consistent shotgun buckshot spread for M870 (2), Benelli M4 (9), and Sawed-Off DB (11)!
 	var is_shotgun := (current_weapon == 2 or current_weapon == 9 or current_weapon == 11)
-	var spread_mult := (0.55 if is_ads else 1.0) if is_shotgun else (0.14 if is_ads else 0.72)
-	var spread: float = w["spread"] * spread_mult
+	var spread: float = get_spread_now()
 	var dmg_per_hit: float = float(w["damage"]) * (1.45 if is_weapon_upgraded(current_weapon) else 1.0)
+	var pen_left_base := get_penetration(current_weapon)
 	var impact_fx_budget := 3 if int(w["pellets"]) > 1 else 1
 	var z_hits := {}
 
@@ -6403,22 +7874,36 @@ func fire_weapon(is_burst_shot: bool = false) -> bool:
 			break
 		var max_dist := origin.distance_to(wall_hit["position"]) if not wall_hit.is_empty() else 75.0
 
-		var z_hit := ZombieAI.raycast_all_zombies(origin, dir, max_dist)
-		if not z_hit.is_empty():
+		# Walk the bullet through bodies: rifle-calibre rounds over-penetrate into whoever stands behind, losing energy each time
+		var pierced: Array = []
+		var pen_left := pen_left_base
+		var carry := 1.0
+		var hit_any_body := false
+		while true:
+			var z_hit := ZombieAI.raycast_all_zombies(origin, dir, max_dist, pierced)
+			if z_hit.is_empty():
+				break
 			var z := z_hit["zombie"] as ZombieAI
-			if is_instance_valid(z):
-				var hz := str(z_hit["zone"])
-				var hpos: Vector3 = z_hit["pos"]
-				if not z_hits.has(z):
-					z_hits[z] = []
-				(z_hits[z] as Array).append({
-					"zone": hz,
-					"pos": hpos,
-					"dir": dir,
-					"dmg": dmg_per_hit,
-					"dist": float(z_hit["dist"]),
-				})
-				continue
+			if not is_instance_valid(z):
+				break
+			hit_any_body = true
+			var h_dist := float(z_hit["dist"])
+			if not z_hits.has(z):
+				z_hits[z] = []
+			(z_hits[z] as Array).append({
+				"zone": str(z_hit["zone"]),
+				"pos": z_hit["pos"],
+				"dir": dir,
+				"dmg": dmg_per_hit * carry * get_falloff_mult(current_weapon, h_dist),
+				"dist": h_dist,
+			})
+			if pen_left <= 0 or z.dead:
+				break
+			pen_left -= 1
+			carry *= 0.62
+			pierced.append(z)
+		if hit_any_body:
+			continue
 
 		if not wall_hit.is_empty():
 			if impact_fx_budget > 0:
@@ -6445,6 +7930,8 @@ func fire_weapon(is_burst_shot: bool = false) -> bool:
 			any_live_headshot = any_live_headshot or is_hs
 			emit_signal("hit_confirmed", is_hs, killed)
 
+	if any_live_hit:
+		shots_hit += 1
 	if any_zombie_hit:
 		if sfx_hit:
 			var pool := _sfx_hit_head if any_gore_crunch else _sfx_hit_flesh
@@ -6484,10 +7971,16 @@ func take_damage(amount: float, from_pos: Vector3 = Vector3.ZERO) -> void:
 	if _bow_drawing:
 		cancel_bow_draw(true)
 	health = max(0.0, health - amount)
-	damage_flash = min(1.0, damage_flash + 0.72)
+	damage_taken_total += amount
+	regen_delay = 3.5 if perks.has("adrenal") else 5.0
+	last_damage_dir = from_pos
+	last_damage_time = Time.get_ticks_msec() * 0.001
+	_melee_charging = false
+	_melee_charge = 0.0
+	damage_flash = min(1.0, damage_flash + clampf(0.35 + amount / 45.0, 0.45, 0.85))
 	ads_lockout = 0.22
-	trauma = minf(1.0, trauma + 0.52)
-	hit_glitch = 0.34
+	trauma = minf(1.0, trauma + clampf(0.25 + amount / 60.0, 0.3, 0.7))
+	hit_glitch = clampf(amount / 70.0, 0.14, 0.42)
 	hit_ca_boost = 0.018
 
 	var kick_side := 1.0
@@ -6515,6 +8008,8 @@ func take_damage(amount: float, from_pos: Vector3 = Vector3.ZERO) -> void:
 		dead = true
 		_burst_remaining = 0
 		_burst_timer = 0.0
+		if grabbed_by != null:
+			end_grab(false)
 		if _quick_melee_active:
 			_quick_melee_active = false
 			_melee_timer = 0.0
@@ -6560,13 +8055,47 @@ func heal_full(reset_unlocks: bool = false) -> void:
 		if is_instance_valid(fj.get("node")):
 			(fj["node"] as Node).queue_free()
 	_flame_jets.clear()
+	for fe: Dictionary in _flame_embers:
+		if is_instance_valid(fe.get("node")):
+			(fe["node"] as Node).queue_free()
+	_flame_embers.clear()
+	_flame_firing_timer = 0.0
+	_flame_hit_tick_cd = 0.0
+	_flamer_flare = 0.0
+	if sfx_flame_loop and sfx_flame_loop.playing:
+		sfx_flame_loop.stop()
+	if is_instance_valid(_flamer_pilot_node):
+		_flamer_pilot_node.visible = false
+	_bow_nock_sfx_played = false
 	_burst_remaining = 0
 	_burst_timer = 0.0
 	_flame_pool_cd = 0.0
+	_flame_emit_window = 0.0
+	_flame_emit_accum = 0.0
 	_quick_melee_active = false
 	_melee_timer = 0.0
 	_melee_hitstop_timer = 0.0
+	_melee_charging = false
+	_melee_charge = 0.0
+	_melee_charge_pose = 0.0
+	_melee_lunge_timer = 0.0
+	_shove_cd = 0.0
+	grabbed_by = null
+	grab_struggle = 0.0
+	grab_immunity = 0.0
+	slow_timer = 0.0
+	slow_mult = 1.0
+	_ext_vel = Vector3.ZERO
+	regen_delay = 0.0
+	last_damage_time = -99.0
 	if reset_unlocks:
+		shots_fired = 0
+		shots_hit = 0
+		damage_taken_total = 0.0
+		perks.clear()
+		max_health = 100.0
+		health = max_health
+		last_hit_by = ""
 		firearm_slots = [0]
 		special_slot = -1
 		owned_melee = ["knife"]

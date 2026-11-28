@@ -1,7 +1,7 @@
 extends StaticBody3D
 class_name InteractableObject
 
-enum Kind { GENERATOR, MYSTERY_BOX, BARRICADE, MELEE_PICKUP, BREACH_GATE, UPGRADE_BENCH, AMMO_CRATE, WALL_BUY, TRAP }
+enum Kind { GENERATOR, MYSTERY_BOX, BARRICADE, MELEE_PICKUP, BREACH_GATE, UPGRADE_BENCH, AMMO_CRATE, WALL_BUY, TRAP, PERK }
 enum BoxState { IDLE, CYCLING, READY_CLAIM, CLOSING }
 enum TrapState { READY, ACTIVE, COOLDOWN }
 
@@ -21,6 +21,19 @@ enum TrapState { READY, ACTIVE, COOLDOWN }
 @export var trap_cooldown: float = 32.0
 @export var trap_zone_center: Vector3 = Vector3.ZERO
 @export var trap_zone_half_extents: Vector3 = Vector3(2.4, 2.2, 2.4)
+@export var perk_id: String = "vitality"
+@export var perk_label: String = "VITALITY SERUM"
+var lamp_mat: StandardMaterial3D = null
+var drawer_node: Node3D = null
+var _drawer_t: float = 0.0
+# Perk cabinet status-lamp omni is kept gentle so it never washes out the enamel at close range
+const PERK_GLOW_SCALE := 0.55
+
+const PERK_INFO := {
+	"vitality": "+50 MAXIMUM HEALTH FOR THIS RUN",
+	"quickhands": "35% FASTER RELOADS AND WEAPON HANDLING",
+	"adrenal": "+25% MELEE DAMAGE  ·  FASTER SPRINT  ·  HEALTH RECOVERS SOONER",
+}
 
 var activated: bool = false
 var plank_count: int = 4
@@ -72,13 +85,21 @@ func _ready() -> void:
 		_sfx_cycle = load("res://assets/audio/reload_shell_in.wav")
 	if _sfx_reveal == null and ResourceLoader.exists("res://assets/audio/reload_mag_in.wav"):
 		_sfx_reveal = load("res://assets/audio/reload_mag_in.wav")
-	if kind == Kind.MYSTERY_BOX or kind == Kind.UPGRADE_BENCH or kind == Kind.BREACH_GATE or kind == Kind.WALL_BUY or kind == Kind.TRAP:
+	if kind == Kind.MYSTERY_BOX or kind == Kind.UPGRADE_BENCH or kind == Kind.BREACH_GATE or kind == Kind.WALL_BUY or kind == Kind.TRAP or kind == Kind.PERK:
 		_box_audio = AudioStreamPlayer3D.new()
 		_box_audio.unit_size = 5.0
 		_box_audio.max_distance = 22.0
 		_box_audio.volume_db = -2.0
 		_box_audio.position = Vector3(0.0, 0.75, 0.0)
 		add_child(_box_audio)
+
+
+var _perk_powered: bool = false
+var _drawer_rest_z: float = 0.0
+
+
+func set_powered(on: bool) -> void:
+	_perk_powered = on
 
 
 func _play_spatial(stream: AudioStream, pitch := 1.0) -> void:
@@ -99,6 +120,25 @@ func _process(delta: float) -> void:
 		glow_light.light_energy = (2.2 + pulse) if activated else 0.25
 	elif kind == Kind.TRAP:
 		_update_trap(delta)
+	elif kind == Kind.PERK:
+		# Lamp: red while unpowered, pulsing green when ready, steady amber once taken
+		var col := Color(1.0, 0.22, 0.12)
+		var e := 0.5
+		if activated:
+			col = Color(1.0, 0.70, 0.22)
+			e = 0.7
+		elif _perk_powered:
+			col = Color(0.30, 1.0, 0.45)
+			e = 1.0 + 0.3 * sin(Time.get_ticks_msec() * 0.005)
+		if glow_light and is_instance_valid(glow_light):
+			glow_light.light_color = col
+			glow_light.light_energy = e * PERK_GLOW_SCALE
+		if lamp_mat:
+			lamp_mat.emission = col
+			lamp_mat.emission_energy_multiplier = e * 1.6
+		if _drawer_t > 0.0 and drawer_node and is_instance_valid(drawer_node):
+			_drawer_t = maxf(0.0, _drawer_t - delta)
+			drawer_node.position.z = _drawer_rest_z + sin(clampf(_drawer_t / 1.2, 0.0, 1.0) * PI) * 0.16
 
 
 func _update_trap(delta: float) -> void:
@@ -282,6 +322,8 @@ func reset_state() -> void:
 	elif kind == Kind.UPGRADE_BENCH and glow_light:
 		glow_light.light_color = Color(0.24, 0.88, 1.0)
 		glow_light.light_energy = 0.25
+	elif kind == Kind.PERK:
+		_perk_powered = false
 	elif kind == Kind.TRAP:
 		trap_state = TrapState.READY
 		trap_timer = 0.0
@@ -509,6 +551,14 @@ func get_prompt(player_points: int, player: Node = null) -> String:
 			if player_points < cost:
 				return "[E] BUY %s%s (%d PTS NEEDED)" % [wname, swap_note, cost]
 			return "[E] BUY %s%s (%d PTS)" % [wname, swap_note, cost]
+		Kind.PERK:
+			if activated:
+				return "%s — ALREADY ADMINISTERED" % perk_label
+			if not _perk_powered:
+				return "%s [RESTORE ASYLUM POWER FIRST]" % perk_label
+			if player_points < cost:
+				return "[E] TAKE %s (%d PTS NEEDED)" % [perk_label, cost]
+			return "[E] TAKE %s (%d PTS)" % [perk_label, cost]
 		Kind.TRAP:
 			if trap_state == TrapState.ACTIVE:
 				return "%s ACTIVE (%ds)" % [trap_label, ceili(trap_timer)]
@@ -518,6 +568,45 @@ func get_prompt(player_points: int, player: Node = null) -> String:
 				return "[E] ACTIVATE %s (%d PTS NEEDED)" % [trap_label, cost]
 			return "[E] ACTIVATE %s (%d PTS)" % [trap_label, cost]
 	return prompt_text
+
+
+func get_prompt_detail(player: Node = null) -> String:
+	# Second line under the prompt: what the thing actually does, so a purchase is an informed one
+	match kind:
+		Kind.WALL_BUY:
+			if weapon_index >= 0 and weapon_index < PlayerBodycam.WEAPONS.size():
+				return PlayerBodycam.describe_weapon(weapon_index)
+		Kind.MELEE_PICKUP:
+			if not activated and PlayerBodycam.MELEE_CATALOG.has(melee_id):
+				var m: Dictionary = PlayerBodycam.MELEE_CATALOG[melee_id]
+				return "DMG %d  ·  REACH %.1fm  ·  %s" % [int(m["damage"]), float(m["reach"]), str(m.get("trait", ""))]
+		Kind.MYSTERY_BOX:
+			if box_state == BoxState.READY_CLAIM and _rolled_weapon_idx >= 0:
+				return PlayerBodycam.describe_weapon(_rolled_weapon_idx)
+			if box_state == BoxState.IDLE:
+				return "RANDOM WEAPON  ·  25% CHANCE OF A PRE-FITTED ATTACHMENT"
+		Kind.UPGRADE_BENCH:
+			if activated:
+				return "MK-II: +45% DAMAGE, LARGER MAGAZINE  ·  THEN OPTIC 500  ·  SUPPRESSOR 600"
+			return "NEEDS POWER — START THE GENERATOR IN THE LOBBY"
+		Kind.AMMO_CRATE:
+			return "REFILLS THE WEAPON IN YOUR HANDS"
+		Kind.PERK:
+			return str(PERK_INFO.get(perk_id, ""))
+		Kind.TRAP:
+			if trap_state == TrapState.READY:
+				var what := "BURNS" if trap_type == "flame" else ("SHOCKS AND STUNS" if trap_type == "electric" else "SHREDS")
+				return "%s EVERYTHING IN THE KILL ZONE FOR %ds  ·  IT WILL HURT YOU TOO" % [what, int(trap_duration)]
+		Kind.BREACH_GATE:
+			if not activated:
+				return "OPENS A NEW WING  ·  MORE ROUTES, MORE SPAWNS"
+		Kind.GENERATOR:
+			if not activated:
+				return "POWERS THE LIGHTS AND THE ARMORY UPGRADE BENCH  ·  +200 PTS"
+		Kind.BARRICADE:
+			if plank_count < max_planks:
+				return "+25 PTS PER PLANK"
+	return ""
 
 
 func _cancel_player_reload(player: Node) -> void:
@@ -763,6 +852,24 @@ func interact(game_manager: Node, player: Node) -> String:
 			player.fire_cd = maxf(player.fire_cd, 0.25)
 			_play_spatial(_sfx_reveal, 0.96)
 			return "PURCHASED WALL WEAPON: %s (-%d PTS)" % [wname, cost]
+		Kind.PERK:
+			if activated:
+				return "Already administered."
+			if not _perk_powered:
+				return "The dispensary has no power. Start the generator."
+			if game_manager and game_manager.points < cost:
+				return "Need %d points for %s!" % [cost, perk_label]
+			if player == null or not player.has_method("grant_perk"):
+				return ""
+			if game_manager:
+				game_manager.add_points(-cost)
+			activated = true
+			player.grant_perk(perk_id)
+			if drawer_node and is_instance_valid(drawer_node):
+				_drawer_rest_z = drawer_node.position.z
+				_drawer_t = 1.2
+			_play_spatial(_sfx_reveal, 0.8)
+			return "%s ADMINISTERED — %s" % [perk_label, str(PERK_INFO.get(perk_id, ""))]
 		Kind.TRAP:
 			if trap_state == TrapState.ACTIVE:
 				return "%s is already active (%ds left)!" % [trap_label, ceili(trap_timer)]

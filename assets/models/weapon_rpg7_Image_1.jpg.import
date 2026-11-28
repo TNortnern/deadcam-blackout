@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://0oln8io64bjb"
-path="res://.godot/imported/weapon_rpg7_Image_1.jpg-e313c197bd85e3837977ac03a5e93c6b.ctex"
+path.bptc="res://.godot/imported/weapon_rpg7_Image_1.jpg-e313c197bd85e3837977ac03a5e93c6b.bptc.ctex"
+path.astc="res://.godot/imported/weapon_rpg7_Image_1.jpg-e313c197bd85e3837977ac03a5e93c6b.astc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "dcc884f11904847c4042f297e248fa73"
@@ -14,12 +16,12 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/weapon_rpg7_Image_1.jpg"
-dest_files=["res://.godot/imported/weapon_rpg7_Image_1.jpg-e313c197bd85e3837977ac03a5e93c6b.ctex"]
+dest_files=["res://.godot/imported/weapon_rpg7_Image_1.jpg-e313c197bd85e3837977ac03a5e93c6b.bptc.ctex", "res://.godot/imported/weapon_rpg7_Image_1.jpg-e313c197bd85e3837977ac03a5e93c6b.astc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

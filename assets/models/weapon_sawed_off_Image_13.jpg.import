@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bef2q3kcc5mn8"
-path="res://.godot/imported/weapon_sawed_off_Image_13.jpg-9958e895813e90017a7ceb9c539c56db.ctex"
+path.bptc="res://.godot/imported/weapon_sawed_off_Image_13.jpg-9958e895813e90017a7ceb9c539c56db.bptc.ctex"
+path.astc="res://.godot/imported/weapon_sawed_off_Image_13.jpg-9958e895813e90017a7ceb9c539c56db.astc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "17de2e1bd285df43e5700125f09f2926"
@@ -14,12 +16,12 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/weapon_sawed_off_Image_13.jpg"
-dest_files=["res://.godot/imported/weapon_sawed_off_Image_13.jpg-9958e895813e90017a7ceb9c539c56db.ctex"]
+dest_files=["res://.godot/imported/weapon_sawed_off_Image_13.jpg-9958e895813e90017a7ceb9c539c56db.bptc.ctex", "res://.godot/imported/weapon_sawed_off_Image_13.jpg-9958e895813e90017a7ceb9c539c56db.astc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

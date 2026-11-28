@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://do65fasprpopy"
-path="res://.godot/imported/weapon_ak74_Image_0.jpg-c48966cf831db37f56b7484fa635e98b.ctex"
+path.bptc="res://.godot/imported/weapon_ak74_Image_0.jpg-c48966cf831db37f56b7484fa635e98b.bptc.ctex"
+path.astc="res://.godot/imported/weapon_ak74_Image_0.jpg-c48966cf831db37f56b7484fa635e98b.astc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "ef05487d79cfa84a23a3a984e837e0c8"
@@ -14,12 +16,12 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/weapon_ak74_Image_0.jpg"
-dest_files=["res://.godot/imported/weapon_ak74_Image_0.jpg-c48966cf831db37f56b7484fa635e98b.ctex"]
+dest_files=["res://.godot/imported/weapon_ak74_Image_0.jpg-c48966cf831db37f56b7484fa635e98b.bptc.ctex", "res://.godot/imported/weapon_ak74_Image_0.jpg-c48966cf831db37f56b7484fa635e98b.astc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://d2ih18qa6l826"
-path="res://.godot/imported/weapon_springfield_metal_tactical_normal.jpg-ea6c9cb58f15abe5d0dc7280576a39ec.ctex"
+path.bptc="res://.godot/imported/weapon_springfield_metal_tactical_normal.jpg-ea6c9cb58f15abe5d0dc7280576a39ec.bptc.ctex"
+path.astc="res://.godot/imported/weapon_springfield_metal_tactical_normal.jpg-ea6c9cb58f15abe5d0dc7280576a39ec.astc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "acfcd8c98f5d8ef3b05dce12c4fe9481"
@@ -14,17 +16,17 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/weapon_springfield_metal_tactical_normal.jpg"
-dest_files=["res://.godot/imported/weapon_springfield_metal_tactical_normal.jpg-ea6c9cb58f15abe5d0dc7280576a39ec.ctex"]
+dest_files=["res://.godot/imported/weapon_springfield_metal_tactical_normal.jpg-ea6c9cb58f15abe5d0dc7280576a39ec.bptc.ctex", "res://.godot/imported/weapon_springfield_metal_tactical_normal.jpg-ea6c9cb58f15abe5d0dc7280576a39ec.astc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1

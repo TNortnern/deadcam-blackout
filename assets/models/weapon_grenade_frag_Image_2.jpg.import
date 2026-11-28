@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://byua5rht8pl4r"
-path="res://.godot/imported/weapon_grenade_frag_Image_2.jpg-1e8b27f0b644cb440cfe919eede9c486.ctex"
+path.bptc="res://.godot/imported/weapon_grenade_frag_Image_2.jpg-1e8b27f0b644cb440cfe919eede9c486.bptc.ctex"
+path.astc="res://.godot/imported/weapon_grenade_frag_Image_2.jpg-1e8b27f0b644cb440cfe919eede9c486.astc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "c82f1a3afa00e0465889d8a795531a5c"
@@ -14,17 +16,17 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/weapon_grenade_frag_Image_2.jpg"
-dest_files=["res://.godot/imported/weapon_grenade_frag_Image_2.jpg-1e8b27f0b644cb440cfe919eede9c486.ctex"]
+dest_files=["res://.godot/imported/weapon_grenade_frag_Image_2.jpg-1e8b27f0b644cb440cfe919eede9c486.bptc.ctex", "res://.godot/imported/weapon_grenade_frag_Image_2.jpg-1e8b27f0b644cb440cfe919eede9c486.astc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1

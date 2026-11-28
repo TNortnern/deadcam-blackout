@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://5qww407fmgjg"
-path="res://.godot/imported/weapon_grenade_shock_Image_2.jpg-52e3f0b067c124d4ef20c1c411f79b64.ctex"
+path.bptc="res://.godot/imported/weapon_grenade_shock_Image_2.jpg-52e3f0b067c124d4ef20c1c411f79b64.bptc.ctex"
+path.astc="res://.godot/imported/weapon_grenade_shock_Image_2.jpg-52e3f0b067c124d4ef20c1c411f79b64.astc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "ac575cef5615de49916ff69239b5e8c6"
@@ -14,17 +16,17 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/models/weapon_grenade_shock_Image_2.jpg"
-dest_files=["res://.godot/imported/weapon_grenade_shock_Image_2.jpg-52e3f0b067c124d4ef20c1c411f79b64.ctex"]
+dest_files=["res://.godot/imported/weapon_grenade_shock_Image_2.jpg-52e3f0b067c124d4ef20c1c411f79b64.bptc.ctex", "res://.godot/imported/weapon_grenade_shock_Image_2.jpg-52e3f0b067c124d4ef20c1c411f79b64.astc.ctex"]
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=2
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
